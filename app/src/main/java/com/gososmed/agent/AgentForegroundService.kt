@@ -43,7 +43,6 @@ class AgentForegroundService : Service() {
             return i
         }
     }
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -68,6 +67,8 @@ class AgentForegroundService : Service() {
             // service to bind) then write the result. Runs off the main thread.
             val cmd = intent.getStringExtra("cmd")
             val text = intent.getStringExtra("text")
+            val x = if (intent.hasExtra("x")) intent.getIntExtra("x", -1) else null
+            val y = if (intent.hasExtra("y")) intent.getIntExtra("y", -1) else null
             Thread {
                 try {
                     var ready = AgentAccessibilityService.instance?.isServiceReady() == true
@@ -79,6 +80,8 @@ class AgentForegroundService : Service() {
                     }
                     val req = JSONObject().put("cmd", cmd)
                     text?.let { req.put("text", it) }
+                    x?.let { req.put("x", it) }
+                    y?.let { req.put("y", it) }
                     val resp = AgentCommand.execute(req)
                     AgentReceiver.ResultStore.write(this, cmd ?: "?", resp.toString())
                 } catch (e: Exception) {
