@@ -14,6 +14,17 @@
         android:theme="@style/Theme.GosomedAgent"
         android:supportsRtl="true">
 
+        <!-- Validation/control channel reachable from `adb shell am broadcast`
+             (P0): lets the server-hub-less flow run dump/tap/text on whatever
+             app is currently foreground. Exported so adb can deliver it. -->
+        <receiver
+            android:name=".AgentReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.gososmed.agent.CMD" />
+            </intent-filter>
+        </receiver>
+
         <!-- AccessibilityService: source of truth for the UI hierarchy and
              the executor for tap/text/swipe — no root, no adb required. -->
         <service
