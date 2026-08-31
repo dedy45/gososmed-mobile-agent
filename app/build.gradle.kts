@@ -7,6 +7,21 @@ android {
     namespace = "com.gososmed.agent"
     compileSdk = 34
 
+    // Stable signature across builds: the keystore is committed to the repo
+    // so the same APK signature is always produced. This removes
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE and the need to uninstall before
+    // installing a new build on a device. NOTE: this is an INTERNAL dev
+    // keystore (password in-repo) for the P0 agent only — a production build
+    // still needs Play App Signing + a secret-held signing key (§7.5.2).
+    signingConfigs {
+        create("gososmed") {
+            storeFile = rootProject.file("keystore/gososmed-release.jks")
+            storePassword = "gososmed123"
+            keyAlias = "gososmed"
+            keyPassword = "gososmed123"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.gososmed.agent"
         minSdk = 26
@@ -22,6 +37,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("gososmed")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("gososmed")
         }
     }
 
