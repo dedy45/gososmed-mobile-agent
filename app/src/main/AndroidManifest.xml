@@ -12,7 +12,17 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.GosomedAgent"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
+
+        <!-- usesCleartextTraffic=true: the agent is a BYOD device-automation
+             tool whose agenthub server URL is user-configurable (often a LAN
+             IP over plain ws://, or a WSS tunnel in production). Android 9+
+             blocks cleartext by default; without this flag the outbound
+             ws:// handshake fails with "CLEARTEXT communication not
+             permitted". The agent only exchanges UI-hierarchy dump/tap/text
+             commands, never user credentials, over this channel. Production
+             deployments should still prefer wss:// (Cloudflare Tunnel). -->
 
         <!-- Validation/control channel reachable from `adb shell am broadcast`
              (P0): lets the server-hub-less flow run dump/tap/text on whatever
