@@ -67,8 +67,8 @@ class AgentForegroundService : Service() {
             // service to bind) then write the result. Runs off the main thread.
             val cmd = intent.getStringExtra("cmd")
             val text = intent.getStringExtra("text")
-            val x = if (intent.hasExtra("x")) intent.getIntExtra("x", -1) else null
-            val y = if (intent.hasExtra("y")) intent.getIntExtra("y", -1) else null
+            val x = readIntExtra(intent, "x")
+            val y = readIntExtra(intent, "y")
             Thread {
                 try {
                     var ready = AgentAccessibilityService.instance?.isServiceReady() == true
@@ -90,6 +90,14 @@ class AgentForegroundService : Service() {
             }.start()
         }
         return START_STICKY
+    }
+
+    /** Reads an integer extra tolerating both String (`am --es`) and Int
+     *  (`am --ei`, or JSON from the server) representations. */
+    private fun readIntExtra(intent: Intent, name: String): Int? {
+        if (!intent.hasExtra(name)) return null
+        intent.getStringExtra(name)?.let { s -> s.toIntOrNull()?.let { return it } }
+        return intent.getIntExtra(name, -1).takeIf { it != -1 }
     }
 
     override fun onDestroy() {
