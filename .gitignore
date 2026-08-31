@@ -12,3 +12,7 @@ captures/
 # Downloaded APK artifacts (CI output), never committed
 var/apk/
 *.apk
+# CI-downloaded keystore copy; the source of truth is keystore/gososmed-release.jks
+var/ks/
+# CI-downloaded artifact dir
+var/
