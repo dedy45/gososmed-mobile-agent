@@ -9,3 +9,6 @@ captures/
 .cxx/
 /captures
 /app/build/
+# Downloaded APK artifacts (CI output), never committed
+var/apk/
+*.apk
