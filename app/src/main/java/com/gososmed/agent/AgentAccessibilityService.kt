@@ -2,6 +2,7 @@ package com.gososmed.agent
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.os.Bundle
 import android.util.Log
@@ -124,6 +125,48 @@ class AgentAccessibilityService : AccessibilityService() {
     fun openRecents(): Boolean = performGlobalAction(GLOBAL_ACTION_RECENTS)
 
     fun notifyAction(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+
+    // ---- Act: app lifecycle (startApp / killApp / hasPackage) ----
+
+    /**
+     * Launches the app identified by [packageName] (e.g. com.ss.android.ugc.aweme)
+     * using its MAIN/LAUNCHER intent. Returns false if the app is not installed
+     * or has no launcher intent. This is the accessibility-legal equivalent of
+     * `adb shell am start` — no root, no shell.
+     */
+    fun startApp(packageName: String): Boolean {
+        val pm = packageManager
+        val intent = pm.getLaunchIntentForPackage(packageName) ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        try {
+            startActivity(intent)
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "startApp($packageName) gagal", e)
+            return false
+        }
+    }
+
+    /**
+     * Kills an app's background processes. NOTE: without root we cannot force-stop
+     * a foreground app (that is `am force-stop`, shell-only). This is an honest
+     * subset: it stops background processes of [packageName].
+     */
+    fun killApp(packageName: String): Boolean {
+        val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return false
+        am.killBackgroundProcesses(packageName)
+        return true
+    }
+
+    /** Returns true if [packageName] is installed on the device. */
+    fun hasPackage(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     // ---- Helpers ----
 

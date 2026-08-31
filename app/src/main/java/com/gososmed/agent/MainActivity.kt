@@ -109,6 +109,21 @@ class MainActivity : AppCompatActivity() {
                         val r = runSetText(text)
                         writeResult("setText", r)
                     }
+                    AgentCommand.CMD_START_APP -> {
+                        val pkg = intent.getStringExtra("package") ?: ""
+                        val r = runStartApp(pkg)
+                        writeResult("startApp", r)
+                    }
+                    AgentCommand.CMD_KILL_APP -> {
+                        val pkg = intent.getStringExtra("package") ?: ""
+                        val r = runKillApp(pkg)
+                        writeResult("killApp", r)
+                    }
+                    AgentCommand.CMD_HAS_PACKAGE -> {
+                        val pkg = intent.getStringExtra("package") ?: ""
+                        val r = runHasPackage(pkg)
+                        writeResult("hasPackage", r)
+                    }
                     else -> writeResult(cmd, "ERR_UNKNOWN_CMD")
                 }
             }
@@ -222,6 +237,30 @@ class MainActivity : AppCompatActivity() {
             val ok = svc.setText(text)
             runOnUiThread { log("setText($text) ok=$ok") }
             "setText=$ok"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    private fun runStartApp(pkg: String): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val ok = svc.startApp(pkg)
+            runOnUiThread { log("startApp($pkg) ok=$ok") }
+            "startApp=$ok pkg=$pkg"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    private fun runKillApp(pkg: String): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val ok = svc.killApp(pkg)
+            runOnUiThread { log("killApp($pkg) ok=$ok") }
+            "killApp=$ok pkg=$pkg"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    private fun runHasPackage(pkg: String): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val ok = svc.hasPackage(pkg)
+            runOnUiThread { log("hasPackage($pkg) ok=$ok") }
+            "hasPackage=$ok pkg=$pkg"
         } ?: "ERR_SERVICE_NOT_READY"
     }
 
