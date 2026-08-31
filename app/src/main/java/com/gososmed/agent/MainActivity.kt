@@ -71,6 +71,40 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        // Validation driver: intent extras let us drive dump/tap/text
+        // deterministically from adb (no guessing button coordinates).
+        handleValidationIntent(intent)
+    }
+
+    private fun handleValidationIntent(intent: Intent?) {
+        val cmd = intent?.getStringExtra("cmd") ?: return
+        when (cmd) {
+            AgentCommand.CMD_DUMP -> { val r = runDump(); writeResult("dump", r) }
+            AgentCommand.CMD_PACKAGE -> { val r = runPackage(); writeResult("package", r) }
+            AgentCommand.CMD_BACK -> { val r = runGlobal("back") { it.pressBack() }; writeResult("back", r) }
+            AgentCommand.CMD_HOME -> { val r = runGlobal("home") { it.pressHome() }; writeResult("home", r) }
+            AgentCommand.CMD_TAP_BY_TEXT -> {
+                val text = intent.getStringExtra("text") ?: ""
+                val r = runTapByText(text)
+                writeResult("tapByText", r)
+            }
+            AgentCommand.CMD_SET_TEXT -> {
+                val text = intent.getStringExtra("text") ?: ""
+                val r = runSetText(text)
+                writeResult("setText", r)
+            }
+        }
+        // Clear the intent so a resume (after returning from another app)
+        // does not re-run the same command.
+        intent?.removeExtra("cmd")
+    }
+
+    /** Forces a fresh validation run even if the activity was already resumed
+     *  (e.g. `am start` with --es after the process is alive). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleValidationIntent(intent)
     }
 
     private fun refreshStatus() {
@@ -103,29 +137,44 @@ class MainActivity : AppCompatActivity() {
     // ---- Local command channel (validates agent without server) ----
 
     private fun doDump() {
-        AgentAccessibilityService.withInstance { svc ->
+        val r = runDump()
+        log(r)
+    }
+
+    private fun runDump(): String {
+        return AgentAccessibilityService.withInstance { svc ->
             val xml = svc.dumpXml()
             val pkg = svc.currentPackage()
-            runOnUiThread {
-                log("PACKAGE: $pkg")
-                log("--- DUMP (${xml.length} chars) ---")
-                log(xml.take(4000))
-                toast("dump ${xml.length} chars")
-            }
-        } ?: runOnUiThread { toast("Service tidak aktif") }
+            runOnUiThread { log("PACKAGE: $pkg"); log("--- DUMP (${xml.length} chars) ---"); log(xml.take(4000)) }
+            "PACKAGE=$pkg DUMP_CHARS=${xml.length}"
+        } ?: "ERR_SERVICE_NOT_READY"
     }
 
     private fun doPackage() {
-        AgentAccessibilityService.withInstance { svc ->
-            runOnUiThread { log("CURRENT PACKAGE: ${svc.currentPackage()}") }
-        } ?: runOnUiThread { toast("Service tidak aktif") }
+        val r = runPackage()
+        log(r)
+    }
+
+    private fun runPackage(): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val pkg = svc.currentPackage()
+            runOnUiThread { log("CURRENT PACKAGE: $pkg") }
+            "PACKAGE=$pkg"
+        } ?: "ERR_SERVICE_NOT_READY"
     }
 
     private fun doGlobal(action: (AgentAccessibilityService) -> Boolean) {
-        AgentAccessibilityService.withInstance { svc ->
+        val r = runGlobal("global", action)
+        log(r)
+        refreshStatus()
+    }
+
+    private fun runGlobal(label: String, action: (AgentAccessibilityService) -> Boolean): String {
+        return AgentAccessibilityService.withInstance { svc ->
             val ok = action(svc)
-            runOnUiThread { log("global action ok=$ok"); refreshStatus() }
-        } ?: runOnUiThread { toast("Service tidak aktif") }
+            runOnUiThread { log("$label ok=$ok"); refreshStatus() }
+            "$label=$ok"
+        } ?: "ERR_SERVICE_NOT_READY"
     }
 
     private fun doTapFirstClickable() {
@@ -136,6 +185,37 @@ class MainActivity : AppCompatActivity() {
                 else log("no clickable node found")
             }
         } ?: runOnUiThread { toast("Service tidak aktif") }
+    }
+
+    private fun runTapByText(text: String): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val ok = svc.tapByText(text)
+            runOnUiThread { log("tapByText($text) ok=$ok") }
+            "tapByText=$ok text=$text"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    private fun runSetText(text: String): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val ok = svc.setText(text)
+            runOnUiThread { log("setText($text) ok=$ok") }
+            "setText=$ok"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    // Writes a short result to the app's external files dir so `adb pull`
+    // can fetch deterministic evidence without reading the on-screen log.
+    // Uses getExternalFilesDir (no storage permission needed, app-scoped).
+    private fun writeResult(tag: String, value: String) {
+        try {
+            val dir = getExternalFilesDir(null) ?: return
+            // Replace the whole line on each command so the file is easy to
+            // validate, but keep a timestamped copy for history.
+            val f = java.io.File(dir, "agent_result.txt")
+            f.writeText("$tag => $value\n")
+        } catch (e: Exception) {
+            log("writeResult failed: ${e.message}")
+        }
     }
 
     private fun log(line: String) {

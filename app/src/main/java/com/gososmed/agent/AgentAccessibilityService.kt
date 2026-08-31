@@ -31,9 +31,10 @@ class AgentAccessibilityService : AccessibilityService() {
             fun centerY() = (top + bottom) / 2
         }
 
-        /** Runs [block] on the current service instance or returns false. */
-        inline fun withInstance(block: (AgentAccessibilityService) -> Boolean): Boolean {
-            val svc = instance ?: return false
+        /** Runs [block] on the current service instance. Returns null if the
+         *  service is not connected, else the block's result. */
+        inline fun <T> withInstance(block: (AgentAccessibilityService) -> T): T? {
+            val svc = instance ?: return null
             return block(svc)
         }
     }

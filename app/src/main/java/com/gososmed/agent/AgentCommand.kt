@@ -37,8 +37,9 @@ object AgentCommand {
         val resp = JSONObject()
         resp.put("id", id)
 
-        // Commands that need a live service instance.
-        val handled = AgentAccessibilityService.withInstance { svc ->
+        // Non-local return from inside the inline withInstance block: if the
+        // service is not connected we fall through to the error below.
+        AgentAccessibilityService.withInstance { svc ->
             when (cmd) {
                 CMD_PING -> {
                     resp.put("ok", true)
@@ -92,11 +93,10 @@ object AgentCommand {
                 CMD_PACKAGE -> resp.put("ok", true).put("result", JSONObject().put("package", svc.currentPackage()))
                 else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
             }
+            return resp
         }
 
-        if (!handled) {
-            resp.put("ok", false).put("error", "accessibility service not connected/ready")
-        }
+        resp.put("ok", false).put("error", "accessibility service not connected/ready")
         return resp
     }
 }
