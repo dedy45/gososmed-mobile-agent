@@ -1,5 +1,7 @@
 package com.gososmed.agent
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +40,10 @@ class AgentWsClient(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Accessibility API (rootInActiveWindow / performAction / dispatchGesture)
+    // must run on the main thread, but OkHttp invokes onMessage on its own
+    // reader thread. We post inbound command execution to the main looper.
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // no read timeout on WS
@@ -81,6 +87,24 @@ class AgentWsClient(
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val obj = JSONObject(text)
+                    // Inbound command from the agenthub (has a cmd field): this
+                    // is the server demanding we act (dump/tap/setText/back/...).
+                    // Execute it and reply — this is the whole point of P1.
+                    // Accessibility API must run on the main thread, so we post
+                    // the execution there (webSocket.send is thread-safe).
+                    if (obj.has("cmd")) {
+                        mainHandler.post {
+                            try {
+                                val resp = AgentCommand.execute(obj)
+                                webSocket.send(resp.toString())
+                            } catch (e: Exception) {
+                                Log.w(TAG, "cmd exec error", e)
+                            }
+                        }
+                        return
+                    }
+                    // Otherwise it's a reply to one of our own client-side
+                    // requests; route it to the matching pending callback.
                     val id = obj.optLong("id", -1)
                     pending.remove(id)?.invoke(obj)
                 } catch (e: Exception) {
