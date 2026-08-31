@@ -203,19 +203,10 @@ class MainActivity : AppCompatActivity() {
         } ?: "ERR_SERVICE_NOT_READY"
     }
 
-    // Writes a short result to the app's external files dir so `adb pull`
-    // can fetch deterministic evidence without reading the on-screen log.
-    // Uses getExternalFilesDir (no storage permission needed, app-scoped).
+    // Writes a short result to logcat + internal files dir (run-as readable)
+    // so `adb` can fetch deterministic evidence without storage permissions.
     private fun writeResult(tag: String, value: String) {
-        try {
-            val dir = getExternalFilesDir(null) ?: return
-            // Replace the whole line on each command so the file is easy to
-            // validate, but keep a timestamped copy for history.
-            val f = java.io.File(dir, "agent_result.txt")
-            f.writeText("$tag => $value\n")
-        } catch (e: Exception) {
-            log("writeResult failed: ${e.message}")
-        }
+        AgentReceiver.ResultStore.write(this, tag, value)
     }
 
     private fun log(line: String) {

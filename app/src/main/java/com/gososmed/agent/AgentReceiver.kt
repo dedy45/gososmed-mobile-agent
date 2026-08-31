@@ -3,6 +3,7 @@ package com.gososmed.agent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import org.json.JSONObject
 
 /**
@@ -19,7 +20,10 @@ import org.json.JSONObject
  *     --es cmd tapByText --es text "Log in"
  *   adb shell am broadcast -a com.gososmed.agent.CMD \
  *     --es cmd setText --es text "user@example.com"
- * Result is written to <external-files>/agent_result.txt for `adb pull`.
+ *
+ * Results are written to the app INTERNAL files dir (`run-as` readable) and
+ * echoed to logcat (tag "GoAgent") so validation never depends on storage
+ * permissions.
  */
 class AgentReceiver : BroadcastReceiver() {
 
@@ -30,25 +34,42 @@ class AgentReceiver : BroadcastReceiver() {
         if (intent.hasExtra("x")) req.put("x", intent.getIntExtra("x", -1))
         if (intent.hasExtra("y")) req.put("y", intent.getIntExtra("y", -1))
 
-        val resp = AgentCommand.execute(req)
-        // Blocking-ish: onReceive has ~10s; dump of a big window can take a
-        // moment but usually fits. We goAsync to be safe.
+        // onReceive is limited to ~10s; run the (possibly slow) dump on a
+        // background thread and finish() via goAsync.
         val pending = goAsync()
         Thread {
             try {
-                writeResult(context, cmd, resp.toString())
+                val resp = AgentCommand.execute(req)
+                ResultStore.write(context, cmd, resp.toString())
             } finally {
                 pending.finish()
             }
         }.start()
     }
 
-    private fun writeResult(context: Context, tag: String, value: String) {
-        try {
-            val dir = context.getExternalFilesDir(null) ?: return
-            java.io.File(dir, "agent_result.txt").writeText("$tag => $value\n")
-        } catch (_: Exception) {
-            // no storage; log-only
+    object ResultStore {
+        private const val TAG = "GoAgent"
+
+        fun write(context: Context, tag: String, value: String) {
+            Log.i(TAG, "RESULT[$tag] => $value")
+            try {
+                val dir = context.getFilesDir()
+                val f = java.io.File(dir, "agent_result.txt")
+                f.writeText("$tag => $value\n")
+                Log.i(TAG, "written to ${f.absolutePath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "write failed: ${e.message}")
+            }
+            // Also mirror to external files dir (adb-pull friendly) when it
+            // exists; failures here are non-fatal.
+            try {
+                val ext = context.getExternalFilesDir(null)
+                if (ext != null) {
+                    java.io.File(ext, "agent_result.txt").writeText("$tag => $value\n")
+                }
+            } catch (_: Exception) {
+                // non-fatal
+            }
         }
     }
 }
