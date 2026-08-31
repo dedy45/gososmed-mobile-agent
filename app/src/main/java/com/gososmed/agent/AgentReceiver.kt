@@ -35,10 +35,18 @@ class AgentReceiver : BroadcastReceiver() {
         if (intent.hasExtra("y")) req.put("y", intent.getIntExtra("y", -1))
 
         // onReceive is limited to ~10s; run the (possibly slow) dump on a
-        // background thread and finish() via goAsync.
+        // background thread and finish() via goAsync. The service may still
+        // be binding, so wait until it is ready (up to ~3s).
         val pending = goAsync()
         Thread {
             try {
+                var ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                var attempts = 0
+                while (!ready && attempts < 6) {
+                    Thread.sleep(500)
+                    attempts++
+                    ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                }
                 val resp = AgentCommand.execute(req)
                 ResultStore.write(context, cmd, resp.toString())
             } finally {

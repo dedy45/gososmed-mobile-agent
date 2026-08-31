@@ -27,6 +27,12 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Cache Android debug keystore (stable APK signature)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - name: Install Gradle 8.9 (deterministic, no wrapper jar needed)
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip

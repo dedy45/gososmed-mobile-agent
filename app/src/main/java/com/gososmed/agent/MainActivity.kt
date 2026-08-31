@@ -78,25 +78,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleValidationIntent(intent: Intent?) {
         val cmd = intent?.getStringExtra("cmd") ?: return
-        when (cmd) {
-            AgentCommand.CMD_DUMP -> { val r = runDump(); writeResult("dump", r) }
-            AgentCommand.CMD_PACKAGE -> { val r = runPackage(); writeResult("package", r) }
-            AgentCommand.CMD_BACK -> { val r = runGlobal("back") { it.pressBack() }; writeResult("back", r) }
-            AgentCommand.CMD_HOME -> { val r = runGlobal("home") { it.pressHome() }; writeResult("home", r) }
-            AgentCommand.CMD_TAP_BY_TEXT -> {
-                val text = intent.getStringExtra("text") ?: ""
-                val r = runTapByText(text)
-                writeResult("tapByText", r)
-            }
-            AgentCommand.CMD_SET_TEXT -> {
-                val text = intent.getStringExtra("text") ?: ""
-                val r = runSetText(text)
-                writeResult("setText", r)
+        // Service may still be binding (async). Retry with a Handler.
+        var attempts = 0
+        val runner = object : Runnable {
+            override fun run() {
+                attempts++
+                val ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                if (!ready && attempts < 6) {
+                    // Retry after 500ms (up to 3s total).
+                    logTv.postDelayed(this, 500L)
+                    return
+                }
+                when (cmd) {
+                    AgentCommand.CMD_DUMP -> { val r = runDump(); writeResult("dump", r) }
+                    AgentCommand.CMD_PACKAGE -> { val r = runPackage(); writeResult("package", r) }
+                    AgentCommand.CMD_BACK -> { val r = runGlobal("back") { it.pressBack() }; writeResult("back", r) }
+                    AgentCommand.CMD_HOME -> { val r = runGlobal("home") { it.pressHome() }; writeResult("home", r) }
+                    AgentCommand.CMD_TAP_BY_TEXT -> {
+                        val text = intent.getStringExtra("text") ?: ""
+                        val r = runTapByText(text)
+                        writeResult("tapByText", r)
+                    }
+                    AgentCommand.CMD_SET_TEXT -> {
+                        val text = intent.getStringExtra("text") ?: ""
+                        val r = runSetText(text)
+                        writeResult("setText", r)
+                    }
+                    else -> writeResult(cmd, "ERR_UNKNOWN_CMD")
+                }
             }
         }
+        logTv.post(runner)
         // Clear the intent so a resume (after returning from another app)
         // does not re-run the same command.
-        intent?.removeExtra("cmd")
+        intent.removeExtra("cmd")
     }
 
     /** Forces a fresh validation run even if the activity was already resumed
