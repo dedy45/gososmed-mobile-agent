@@ -36,6 +36,14 @@ class MainActivity : AppCompatActivity() {
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
     private val pairingCode: String by lazy { loadOrCreatePairingCode() }
 
+    private fun prefs() = getSharedPreferences("agent", MODE_PRIVATE)
+
+    private fun loadWsUrl(): String = prefs().getString("ws_url", "") ?: ""
+
+    private fun saveWsUrl(url: String) {
+        prefs().edit().putString("ws_url", url).apply()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -58,6 +66,12 @@ class MainActivity : AppCompatActivity() {
 
         pairTv.text = "Device: $deviceId\nPairing code: $pairingCode"
 
+        // Restore persisted WS URL.
+        val saved = loadWsUrl()
+        if (saved.isNotEmpty()) {
+            wsUrlEt.setText(saved)
+        }
+
         connectBtn.setOnClickListener { connectWs() }
         disconnectBtn.setOnClickListener { disconnectWs() }
         dumpBtn.setOnClickListener { doDump() }
@@ -71,6 +85,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshStatus()
+
+        // Auto-connect if a URL was previously saved.
+        if (saved.isNotEmpty()) {
+            log("auto-connect to $saved …")
+            connectWs()
+        }
     }
 
     override fun onResume() {
@@ -156,6 +176,7 @@ class MainActivity : AppCompatActivity() {
             toast("Masukkan URL WS server (mis. ws://192.168.1.77:8080/v1/agent/ws)")
             return
         }
+        saveWsUrl(url)
         ws?.destroy()
         ws = AgentWsClient(url, deviceId, pairingCode) {
             runOnUiThread { log(it) }
