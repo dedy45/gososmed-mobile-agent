@@ -133,7 +133,7 @@ class AgentAccessibilityService : AccessibilityService() {
         return Bounds(rect.left, rect.top, rect.right, rect.bottom)
     }
 
-    private inline fun findNode(
+    private fun findNode(
         root: AccessibilityNodeInfo,
         predicate: (AccessibilityNodeInfo) -> Boolean
     ): AccessibilityNodeInfo? {

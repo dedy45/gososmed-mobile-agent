@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
 
         statusTv = findViewById(R.id.statusTv)
         pairTv = findViewById(R.id.pairTv)
-        logTv = findViewById(R.id.logTv).apply { movementMethod = ScrollingMovementMethod() }
+        logTv = findViewById<TextView>(R.id.logTv).apply { movementMethod = ScrollingMovementMethod() }
         wsUrlEt = findViewById(R.id.wsUrlEt)
         connectBtn = findViewById(R.id.connectBtn)
         disconnectBtn = findViewById(R.id.disconnectBtn)
