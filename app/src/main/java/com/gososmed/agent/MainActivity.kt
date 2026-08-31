@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -38,6 +39,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Start the foreground service so the process stays foreground and
+        // BroadcastReceiver commands keep working on Android 12+.
+        startForegroundService(Intent(this, AgentForegroundService::class.java))
 
         statusTv = findViewById(R.id.statusTv)
         pairTv = findViewById(R.id.pairTv)
@@ -161,6 +166,8 @@ class MainActivity : AppCompatActivity() {
             val xml = svc.dumpXml()
             val pkg = svc.currentPackage()
             runOnUiThread { log("PACKAGE: $pkg"); log("--- DUMP (${xml.length} chars) ---"); log(xml.take(4000)) }
+            // Write raw XML to a separate file for ParseHierarchy validation.
+            writeRawXml("agent_dump_raw.xml", xml)
             "PACKAGE=$pkg DUMP_CHARS=${xml.length}"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -222,6 +229,17 @@ class MainActivity : AppCompatActivity() {
     // so `adb` can fetch deterministic evidence without storage permissions.
     private fun writeResult(tag: String, value: String) {
         AgentReceiver.ResultStore.write(this, tag, value)
+    }
+
+    // Writes the raw dump XML to the internal files dir for ParseHierarchy
+    // validation via `adb shell run-as ... cat files/agent_dump_raw.xml`.
+    private fun writeRawXml(name: String, xml: String) {
+        try {
+            java.io.File(filesDir, name).writeText(xml)
+            Log.i("GoAgent", "raw xml ${xml.length} chars -> files/$name")
+        } catch (e: Exception) {
+            Log.e("GoAgent", "writeRawXml failed: ${e.message}")
+        }
     }
 
     private fun log(line: String) {

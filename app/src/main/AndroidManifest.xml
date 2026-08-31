@@ -25,6 +25,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Foreground service keeps the agent process foreground so that
+             BroadcastReceiver commands work on Android 12+ (they are blocked
+             when the app is in the background). This is also the production
+             shape: the agent is a persistent service, not an Activity. -->
+        <service
+            android:name=".AgentForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="device_automation_agent_byod" />
+        </service>
+
         <!-- AccessibilityService: source of truth for the UI hierarchy and
              the executor for tap/text/swipe — no root, no adb required. -->
         <service
