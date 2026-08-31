@@ -4,20 +4,30 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import org.json.JSONObject
 
 /**
- * Keeps the agent process in the FOREGROUND.
+ * Keeps the agent process in the FOREGROUND and acts as the command entry
+ * point for P0 device-side validation.
  *
- * This is required for two reasons:
- *  1. Android 12+ blocks background BroadcastReceiver execution — without a
- *     foreground service, `adb shell am broadcast ... cmd=dump` would be
- *     rejected with "Background execution not allowed".
- *  2. Production shape: the agent is a persistent device-side service (BYOD
- *     model), NOT an Activity. The service keeps the WS connection and the
- *     AccessibilityService alive even when the user is in another app.
+ * Why this matters:
+ *  - Android 12+ blocks background BroadcastReceiver execution, so
+ *    `am broadcast ... cmd=dump` is rejected with "Background execution not
+ *    allowed" unless the app is foreground. A foreground service (which is
+ *    NOT blocked) fixes that and matches the production shape: the agent is a
+ *    persistent service driven by the GoSosmed agenthub over WebSocket.
+ *  - In P0 (no server yet), `adb shell am start-foreground-service ... --es
+ *    cmd dump` reaches onStartCommand (not subject to the background
+ *    restriction) and runs the same command the server would send over WS.
+ *
+ * Usage (validation, P0):
+ *   adb shell am start-foreground-service \
+ *     -n com.gososmed.agent/.AgentForegroundService --es cmd dump
+ * Result is written to the internal files dir (run-as readable) + logcat.
  */
 class AgentForegroundService : Service() {
 
@@ -25,6 +35,13 @@ class AgentForegroundService : Service() {
         private const val TAG = "GoAgent"
         private const val CHANNEL_ID = "agent"
         private const val NOTIF_ID = 1
+
+        fun commandIntent(context: Context, cmd: String, text: String? = null): Intent {
+            val i = Intent(context, AgentForegroundService::class.java)
+            i.putExtra("cmd", cmd)
+            text?.let { i.putExtra("text", it) }
+            return i
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -46,9 +63,29 @@ class AgentForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY: if the system kills us, restart with null intent so
-        // the agent keeps serving (auto-reconnect in AgentWsClient handles
-        // the WS re-establishment).
+        if (intent?.hasExtra("cmd") == true) {
+            // Command request: run it (possibly waiting for the accessibility
+            // service to bind) then write the result. Runs off the main thread.
+            val cmd = intent.getStringExtra("cmd")
+            val text = intent.getStringExtra("text")
+            Thread {
+                try {
+                    var ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                    var attempts = 0
+                    while (!ready && attempts < 6) {
+                        Thread.sleep(500)
+                        attempts++
+                        ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                    }
+                    val req = JSONObject().put("cmd", cmd)
+                    text?.let { req.put("text", it) }
+                    val resp = AgentCommand.execute(req)
+                    AgentReceiver.ResultStore.write(this, cmd ?: "?", resp.toString())
+                } catch (e: Exception) {
+                    Log.e(TAG, "command failed: ${e.message}")
+                }
+            }.start()
+        }
         return START_STICKY
     }
 
