@@ -32,6 +32,7 @@ object AgentCommand {
     const val CMD_START_APP = "startApp"
     const val CMD_KILL_APP = "killApp"
     const val CMD_HAS_PACKAGE = "hasPackage"
+    const val CMD_LIST_PACKAGES = "listPackages"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -99,7 +100,11 @@ object AgentCommand {
                     if (pkg.isEmpty()) {
                         resp.put("ok", false).put("error", "startApp requires package")
                     } else {
-                        resp.put("ok", true).put("result", JSONObject().put("ok", svc.startApp(pkg)))
+                        val activity = req.optString("activity", "")
+                        resp.put("ok", true).put(
+                            "result",
+                            JSONObject().put("ok", svc.startApp(pkg, activity.ifEmpty { null }))
+                        )
                     }
                 }
                 CMD_KILL_APP -> {
@@ -113,6 +118,9 @@ object AgentCommand {
                 CMD_HAS_PACKAGE -> {
                     val pkg = req.optString("package", "")
                     resp.put("ok", true).put("result", JSONObject().put("installed", svc.hasPackage(pkg)))
+                }
+                CMD_LIST_PACKAGES -> {
+                    resp.put("ok", true).put("result", JSONObject().put("packages", svc.listPackages()))
                 }
                 else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
             }

@@ -131,7 +131,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     AgentCommand.CMD_START_APP -> {
                         val pkg = intent.getStringExtra("package") ?: ""
-                        val r = runStartApp(pkg)
+                        val activity = intent.getStringExtra("activity") ?: ""
+                        val r = runStartApp(pkg, activity)
                         writeResult("startApp", r)
                     }
                     AgentCommand.CMD_KILL_APP -> {
@@ -143,6 +144,10 @@ class MainActivity : AppCompatActivity() {
                         val pkg = intent.getStringExtra("package") ?: ""
                         val r = runHasPackage(pkg)
                         writeResult("hasPackage", r)
+                    }
+                    AgentCommand.CMD_LIST_PACKAGES -> {
+                        val r = runListPackages()
+                        writeResult("listPackages", r)
                     }
                     else -> writeResult(cmd, "ERR_UNKNOWN_CMD")
                 }
@@ -261,11 +266,20 @@ class MainActivity : AppCompatActivity() {
         } ?: "ERR_SERVICE_NOT_READY"
     }
 
-    private fun runStartApp(pkg: String): String {
+    private fun runStartApp(pkg: String, activity: String = ""): String {
         return AgentAccessibilityService.withInstance { svc ->
-            val ok = svc.startApp(pkg)
-            runOnUiThread { log("startApp($pkg) ok=$ok") }
-            "startApp=$ok pkg=$pkg"
+            val act = activity.ifEmpty { null }
+            val ok = svc.startApp(pkg, act)
+            runOnUiThread { log("startApp($pkg, $activity) ok=$ok") }
+            "startApp=$ok pkg=$pkg activity=$activity"
+        } ?: "ERR_SERVICE_NOT_READY"
+    }
+
+    private fun runListPackages(): String {
+        return AgentAccessibilityService.withInstance { svc ->
+            val pkgs = svc.listPackages()
+            runOnUiThread { log("listPackages count=${pkgs.size}") }
+            "listPackages=${pkgs.size} ${pkgs.joinToString(",")}"
         } ?: "ERR_SERVICE_NOT_READY"
     }
 

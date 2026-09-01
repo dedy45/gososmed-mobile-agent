@@ -126,24 +126,39 @@ class AgentAccessibilityService : AccessibilityService() {
 
     fun notifyAction(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
 
-    // ---- Act: app lifecycle (startApp / killApp / hasPackage) ----
+    // ---- Act: app lifecycle (startApp / killApp / hasPackage / listPackages) ----
 
     /**
-     * Launches the app identified by [packageName] (e.g. com.ss.android.ugc.aweme)
-     * using its MAIN/LAUNCHER intent. Returns false if the app is not installed
-     * or has no launcher intent. This is the accessibility-legal equivalent of
-     * `adb shell am start` — no root, no shell.
+     * Launches the app identified by [packageName] (e.g. com.facebook.katana).
+     * When [activity] is provided, launches its explicit component via
+     * setClassName — this avoids the Android resolver (app chooser) that
+     * appears when a clone / dual-app matches the same implicit launcher intent.
+     * Without [activity], falls back to getLaunchIntentForPackage (implicit).
+     * Returns false if the app is not installed or launch fails.
      */
-    fun startApp(packageName: String): Boolean {
-        val pm = packageManager
-        val intent = pm.getLaunchIntentForPackage(packageName) ?: return false
+    fun startApp(packageName: String, activity: String? = null): Boolean {
+        val intent = if (activity != null) {
+            Intent().setClassName(packageName, activity)
+        } else {
+            packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         try {
             startActivity(intent)
             return true
         } catch (e: Exception) {
-            Log.w(TAG, "startApp($packageName) gagal", e)
+            Log.w(TAG, "startApp($packageName, $activity) gagal", e)
             return false
+        }
+    }
+
+    /** Returns true if [packageName] is installed on the device. */
+    fun hasPackage(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -158,14 +173,17 @@ class AgentAccessibilityService : AccessibilityService() {
         return true
     }
 
-    /** Returns true if [packageName] is installed on the device. */
-    fun hasPackage(packageName: String): Boolean {
-        return try {
-            packageManager.getPackageInfo(packageName, 0)
-            true
-        } catch (e: Exception) {
-            false
-        }
+    /**
+     * Returns the list of all installed packages that have a launcher intent
+     * (apps visible on the home screen). Used by the backend to detect clone
+     * apps (e.g. com.facebook.katana vs com.facebook.katana:parasitical)
+     * and choose the correct one before launching.
+     */
+    fun listPackages(): List<String> {
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = pm.queryIntentActivities(intent, 0)
+        return apps.map { it.activityInfo.packageName }.distinct().sorted()
     }
 
     // ---- Helpers ----
