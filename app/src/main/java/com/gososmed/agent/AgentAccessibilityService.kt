@@ -144,7 +144,13 @@ class AgentAccessibilityService : AccessibilityService() {
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         try {
-            startActivity(intent)
+            // Use applicationContext so the lifecycle of the AccessibilityService
+            // is NOT tied to the launched activity. MIUI was observed to call
+            // onDestroy (and clear instance = null) when startActivity was
+            // invoked from the service context directly, which made every
+            // subsequent command (dump, tap, hasPackage) fail with
+            // "accessibility service not connected/ready".
+            applicationContext.startActivity(intent)
             return true
         } catch (e: Exception) {
             Log.w(TAG, "startApp($packageName, $activity) gagal", e)
