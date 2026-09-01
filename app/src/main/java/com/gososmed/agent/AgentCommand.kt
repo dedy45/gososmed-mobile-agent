@@ -41,10 +41,32 @@ object AgentCommand {
         val resp = JSONObject()
         resp.put("id", id)
 
-        // Non-local return from inside the inline withInstance block: if the
-        // service is not connected we fall through to the error below.
-        AgentAccessibilityService.withInstance { svc ->
-            when (cmd) {
+        // Retry: the AccessibilityService's static instance can briefly become
+        // null when MIUI calls onDestroy(on startActivity to another app, e.g.
+        // XSpace Dual Apps resolver) then quickly re-binds. Wait a short moment
+        // for the re-bound instance to come back before giving up.
+        var svc = AgentAccessibilityService.instance
+        if (svc == null) {
+            for (i in 0..9) {
+                Thread.sleep(200)
+                svc = AgentAccessibilityService.instance
+                if (svc != null) break
+            }
+        }
+
+        if (svc == null) {
+            resp.put("ok", false).put("error", "accessibility service not connected/ready")
+            return resp
+        }
+        // Use the non-null svc instance safely inside the block.
+        val result = executeWith(svc, cmd, req)
+        result.put("id", id)
+        return result
+    }
+
+    private fun executeWith(svc: AgentAccessibilityService, cmd: String, req: JSONObject): JSONObject {
+        val resp = JSONObject()
+        when (cmd) {
                 CMD_PING -> {
                     resp.put("ok", true)
                     resp.put("result", JSONObject().put("pong", true))
@@ -126,8 +148,5 @@ object AgentCommand {
             }
             return resp
         }
-
-        resp.put("ok", false).put("error", "accessibility service not connected/ready")
-        return resp
     }
 }
