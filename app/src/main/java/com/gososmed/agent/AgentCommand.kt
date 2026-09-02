@@ -161,14 +161,18 @@ object AgentCommand {
                 }
             }
             CMD_SCREENSHOT -> {
-                val (b64, err) = svc.takeScreenshotPngBase64()
-                if (b64 != null) {
-                    resp.put("ok", true).put("result", JSONObject().apply {
-                        put("format", "png.base64")
-                        put("data", b64)
-                    })
-                } else {
-                    resp.put("ok", false).put("error", "screenshot: $err")
+                try {
+                    val (b64, err) = svc.takeScreenshotPngBase64()
+                    if (b64 != null) {
+                        resp.put("ok", true).put("result", JSONObject().apply {
+                            put("format", "png.base64")
+                            put("data", b64)
+                        })
+                    } else {
+                        resp.put("ok", false).put("error", "screenshot: $err")
+                    }
+                } catch (e: Exception) {
+                    resp.put("ok", false).put("error", "screenshot: ${e.message}")
                 }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
