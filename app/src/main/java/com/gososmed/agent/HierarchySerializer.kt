@@ -43,6 +43,39 @@ object HierarchySerializer {
         return arr.toString()
     }
 
+    /**
+     * Compact summary of a single window root: the root's package, class,
+     * text snippet and descendant count. Used by the FASE 0 V1 `dumpWindows`
+     * experiment to show what each getWindows() window exposes WITHOUT
+     * shipping the whole subtree in the probe response.
+     */
+    fun summarize(root: AccessibilityNodeInfo?): JSONObject {
+        val o = JSONObject()
+        if (root == null) return o
+        o.put("package", root.packageName?.toString() ?: "")
+        o.put("class", root.className?.toString() ?: "")
+        val text = root.text?.toString() ?: root.contentDescription?.toString() ?: ""
+        o.put("text", text.take(80))
+        o.put("childCount", countNodes(root))
+        return o
+    }
+
+    private fun countNodes(root: AccessibilityNodeInfo): Int {
+        var n = 1
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.add(root)
+        while (stack.isNotEmpty()) {
+            val cur = stack.removeLast()
+            val c = cur.childCount
+            for (i in 0 until c) {
+                val child = cur.getChild(i) ?: continue
+                stack.add(child)
+                n++
+            }
+        }
+        return n
+    }
+
     // ---- XML path ----
 
     private fun appendNode(

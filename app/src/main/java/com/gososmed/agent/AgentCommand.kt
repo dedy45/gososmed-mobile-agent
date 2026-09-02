@@ -12,7 +12,8 @@ import org.json.JSONObject
  *
  * Request  : { "id": 1, "cmd": "dump" | "tap" | "tapByText" | "setText"
  *                    | "back" | "home" | "recents" | "notify" | "package"
- *                    | "ping", ...args }
+ *                    | "startApp" | "killApp" | "hasPackage" | "listPackages"
+ *                    | "dumpWindows" | "screenshot" | "ping", ...args }
  * Response : { "id": 1, "ok": true,  "result": {...} }
  *          : { "id": 1, "ok": false, "error": "..." }
  */
@@ -33,6 +34,10 @@ object AgentCommand {
     const val CMD_KILL_APP = "killApp"
     const val CMD_HAS_PACKAGE = "hasPackage"
     const val CMD_LIST_PACKAGES = "listPackages"
+    // FASE 0 V1: enumerate getWindows() windows vs rootInActiveWindow.
+    const val CMD_DUMP_WINDOWS = "dumpWindows"
+    // FG2: capture current display as PNG (AccessibilityService API 30+).
+    const val CMD_SCREENSHOT = "screenshot"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -143,6 +148,28 @@ object AgentCommand {
             }
             CMD_LIST_PACKAGES -> {
                 resp.put("ok", true).put("result", JSONObject().put("packages", svc.listPackages()))
+            }
+            CMD_DUMP_WINDOWS -> {
+                try {
+                    val windows = svc.dumpWindows()
+                    resp.put("ok", true).put("result", JSONObject().apply {
+                        put("windows", windows)
+                        put("activePackage", svc.currentPackage())
+                    })
+                } catch (e: Exception) {
+                    resp.put("ok", false).put("error", "dumpWindows: ${e.message}")
+                }
+            }
+            CMD_SCREENSHOT -> {
+                val (b64, err) = svc.takeScreenshotPngBase64()
+                if (b64 != null) {
+                    resp.put("ok", true).put("result", JSONObject().apply {
+                        put("format", "png.base64")
+                        put("data", b64)
+                    })
+                } else {
+                    resp.put("ok", false).put("error", "screenshot: $err")
+                }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }

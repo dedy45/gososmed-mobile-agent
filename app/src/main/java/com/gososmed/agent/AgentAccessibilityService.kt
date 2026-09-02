@@ -3,11 +3,21 @@ package com.gososmed.agent
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Path
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * AccessibilityService = the agent's "source of truth" for the device UI.
@@ -69,6 +79,125 @@ class AgentAccessibilityService : AccessibilityService() {
     fun currentPackage(): String {
         val root = rootInActiveWindow ?: return ""
         return root.packageName?.toString() ?: ""
+    }
+
+    // ---- FASE 0 V1: getWindows() vs rootInActiveWindow ----
+
+    /**
+     * Enumerates ALL interactive windows the service can see via getWindows()
+     * and reports, for each, whether it exposes a root node that
+     * `rootInActiveWindow` would MISS. This is the FASE 0 V1 experiment:
+     * which system windows (permission dialog, notification shade, app
+     * chooser, OAuth webview, Compose screen, lockscreen) are only reachable
+     * through getWindows()?
+     *
+     * Requires flagRetrieveInteractiveWindows + canRetrieveWindowContent
+     * (both already set in accessibility_service_config.xml).
+     */
+    fun dumpWindows(): JSONArray {
+        val arr = JSONArray()
+        val activeRoot = rootInActiveWindow
+        // getWindows() requires API 21+; safe for minSdk 26.
+        val windows = getWindows() ?: emptyList()
+        for ((i, w) in windows.withIndex()) {
+            val b = Rect()
+            w.getBoundsInScreen(b)
+            val root = w.root
+            val o = JSONObject()
+            o.put("index", i)
+            o.put("windowId", w.id)
+            o.put("type", winTypeName(w.type))
+            o.put("isFocused", w.isFocused)
+            o.put("isActive", w.isActive)
+            o.put("bounds", "[${b.left},${b.top}][${b.right},${b.bottom}]")
+            o.put("title", w.title?.toString() ?: "")
+            o.put("package", root?.packageName?.toString() ?: "")
+            o.put("hasRoot", root != null)
+            // Same window as rootInActiveWindow? Compare window IDs.
+            o.put("isActiveWindowRoot", root === activeRoot)
+            if (root != null) {
+                o.put("rootSummary", HierarchySerializer.summarize(root))
+            }
+            arr.put(o)
+        }
+        return arr
+    }
+
+    /** Deprecated getWindows() warning suppression (intentional for the
+     *  FASE 0 V1 experiment; `windows` property is equivalent). */
+    @Suppress("DEPRECATION")
+    private fun winTypeName(type: Int): String {
+        return when (type) {
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION -> "APPLICATION"
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "INPUT_METHOD"
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_SYSTEM -> "SYSTEM"
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "ACCESSIBILITY_OVERLAY"
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER -> "SPLIT_SCREEN_DIVIDER"
+            android.view.accessibility.AccessibilityWindowInfo.TYPE_MAGNIFICATION_OVERLAY -> "MAGNIFICATION_OVERLAY"
+            else -> "UNKNOWN($type)"
+        }
+    }
+
+    // ---- FG2: takeScreenshot (API 30+) ----
+
+    /**
+     * Captures the current display as a PNG and returns it base64-encoded.
+     * Uses AccessibilityService.takeScreenshot (API 30+). On API < 30 returns
+     * null — the Go side must report this as "unsupported" (501), not dead.
+     *
+     * The screenshot is async (callback); we block briefly on a latch to
+     * return a single base64 string to the command layer.
+     */
+    fun takeScreenshotPngBase64(): Pair<String?, String?> {
+        if (Build.VERSION.SDK_INT < 30) {
+            return null to "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
+        }
+        val latch = CountDownLatch(1)
+        var hw: android.hardware.HardwareBuffer? = null
+        var colorSpace: android.graphics.ColorSpace? = null
+        var error: String? = null
+
+        takeScreenshot(
+            Display.DEFAULT_DISPLAY,
+            java.util.concurrent.Executors.newSingleThreadExecutor(),
+            object : AccessibilityService.TakeScreenshotCallback {
+                override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                    hw = screenshot.hardwareBuffer
+                    colorSpace = screenshot.colorSpace
+                    latch.countDown()
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    error = "takeScreenshot failed errorCode=$errorCode"
+                    latch.countDown()
+                }
+            }
+        )
+
+        // Wait up to 8s for the OS to produce the frame (typically <500ms).
+        try {
+            latch.await(8, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return null to "interrupted waiting for screenshot"
+        }
+        val buffer = hw ?: return null to (error ?: "screenshot timed out")
+
+        val bitmap = Bitmap.wrapHardwareBuffer(buffer, colorSpace)
+        buffer.close()
+        if (bitmap == null) return null to "failed to wrap hardware buffer"
+        // wrapHardwareBuffer returns an immutable hardware-backed bitmap;
+        // copy to a software ARGB_8888 before compress.
+        val soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        bitmap.recycle()
+        if (soft == null) return null to "failed to copy screenshot bitmap"
+
+        val out = ByteArrayOutputStream()
+        soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        soft.recycle()
+        val png = out.toByteArray()
+        if (png.isEmpty()) return null to "empty PNG"
+        return Base64.encodeToString(png, Base64.NO_WRAP) to null
     }
 
     fun isServiceReady(): Boolean = rootInActiveWindow != null
