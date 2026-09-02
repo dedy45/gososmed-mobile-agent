@@ -96,7 +96,6 @@ class AgentAccessibilityService : AccessibilityService() {
      */
     fun dumpWindows(): JSONArray {
         val arr = JSONArray()
-        val activeRoot = rootInActiveWindow
         // getWindows() requires API 21+; safe for minSdk 26.
         val windows = getWindows() ?: emptyList()
         for ((i, w) in windows.withIndex()) {
@@ -113,8 +112,12 @@ class AgentAccessibilityService : AccessibilityService() {
             o.put("title", w.title?.toString() ?: "")
             o.put("package", root?.packageName?.toString() ?: "")
             o.put("hasRoot", root != null)
-            // Same window as rootInActiveWindow? Compare window IDs.
-            o.put("isActiveWindowRoot", root === activeRoot)
+            // Apakah window ini ADALAH source dari rootInActiveWindow?
+            // `w.isActive` secara langsung menandakan window aktif, tempat
+            // rootInActiveWindow diambil. Tidak pakai `root === activeRoot`
+            // (referential equality) karena getWindows() mengembalikan
+            // instance node baru, bukan instance yang sama — bug sebelumnya.
+            o.put("isActiveWindowRoot", w.isActive)
             if (root != null) {
                 o.put("rootSummary", HierarchySerializer.summarize(root))
             }
