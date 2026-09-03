@@ -159,8 +159,10 @@ Atau pindahkan APK ke HP dan buka seperti biasa. Lalu:
 1. **Setelan → Aksesibilitas → GoSosmed Agent** → aktifkan.
    Android sengaja mewajibkan aktivasi manual oleh pemilik perangkat; tidak ada aplikasi yang
    boleh mengaktifkannya sendiri.
-2. Minta **kode pairing** dari dasbor GoSosmed, masukkan di aplikasi agent. Agent lalu
+2. Minta **kode pairing** dari dasbor GoSosmed (**Kode Pairing HP Anda →
+   Terbitkan kode pairing**), masukkan di aplikasi agent. Agent lalu
    menyimpan `device_id` permanen — tidak perlu dipasangkan ulang setiap kali.
+   Alur lengkap & kenapa desainnya aman: [docs/PAIRING-FLOW.md](docs/PAIRING-FLOW.md).
 3. **Kecualikan agent dari optimasi baterai.** Jangan lewati langkah ini.
 
 > **Optimasi baterai adalah penyebab kegagalan nomor satu.** Xiaomi, Oppo, Vivo, Realme,
@@ -230,8 +232,10 @@ Fase P0 — fondasi berjalan, validasi perangkat nyata masih berlangsung.
 - [x] Pairing code + `device_id` persisten
 - [x] `dumpWindows` (getWindows) + `takeScreenshot`
 - [x] GitHub Actions build → APK artifact
+- [x] Integrasi agenthub sisi server: pairing multi-user (kode server-issued,
+      tenant binding), `register_ack`, revoke device — **tervalidasi di 1
+      perangkat nyata** (Xiaomi garnet) meliputi backend + UI dasbor + APK.
 - [ ] Validasi menyeluruh di perangkat nyata lintas merek
-- [ ] Integrasi agenthub sisi server (P1)
 
 **Jangan gambarkan ini lebih matang daripada kenyataannya.** Cakupan pengujian lintas merek
 dan versi Android masih terbatas.
