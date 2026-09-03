@@ -61,10 +61,17 @@ object AgentCommand {
 
         if (svc == null) {
             resp.put("ok", false).put("error", "accessibility service not connected/ready")
+            AgentLog.add(cmd, false, 0)
             return resp
         }
         // Use the non-null svc instance safely inside the block.
+        // v0.4.1: ukur latensi tiap command dan catat ke AgentLog agar pemilik
+        // HP melihat langsung apa yang diminta server dan seberapa cepat
+        // dikerjakan (transparansi ala tab Logs pada referensi NeuralBridge).
+        val start = System.currentTimeMillis()
         val result = executeWith(svc, cmd, req)
+        val ms = System.currentTimeMillis() - start
+        AgentLog.add(cmd, result.optBoolean("ok", false), ms)
         result.put("id", id)
         return result
     }

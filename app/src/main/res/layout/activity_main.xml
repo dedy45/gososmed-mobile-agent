@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- UI produksi v0.4.0: onboarding 3 langkah untuk pengguna akhir.
-     Tidak ada istilah teknis (WS, dump, intent) di layar utama.
-     Mode debug (log + uji lokal) tersembunyi: buka dengan tap 7× pada versi. -->
+<!-- UI produksi v0.4.1 — informatif ala referensi NeuralBridge:
+     banner status besar, kartu info perangkat, checklist izin dengan status
+     GRANTED/tombol aksi, log perintah dengan latensi yang selalu terlihat.
+     Mode debug (uji lokal + override URL) tetap tersembunyi: tap 7× versi. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -28,68 +29,165 @@
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary" />
 
-        <!-- Status koneksi: satu kalimat jujur, bahasa pengguna. -->
-        <TextView
-            android:id="@+id/statusTv"
+        <!-- ===== STATUS ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="18dp"
             android:background="#EEF2F7"
-            android:padding="14dp"
-            android:text="Memeriksa…"
-            android:textSize="15sp" />
+            android:orientation="vertical"
+            android:padding="14dp">
 
-        <!-- LANGKAH 1: aksesibilitas -->
+            <TextView
+                android:id="@+id/statusBigTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="● MEMERIKSA…"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/statusTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textSize="13sp"
+                android:textColor="?android:attr/textColorSecondary" />
+        </LinearLayout>
+
+        <!-- ===== INFO PERANGKAT (ala DEVICE INFO NeuralBridge) ===== -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="Langkah 1 — Izinkan akses otomatisasi"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="18dp"
+            android:text="PERANGKAT INI"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary" />
 
-        <Button
-            android:id="@+id/openAccessibilityBtn"
+        <TextView
+            android:id="@+id/deviceInfoTv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Aktifkan di Setelan Aksesibilitas" />
+            android:background="#F7F8FA"
+            android:padding="12dp"
+            android:textSize="13sp"
+            android:lineSpacingMultiplier="1.35" />
 
-        <!-- LANGKAH 2: baterai (penyebab gagal #1 di Xiaomi/Oppo/Vivo) -->
+        <!-- ===== SETUP: checklist izin ===== -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Langkah 2 — Bebaskan dari hemat baterai"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="18dp"
+            android:text="SETUP"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary" />
 
-        <Button
-            android:id="@+id/batteryBtn"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Bebaskan Agent dari Hemat Baterai" />
+            android:background="#F7F8FA"
+            android:orientation="vertical"
+            android:padding="12dp">
 
-        <!-- LANGKAH 3: hubungkan -->
+            <!-- Aksesibilitas -->
+            <TextView
+                android:id="@+id/permA11yTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Akses otomatisasi (Aksesibilitas)"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Inti otomatisasi: membaca layar dan mengetuk atas persetujuan Anda"
+                android:textSize="11sp"
+                android:textColor="?android:attr/textColorSecondary" />
+            <Button
+                android:id="@+id/openAccessibilityBtn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Aktifkan" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="10dp"
+                android:background="#22000000" />
+
+            <!-- Baterai -->
+            <TextView
+                android:id="@+id/permBatteryTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Bebas hemat baterai"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mencegah Android mematikan agent di latar belakang (penting di Xiaomi/Oppo/Vivo)"
+                android:textSize="11sp"
+                android:textColor="?android:attr/textColorSecondary" />
+            <Button
+                android:id="@+id/batteryBtn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Bebaskan" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="10dp"
+                android:background="#22000000" />
+
+            <!-- Notifikasi -->
+            <TextView
+                android:id="@+id/permNotifTv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Notifikasi"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Menampilkan status koneksi agent yang sedang berjalan"
+                android:textSize="11sp"
+                android:textColor="?android:attr/textColorSecondary" />
+            <Button
+                android:id="@+id/notifBtn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Izinkan" />
+        </LinearLayout>
+
+        <!-- ===== HUBUNGKAN ===== -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Langkah 3 — Hubungkan HP ini"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="18dp"
+            android:text="HUBUNGKAN"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary" />
 
         <TextView
             android:id="@+id/pairHintTv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Cara termudah: buka dasbor GoSosmed di browser HP ini → menu HP Pengguna (BYOD) → tombol Hubungkan HP. Aplikasi ini akan terbuka dan tersambung otomatis."
+            android:text="Cara termudah: buka dasbor GoSosmed di browser HP ini → HP Pengguna (BYOD) → Terbitkan kode → Hubungkan HP ini. Aplikasi terbuka dan tersambung otomatis."
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary" />
 
-        <!-- Fallback manual: hanya kode, tanpa URL server. -->
         <EditText
             android:id="@+id/pairCodeEt"
             android:layout_width="match_parent"
@@ -118,12 +216,33 @@
             android:id="@+id/pairTv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="12dp"
             android:gravity="center"
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary" />
 
-        <!-- ===== MODE DEBUG (tersembunyi; buka dengan tap 7× pada versi) ===== -->
+        <!-- ===== LOG (selalu terlihat — transparansi untuk pemilik HP) ===== -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="LOG AKTIVITAS"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <TextView
+            android:id="@+id/logTv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="#F5F5F5"
+            android:minLines="10"
+            android:padding="10dp"
+            android:textSize="11sp"
+            android:typeface="monospace" />
+
+        <!-- ===== MODE DEBUG (tersembunyi; tap 7× pada versi) ===== -->
         <LinearLayout
             android:id="@+id/debugSection"
             android:layout_width="match_parent"
@@ -131,10 +250,11 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <com.google.android.material.divider.MaterialDivider
+            <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginVertical="14dp" />
+                android:layout_marginVertical="14dp"
+                android:background="#33000000" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -192,17 +312,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Tap First Clickable" />
-
-            <TextView
-                android:id="@+id/logTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="#F5F5F5"
-                android:minLines="10"
-                android:padding="8dp"
-                android:textSize="11sp"
-                android:typeface="monospace" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -134,6 +135,7 @@ class AgentWsClient(
                 reconnectJob?.cancel()
                 reconnectJob = null
                 onStatus("connected")
+                AgentLog.event("tersambung ke server")
                 register(webSocket)
                 startHeartbeat()
             }
@@ -145,9 +147,11 @@ class AgentWsClient(
                     if (obj.optString("type") == "register_ack") {
                         if (obj.optBoolean("ok")) {
                             onStatus("paired ✓")
+                            AgentLog.event("pairing diterima ✓")
                         } else {
                             val reason = obj.optString("error", "pairing ditolak")
                             onStatus("pairing ditolak: $reason")
+                            AgentLog.event("pairing ditolak: $reason")
                             handleReject(reason)
                         }
                         return
@@ -187,6 +191,7 @@ class AgentWsClient(
                 connecting = false
                 connected = false
                 onStatus("disconnected (${t.message ?: "?"})")
+                AgentLog.event("koneksi gagal: ${t.message ?: "?"}")
                 scheduleReconnect()
             }
 
@@ -194,6 +199,7 @@ class AgentWsClient(
                 connecting = false
                 connected = false
                 onStatus("closed")
+                AgentLog.event("koneksi ditutup")
                 scheduleReconnect()
             }
         })
@@ -202,11 +208,21 @@ class AgentWsClient(
     private fun register(webSocket: WebSocket) {
         // M2: sertakan id agar server bisa mengaitkan register_ack ke hello ini.
         val id = nextId()
+        // v0.4.1: laporkan info perangkat (model, Android, layar, density) agar
+        // dasbor menampilkan kartu perangkat informatif ala referensi
+        // NeuralBridge — user tidak lagi menebak device_id.
+        val dm = context.resources.displayMetrics
         val hello = JSONObject()
             .put("type", "register")
             .put("id", id)
             .put("device_id", deviceId)
             .put("pairing_code", pairingCode)
+            .put("device_info", JSONObject()
+                .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                .put("android_ver", Build.VERSION.RELEASE ?: "")
+                .put("sdk_int", Build.VERSION.SDK_INT)
+                .put("screen", "${dm.widthPixels}x${dm.heightPixels}")
+                .put("density", "${dm.density}x"))
         webSocket.send(hello.toString())
     }
 

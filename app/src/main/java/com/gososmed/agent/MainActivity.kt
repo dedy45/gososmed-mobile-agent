@@ -1,11 +1,15 @@
 package com.gososmed.agent
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
@@ -19,26 +23,28 @@ import androidx.appcompat.app.AppCompatActivity
 import java.util.UUID
 
 /**
- * UI produksi agent (v0.4.0): onboarding 3 langkah untuk pengguna akhir.
+ * UI produksi agent (v0.4.1) — informatif ala referensi NeuralBridge:
+ * banner status besar, kartu info perangkat, checklist izin dengan status
+ * nyata + tombol aksi, dan log aktivitas dengan latensi yang selalu terlihat.
  *
  * Prinsip: pengguna TIDAK mengetik URL server, TIDAK wajib mengetik kode.
  * Jalur utama = auto-pairing lewat deep link `gososmed://pair?ws=<url>&code=<kode>`
- * yang diterbitkan dasbor (tap dari browser HP / pindai QR kamera bawaan).
- * Jalur cadangan = ketik kode 8 karakter saja (URL memakai default produksi).
+ * yang diterbitkan dasbor. Jalur cadangan = ketik kode 8 karakter saja.
  *
- * Mode debug (log + uji lokal + override URL) tersembunyi; buka dengan tap 7×
- * pada teks versi — pola developer-options agar UI produksi tetap bersih.
- *
- * WS tetap dimiliki AgentForegroundService (bukan activity) sehingga koneksi
- * bertahan saat UI ditutup. Activity ini hanya mengirim intent dan merender
- * status broadcast.
+ * Mode debug (uji lokal + override URL) tersembunyi; buka dengan tap 7× pada
+ * teks versi. WS tetap dimiliki AgentForegroundService sehingga koneksi
+ * bertahan saat UI ditutup.
  */
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var statusBigTv: TextView
     private lateinit var statusTv: TextView
     private lateinit var versionTv: TextView
+    private lateinit var deviceInfoTv: TextView
     private lateinit var pairTv: TextView
-    private lateinit var pairHintTv: TextView
+    private lateinit var permA11yTv: TextView
+    private lateinit var permBatteryTv: TextView
+    private lateinit var permNotifTv: TextView
     private lateinit var logTv: TextView
     private lateinit var wsUrlEt: EditText
     private lateinit var pairCodeEt: EditText
@@ -50,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeBtn: Button
     private lateinit var tapBtn: Button
     private lateinit var batteryBtn: Button
+    private lateinit var notifBtn: Button
+    private lateinit var openA11yBtn: Button
     private lateinit var debugSection: LinearLayout
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
@@ -62,7 +70,6 @@ class MainActivity : AppCompatActivity() {
             val rejected = intent.getBooleanExtra(AgentForegroundService.EXTRA_REJECTED, false)
             lastStatus = status
             runOnUiThread {
-                log(status)
                 if (rejected) {
                     pairTv.text = "Kode pairing ditolak atau kedaluwarsa.\nTerbitkan kode baru di dasbor GoSosmed, lalu coba lagi."
                 }
@@ -85,10 +92,14 @@ class MainActivity : AppCompatActivity() {
         // koneksi tersimpan sendiri (auto-reconnect setelah kill/reboot).
         startForegroundService(Intent(this, AgentForegroundService::class.java))
 
+        statusBigTv = findViewById(R.id.statusBigTv)
         statusTv = findViewById(R.id.statusTv)
         versionTv = findViewById(R.id.versionTv)
+        deviceInfoTv = findViewById(R.id.deviceInfoTv)
         pairTv = findViewById(R.id.pairTv)
-        pairHintTv = findViewById(R.id.pairHintTv)
+        permA11yTv = findViewById(R.id.permA11yTv)
+        permBatteryTv = findViewById(R.id.permBatteryTv)
+        permNotifTv = findViewById(R.id.permNotifTv)
         logTv = findViewById<TextView>(R.id.logTv).apply { movementMethod = ScrollingMovementMethod() }
         wsUrlEt = findViewById(R.id.wsUrlEt)
         pairCodeEt = findViewById(R.id.pairCodeEt)
@@ -100,6 +111,8 @@ class MainActivity : AppCompatActivity() {
         homeBtn = findViewById(R.id.homeBtn)
         tapBtn = findViewById(R.id.tapBtn)
         batteryBtn = findViewById(R.id.batteryBtn)
+        notifBtn = findViewById(R.id.notifBtn)
+        openA11yBtn = findViewById(R.id.openAccessibilityBtn)
         debugSection = findViewById(R.id.debugSection)
 
         versionTv.text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
@@ -118,6 +131,7 @@ class MainActivity : AppCompatActivity() {
 
         pairTv.text = "ID perangkat: $deviceId"
         loadPairingCode().takeIf { it.isNotEmpty() }?.let { pairCodeEt.setText(it) }
+        renderDeviceInfo()
 
         connectBtn.setOnClickListener { connectWs() }
         disconnectBtn.setOnClickListener { disconnectWs() }
@@ -127,13 +141,16 @@ class MainActivity : AppCompatActivity() {
         homeBtn.setOnClickListener { doGlobal { it.pressHome() } }
         tapBtn.setOnClickListener { doTapFirstClickable() }
 
-        findViewById<Button>(R.id.openAccessibilityBtn).setOnClickListener {
+        openA11yBtn.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-
-        // Langkah 2: bebaskan dari hemat baterai — penyebab kegagalan #1 di
-        // Xiaomi/Oppo/Vivo/Realme (service dibunuh sistem di latar belakang).
         batteryBtn.setOnClickListener { requestBatteryExemption() }
+        notifBtn.setOnClickListener { requestNotifPermission() }
+
+        // Log aktivitas: render isi yang sudah ada + dengarkan baris baru.
+        // Pemilik HP selalu melihat apa yang diminta server (transparansi).
+        logTv.text = AgentLog.snapshot().joinToString("\n")
+        AgentLog.listener = { line -> runOnUiThread { appendLog(line) } }
 
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
         handlePairIntent(intent)
@@ -143,7 +160,6 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Bisa berupa deep link pairing ATAU kanal validasi adb (cmd extra).
         handlePairIntent(intent)
         handleValidationIntent(intent)
     }
@@ -169,6 +185,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        AgentLog.listener = null
+        super.onDestroy()
+    }
+
+    // ---- Info perangkat & status izin (kartu informatif) ----
+
+    private fun renderDeviceInfo() {
+        val dm = resources.displayMetrics
+        deviceInfoTv.text = buildString {
+            append("Model: ${Build.MANUFACTURER} ${Build.MODEL}".trim())
+            append("\nAndroid: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            append("\nLayar: ${dm.widthPixels}×${dm.heightPixels} @ ${dm.density}x")
+            append("\nID: $deviceId")
+        }
+    }
+
+    private fun refreshPerms() {
+        // Aksesibilitas: sumber kebenaran = service benar-benar terhubung.
+        val a11y = AgentAccessibilityService.instance?.isServiceReady() == true
+        permA11yTv.text = "Akses otomatisasi (Aksesibilitas) — ${if (a11y) "AKTIF ✓" else "BELUM AKTIF"}"
+        openA11yBtn.isEnabled = !a11y
+        openA11yBtn.text = if (a11y) "Sudah Aktif" else "Aktifkan"
+
+        // Baterai: cek nyata ke sistem (bukan tebakan).
+        val pm = getSystemService(PowerManager::class.java)
+        val batteryFree = pm?.isIgnoringBatteryOptimizations(packageName) == true
+        permBatteryTv.text = "Bebas hemat baterai — ${if (batteryFree) "AKTIF ✓" else "BELUM"}"
+        batteryBtn.isEnabled = !batteryFree
+        batteryBtn.text = if (batteryFree) "Sudah Bebas" else "Bebaskan"
+
+        // Notifikasi: wajib hanya di Android 13+.
+        val notifGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        permNotifTv.text = "Notifikasi — ${if (notifGranted) "AKTIF ✓" else "BELUM"}"
+        notifBtn.isEnabled = !notifGranted
+        notifBtn.text = if (notifGranted) "Sudah Aktif" else "Izinkan"
+    }
+
     // ---- Auto-pairing (deep link dari dasbor) ----
 
     /**
@@ -186,7 +241,7 @@ class MainActivity : AppCompatActivity() {
         }
         val ws = data.getQueryParameter("ws")?.trim().orEmpty()
             .ifEmpty { BuildConfig.DEFAULT_WS_URL }
-        log("tautan pairing diterima — menghubungkan otomatis…")
+        AgentLog.event("tautan pairing diterima — menghubungkan otomatis…")
         doConnect(ws, code)
         // Konsumsi data agar rotasi/resume tidak memicu ulang.
         intent.data = null
@@ -207,21 +262,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestNotifPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        refreshPerms()
+    }
+
     private fun refreshStatus() {
         val a11yReady = AgentAccessibilityService.instance?.isServiceReady() == true
         val paired = loadPairingCode().isNotEmpty()
-        statusTv.text = buildString {
-            append(if (a11yReady) "✓ Akses otomatisasi aktif" else "✗ Akses otomatisasi belum aktif — selesaikan Langkah 1")
-            append("\n")
-            append(
-                when {
-                    lastStatus.contains("paired") -> "✓ Tersambung ke server GoSosmed"
-                    lastStatus.contains("connecting") -> "Menghubungkan ke server…"
-                    paired -> "Kode tersimpan — menunggu sambungan"
-                    else -> "Belum terhubung — selesaikan Langkah 3"
-                }
-            )
+        when {
+            lastStatus.contains("paired") -> {
+                statusBigTv.text = "● TERSAMBUNG"
+                statusBigTv.setTextColor(0xFF1B7F3B)
+            }
+            lastStatus.contains("connecting") -> {
+                statusBigTv.text = "● MENGHUBUNGKAN…"
+                statusBigTv.setTextColor(0xFFB58900)
+            }
+            lastStatus.contains("ditolak") || lastStatus.contains("stopped") -> {
+                statusBigTv.text = "● TERPUTUS"
+                statusBigTv.setTextColor(0xFFB00020)
+            }
+            else -> {
+                statusBigTv.text = "● BELUM TERHUBUNG"
+                statusBigTv.setTextColor(0xFF6B7280)
+            }
         }
+        statusTv.text = buildString {
+            append(if (a11yReady) "✓ Akses otomatisasi aktif" else "✗ Akses otomatisasi belum aktif — aktifkan di Setup")
+            if (paired) append("\n✓ Kode tersimpan — agent akan menyambung otomatis")
+        }
+        refreshPerms()
     }
 
     private fun connectWs() {
@@ -232,7 +309,7 @@ class MainActivity : AppCompatActivity() {
         val url = overrideUrl.ifEmpty { BuildConfig.DEFAULT_WS_URL }
         val code = pairCodeEt.text.toString().trim().uppercase()
         if (code.isEmpty()) {
-            toast("Ketik kode 8 karakter dari dasbor, atau gunakan tombol Hubungkan HP di dasbor")
+            toast("Ketik kode 8 karakter dari dasbor, atau gunakan tombol Hubungkan HP ini di dasbor")
             return
         }
         doConnect(url, code)
@@ -246,7 +323,6 @@ class MainActivity : AppCompatActivity() {
         }
         startForegroundService(i)
         pairTv.text = "ID perangkat: $deviceId"
-        log("menghubungkan…")
         lastStatus = "connecting…"
         refreshStatus()
     }
@@ -258,7 +334,7 @@ class MainActivity : AppCompatActivity() {
         startService(i)
         prefs().edit().remove("pairing_code").apply()
         lastStatus = "stopped"
-        log("disconnected")
+        AgentLog.event("sambungan diputus oleh pengguna")
         refreshStatus()
     }
 
@@ -324,7 +400,6 @@ class MainActivity : AppCompatActivity() {
         return AgentAccessibilityService.withInstance { svc ->
             val xml = svc.dumpXml()
             val pkg = svc.currentPackage()
-            runOnUiThread { log("PACKAGE: $pkg"); log("--- DUMP (${xml.length} chars) ---"); log(xml.take(4000)) }
             writeRawXml("agent_dump_raw.xml", xml)
             "PACKAGE=$pkg DUMP_CHARS=${xml.length}"
         } ?: "ERR_SERVICE_NOT_READY"
@@ -332,9 +407,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun runPackage(): String {
         return AgentAccessibilityService.withInstance { svc ->
-            val pkg = svc.currentPackage()
-            runOnUiThread { log("CURRENT PACKAGE: $pkg") }
-            "PACKAGE=$pkg"
+            "PACKAGE=${svc.currentPackage()}"
         } ?: "ERR_SERVICE_NOT_READY"
     }
 
@@ -346,7 +419,6 @@ class MainActivity : AppCompatActivity() {
     private fun runGlobal(label: String, action: (AgentAccessibilityService) -> Boolean): String {
         return AgentAccessibilityService.withInstance { svc ->
             val ok = action(svc)
-            runOnUiThread { log("$label ok=$ok"); refreshStatus() }
             "$label=$ok"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -358,13 +430,12 @@ class MainActivity : AppCompatActivity() {
                 if (b != null) log("tap first clickable at [${b.left},${b.top}][${b.right},${b.bottom}]")
                 else log("no clickable node found")
             }
-        } ?: runOnUiThread { toast("Aktifkan aksesibilitas dulu (Langkah 1)") }
+        } ?: runOnUiThread { toast("Aktifkan aksesibilitas dulu di bagian Setup") }
     }
 
     private fun runTapByText(text: String): String {
         return AgentAccessibilityService.withInstance { svc ->
             val ok = svc.tapByText(text)
-            runOnUiThread { log("tapByText($text) ok=$ok") }
             "tapByText=$ok text=$text"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -372,7 +443,6 @@ class MainActivity : AppCompatActivity() {
     private fun runSetText(text: String): String {
         return AgentAccessibilityService.withInstance { svc ->
             val ok = svc.setText(text)
-            runOnUiThread { log("setText ok=$ok") }
             "setText=$ok"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -381,7 +451,6 @@ class MainActivity : AppCompatActivity() {
         return AgentAccessibilityService.withInstance { svc ->
             val act = activity.ifEmpty { null }
             val ok = svc.startApp(pkg, act)
-            runOnUiThread { log("startApp($pkg, $activity) ok=$ok") }
             "startApp=$ok pkg=$pkg activity=$activity"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -389,7 +458,6 @@ class MainActivity : AppCompatActivity() {
     private fun runListPackages(): String {
         return AgentAccessibilityService.withInstance { svc ->
             val pkgs = svc.listPackages()
-            runOnUiThread { log("listPackages count=${pkgs.size}") }
             "listPackages=${pkgs.size} ${pkgs.joinToString(",")}"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -397,7 +465,6 @@ class MainActivity : AppCompatActivity() {
     private fun runKillApp(pkg: String): String {
         return AgentAccessibilityService.withInstance { svc ->
             val ok = svc.killApp(pkg)
-            runOnUiThread { log("killApp($pkg) ok=$ok") }
             "killApp=$ok pkg=$pkg"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -405,7 +472,6 @@ class MainActivity : AppCompatActivity() {
     private fun runHasPackage(pkg: String): String {
         return AgentAccessibilityService.withInstance { svc ->
             val ok = svc.hasPackage(pkg)
-            runOnUiThread { log("hasPackage($pkg) ok=$ok") }
             "hasPackage=$ok pkg=$pkg"
         } ?: "ERR_SERVICE_NOT_READY"
     }
@@ -425,7 +491,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun log(line: String) {
+    private fun log(line: String) = appendLog(line)
+
+    private fun appendLog(line: String) {
         logTv.append(line + "\n")
         val scroll = (logTv.layout?.getLineTop(logTv.lineCount) ?: 0) - logTv.height
         if (scroll > 0) logTv.scrollTo(0, scroll)
