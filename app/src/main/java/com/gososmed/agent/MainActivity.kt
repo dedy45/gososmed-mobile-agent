@@ -279,19 +279,19 @@ class MainActivity : AppCompatActivity() {
         when {
             lastStatus.contains("paired") -> {
                 statusBigTv.text = "● TERSAMBUNG"
-                statusBigTv.setTextColor(0xFF1B7F3B)
+                statusBigTv.setTextColor(0xFF1B7F3B.toInt())
             }
             lastStatus.contains("connecting") -> {
                 statusBigTv.text = "● MENGHUBUNGKAN…"
-                statusBigTv.setTextColor(0xFFB58900)
+                statusBigTv.setTextColor(0xFFB58900.toInt())
             }
             lastStatus.contains("ditolak") || lastStatus.contains("stopped") -> {
                 statusBigTv.text = "● TERPUTUS"
-                statusBigTv.setTextColor(0xFFB00020)
+                statusBigTv.setTextColor(0xFFB00020.toInt())
             }
             else -> {
                 statusBigTv.text = "● BELUM TERHUBUNG"
-                statusBigTv.setTextColor(0xFF6B7280)
+                statusBigTv.setTextColor(0xFF6B7280.toInt())
             }
         }
         statusTv.text = buildString {
