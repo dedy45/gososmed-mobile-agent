@@ -162,10 +162,17 @@ object AgentCommand {
             }
             CMD_SCREENSHOT -> {
                 try {
-                    val (b64, err) = svc.takeScreenshotPngBase64()
+                    // Parameter efisiensi opsional dari server: scale (0.25–1),
+                    // format (png|jpeg), quality (1–100). Default = PNG penuh
+                    // (kompatibel dengan perilaku sebelum v0.4.0).
+                    val scale = req.optDouble("scale", 1.0).toFloat()
+                    val format = req.optString("format", "png")
+                    val quality = req.optInt("quality", 85)
+                    val (b64, err) = svc.takeScreenshotBase64(scale, format, quality)
                     if (b64 != null) {
+                        val fmt = if (format.equals("jpeg", true) || format.equals("jpg", true)) "jpeg" else "png"
                         resp.put("ok", true).put("result", JSONObject().apply {
-                            put("format", "png.base64")
+                            put("format", "$fmt.base64")
                             put("data", b64)
                         })
                     } else {

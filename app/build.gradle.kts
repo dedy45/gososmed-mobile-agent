@@ -26,8 +26,12 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.3.1-m1"
+        versionCode = 7
+        versionName = "0.4.0"
+        // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
+        // URL server. Bisa dioverride di mode debug. Deep link
+        // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
+        buildConfigField("String", "DEFAULT_WS_URL", "\"wss://api.bamsbung.id/v1/agent/ws\"")
     }
 
     buildTypes {
@@ -53,6 +57,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 

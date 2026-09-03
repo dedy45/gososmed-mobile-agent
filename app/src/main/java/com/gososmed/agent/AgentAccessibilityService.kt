@@ -143,15 +143,23 @@ class AgentAccessibilityService : AccessibilityService() {
 
     // ---- FG2: takeScreenshot (API 30+) ----
 
+    /** Executor bersama untuk callback screenshot — SEBELUMNYA dibuat baru per
+     *  panggilan (thread leak di HP user bila polling berjalan lama). */
+    private val screenshotExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     /**
-     * Captures the current display as a PNG and returns it base64-encoded.
-     * Uses AccessibilityService.takeScreenshot (API 30+). On API < 30 returns
-     * null — the Go side must report this as "unsupported" (501), not dead.
+     * Captures the current display, lalu mengembalikannya base64.
      *
-     * The screenshot is async (callback); we block briefly on a latch to
-     * return a single base64 string to the command layer.
+     * Parameter efisiensi (menjawab beban bandwidth saat puluhan user membuka
+     * layar device bersamaan):
+     *  - [scale] 0,25–1,0 mengecilkan resolusi (0,5 = ¼ jumlah piksel).
+     *  - [format] "png" (default, kompatibel) atau "jpeg" (±10× lebih kecil
+     *    untuk foto layar; dipadukan [quality] 1–100).
+     *
+     * Backend menagih lewat field opsional di command "screenshot"; default
+     * tanpa parameter tetap PNG penuh agar audit tidak kehilangan detail.
      */
-    fun takeScreenshotPngBase64(): Pair<String?, String?> {
+    fun takeScreenshotBase64(scale: Float = 1f, format: String = "png", quality: Int = 85): Pair<String?, String?> {
         if (Build.VERSION.SDK_INT < 30) {
             return null to "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
         }
@@ -162,7 +170,7 @@ class AgentAccessibilityService : AccessibilityService() {
 
         takeScreenshot(
             Display.DEFAULT_DISPLAY,
-            java.util.concurrent.Executors.newSingleThreadExecutor(),
+            screenshotExecutor,
             object : AccessibilityService.TakeScreenshotCallback {
                 override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
                     hw = screenshot.hardwareBuffer
@@ -191,16 +199,34 @@ class AgentAccessibilityService : AccessibilityService() {
         if (bitmap == null) return null to "failed to wrap hardware buffer"
         // wrapHardwareBuffer returns an immutable hardware-backed bitmap;
         // copy to a software ARGB_8888 before compress.
-        val soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        var soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
         bitmap.recycle()
         if (soft == null) return null to "failed to copy screenshot bitmap"
 
+        // Downscale bila diminta (hemat bandwidth WS + edge Cloudflare).
+        val s = scale.coerceIn(0.25f, 1f)
+        if (s < 1f) {
+            val scaled = Bitmap.createScaledBitmap(
+                soft,
+                (soft.width * s).toInt().coerceAtLeast(1),
+                (soft.height * s).toInt().coerceAtLeast(1),
+                true
+            )
+            soft.recycle()
+            soft = scaled
+        }
+
         val out = ByteArrayOutputStream()
-        soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
+            soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
+        } else {
+            soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        }
         soft.recycle()
-        val png = out.toByteArray()
-        if (png.isEmpty()) return null to "empty PNG"
-        return Base64.encodeToString(png, Base64.NO_WRAP) to null
+        if (!fmt) return null to "compress failed"
+        val bytes = out.toByteArray()
+        if (bytes.isEmpty()) return null to "empty image"
+        return Base64.encodeToString(bytes, Base64.NO_WRAP) to null
     }
 
     fun isServiceReady(): Boolean = rootInActiveWindow != null
@@ -236,13 +262,18 @@ class AgentAccessibilityService : AccessibilityService() {
     // ---- Act: text ----
 
     /**
-     * Types [text] into the currently focused editable node using
+     * Types [text] into the currently focused EDITABLE node using
      * ACTION_SET_TEXT (unicode-safe, unlike shell `input text`).
-     * Returns false if no focused editable field is found.
+     *
+     * FIX (4 Sep 2026): predicate lama `{ isEditable || isFocused }` bisa
+     * memilih node focused yang TIDAK editable (mis. tombol fokus) lalu gagal
+     * diam-diam. Kini dua tahap: editable dulu, baru focused+editable.
      */
     fun setText(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val node = findNode(root) { it.isEditable || it.isFocused } ?: return false
+        val node = findNode(root) { it.isEditable }
+            ?: findNode(root) { it.isFocused && it.isEditable }
+            ?: return false
         val bundle = Bundle()
         bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)

@@ -13,12 +13,10 @@
     <!-- hasPackage/startApp: package visibility for launch intents and
          installed-package checks (Android 11+ package visibility). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-    <!-- killApp: kill background processes of a target app (force-stop is
-         shell-only; this is the honest subset the agent can do). -->
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
-    <!-- hasPackage: enumerate installed packages so the server can query
-         whether an app is present (package visibility on Android 11+). -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Deep-link baterai: ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS agar
+         user bisa membebaskan agent dari optimasi baterai dalam 1 tap dari
+         UI onboarding (penyebab kegagalan #1 di MIUI/dkk). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:label="@string/app_name"
@@ -77,10 +75,25 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Auto-pairing TANPA ketik manual: dasbor menerbitkan tautan
+                 gososmed://pair?ws=<ws_url>&code=<KODE8> yang dibuka di HP
+                 (tap dari browser HP / pindai QR dengan kamera bawaan) →
+                 Android membuka APK ini, kode terisi, koneksi langsung
+                 dijalin. Pola yang sama dipakai aplikasi pairing pada
+                 umumnya (deep link satu-tap). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="gososmed"
+                    android:host="pair" />
             </intent-filter>
         </activity>
     </application>
