@@ -75,10 +75,15 @@ class AgentWsClient(
     private var closed = false
     private var rejected = false // M2: pairing ditolak → stop reconnect loop
     private var connected = false
+    // Single-flight guard: mencegah dua koneksi paralel saat reconnect-loop dan
+    // network-callback saling memicu. Dua socket dengan device_id sama akan
+    // saling menendang di server (duplicate registration → flap register/putus).
+    private var connecting = false
     private var idSeq = 0L
     private val pending = mutableMapOf<Long, (JSONObject) -> Unit>()
 
     fun start() {
+        if (connected || connecting) return
         closed = false
         rejected = false
         connect()
@@ -88,6 +93,7 @@ class AgentWsClient(
     fun stop() {
         closed = true
         rejected = false
+        connecting = false
         unregisterNetwork()
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
@@ -114,12 +120,19 @@ class AgentWsClient(
     }
 
     private fun connect() {
-        if (closed || rejected) return
+        if (closed || rejected || connecting || connected) return
+        connecting = true
         val request = Request.Builder().url(url).build()
         onStatus("connecting…")
         ws = http.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                connecting = false
                 connected = true
+                // BUGFIX flap: batalkan reconnect-loop begitu koneksi sukses,
+                // kalau tidak loop tetap membuka socket baru tiap backoff →
+                // dua koneksi → server tendang yang lama → register/putus terus.
+                reconnectJob?.cancel()
+                reconnectJob = null
                 onStatus("connected")
                 register(webSocket)
                 startHeartbeat()
@@ -171,12 +184,14 @@ class AgentWsClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "ws failure: ${t.message}")
+                connecting = false
                 connected = false
                 onStatus("disconnected (${t.message ?: "?"})")
                 scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                connecting = false
                 connected = false
                 onStatus("closed")
                 scheduleReconnect()
@@ -228,8 +243,16 @@ class AgentWsClient(
             var backoff = RECONNECT_BASE_MS
             while (!closed && !rejected) {
                 delay(backoff)
-                if (!closed && !rejected) connect()
-                backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_MS)
+                // S3: hentikan loop segera begitu koneksi terbentuk; onOpen
+                // juga membatalkan job ini, tapi guard ini mencegah socket
+                // ganda seandainya ternyata sudah terhubung.
+                if (connected || connecting) break
+                connect()
+                // Backoff eksponensial + jitter acak (hindari reconnect storm
+                // saat banyak device restart bersamaan) — S3.
+                val jitter = (backoff / 2).coerceAtLeast(0)
+                backoff = ((backoff * 2) + kotlin.random.Random.nextLong(0, jitter + 1))
+                    .coerceAtMost(RECONNECT_MAX_MS)
             }
         }
     }
@@ -241,7 +264,7 @@ class AgentWsClient(
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 mainHandler.post {
-                    if (!closed && !rejected && !connected) {
+                    if (!closed && !rejected && !connected && !connecting) {
                         reconnectJob?.cancel()
                         connect()
                     }
