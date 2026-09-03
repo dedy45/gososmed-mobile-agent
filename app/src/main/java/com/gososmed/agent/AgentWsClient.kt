@@ -1,5 +1,9 @@
 package com.gososmed.agent
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -25,18 +29,33 @@ import java.util.concurrent.TimeUnit
  * connection works behind NAT/CGNAT with no port forwarding. On drop it
  * auto-reconnects with backoff, and sends a lightweight ping periodically so
  * the server can detect liveness (mirrors the worker heartbeat pattern).
+ *
+ * M2 (server-issued pairing): the pairing code is now entered by the user from
+ * the GoSosmed dashboard (single-use, 8-char), NOT generated locally. The
+ * server replies to the "register" hello with a `register_ack` message; on
+ * `ok:false` we STOP (no more reconnect loop) and surface the rejection so the
+ * UI can ask for a fresh code — this breaks the old "fake connected" loop where
+ * a wrong code kept retrying forever.
+ *
+ * M3: the client now owns the connection lifecycle properly (started/stopped by
+ * AgentForegroundService), uses OkHttp `pingInterval` for transport keepalive,
+ * and (S3) reconnects immediately when ConnectivityManager reports the network
+ * is back instead of waiting out the backoff.
  */
 class AgentWsClient(
+    private val context: Context,
     private val url: String,
     private val deviceId: String,
-    private val pairingCode: String,
-    private val onStatus: (String) -> Unit
+    private var pairingCode: String,
+    private val onStatus: (String) -> Unit,
+    private val onPairingRejected: (String) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "GoAgentWS"
         private const val RECONNECT_BASE_MS = 2000L
         private const val RECONNECT_MAX_MS = 30000L
         private const val HEARTBEAT_MS = 15000L
+        private const val PING_INTERVAL_MS = 20000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -47,21 +66,29 @@ class AgentWsClient(
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // no read timeout on WS
+        .pingInterval(PING_INTERVAL_MS, TimeUnit.MILLISECONDS) // M3: transport keepalive
         .build()
     private var ws: WebSocket? = null
     private var reconnectJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var closed = false
+    private var rejected = false // M2: pairing ditolak → stop reconnect loop
+    private var connected = false
     private var idSeq = 0L
     private val pending = mutableMapOf<Long, (JSONObject) -> Unit>()
 
     fun start() {
         closed = false
+        rejected = false
         connect()
+        registerNetwork()
     }
 
     fun stop() {
         closed = true
+        rejected = false
+        unregisterNetwork()
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
         ws?.close(1000, "client stop")
@@ -73,12 +100,26 @@ class AgentWsClient(
         scope.cancel()
     }
 
+    /** M2: perbarui pairing code (dari UI) lalu putus WS agar register ulang
+     *  memakai kode baru. Dipanggil AgentForegroundService.setPairingCode. */
+    fun updatePairingCode(code: String) {
+        pairingCode = code
+        if (!closed && connected) {
+            // Tutup koneksi aktif → onClosed → reconnect dengan kode baru.
+            ws?.close(1000, "pairing code updated")
+        } else if (!closed) {
+            reconnectJob?.cancel()
+            connect()
+        }
+    }
+
     private fun connect() {
-        if (closed) return
+        if (closed || rejected) return
         val request = Request.Builder().url(url).build()
         onStatus("connecting…")
         ws = http.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                connected = true
                 onStatus("connected")
                 register(webSocket)
                 startHeartbeat()
@@ -87,6 +128,18 @@ class AgentWsClient(
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val obj = JSONObject(text)
+                    // M2: server membalas hello register dengan register_ack.
+                    if (obj.optString("type") == "register_ack") {
+                        if (obj.optBoolean("ok")) {
+                            onStatus("paired ✓")
+                        } else {
+                            val reason = obj.optString("error", "pairing ditolak")
+                            onStatus("pairing ditolak: $reason")
+                            handleReject(reason)
+                        }
+                        return
+                    }
+                    connected = true
                     // Inbound command from the agenthub (has a cmd field): this
                     // is the server demanding we act (dump/tap/setText/back/...).
                     // Execute it and reply — this is the whole point of P1.
@@ -118,11 +171,13 @@ class AgentWsClient(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "ws failure: ${t.message}")
+                connected = false
                 onStatus("disconnected (${t.message ?: "?"})")
                 scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                connected = false
                 onStatus("closed")
                 scheduleReconnect()
             }
@@ -130,17 +185,33 @@ class AgentWsClient(
     }
 
     private fun register(webSocket: WebSocket) {
+        // M2: sertakan id agar server bisa mengaitkan register_ack ke hello ini.
+        val id = nextId()
         val hello = JSONObject()
             .put("type", "register")
+            .put("id", id)
             .put("device_id", deviceId)
             .put("pairing_code", pairingCode)
         webSocket.send(hello.toString())
     }
 
+    private fun handleReject(reason: String) {
+        // M2: hentikan loop reconnect — user harus memasukkan kode baru.
+        rejected = true
+        closed = true
+        connected = false
+        unregisterNetwork()
+        reconnectJob?.cancel()
+        heartbeatJob?.cancel()
+        ws?.close(1000, "rejected")
+        ws = null
+        onPairingRejected(reason)
+    }
+
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = scope.launch {
-            while (!closed) {
+            while (!closed && !rejected) {
                 delay(HEARTBEAT_MS)
                 val id = nextId()
                 pending[id] = { }
@@ -151,15 +222,47 @@ class AgentWsClient(
 
     private fun scheduleReconnect() {
         heartbeatJob?.cancel()
-        if (closed) return
+        if (closed || rejected) return
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             var backoff = RECONNECT_BASE_MS
-            while (!closed) {
+            while (!closed && !rejected) {
                 delay(backoff)
-                if (!closed) connect()
+                if (!closed && !rejected) connect()
                 backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_MS)
             }
+        }
+    }
+
+    // M3 (S3): reconnect segera saat koneksi jaringan kembali tersedia, alih-alih
+    // menunggu backoff habis.
+    private fun registerNetwork() {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                mainHandler.post {
+                    if (!closed && !rejected && !connected) {
+                        reconnectJob?.cancel()
+                        connect()
+                    }
+                }
+            }
+        }
+        try {
+            cm.registerNetworkCallback(NetworkRequest.Builder().build(), networkCallback!!)
+        } catch (e: Exception) {
+            Log.w(TAG, "registerNetworkCallback gagal: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetwork() {
+        val cb = networkCallback ?: return
+        networkCallback = null
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        try {
+            cm.unregisterNetworkCallback(cb)
+        } catch (_: Exception) {
+            // sudah dilepas / belum terpasang — abaikan
         }
     }
 

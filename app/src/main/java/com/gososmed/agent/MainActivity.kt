@@ -1,6 +1,9 @@
 package com.gososmed.agent
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
@@ -13,10 +16,14 @@ import androidx.appcompat.app.AppCompatActivity
 import java.util.UUID
 
 /**
- * P0 console: shows service/pairing state and exposes a local command
- * channel (dump/tap/text/global actions) so the agent can be validated on a
- * device WITHOUT a running agenthub server yet. In P1+, the server drives the
- * same commands over AgentWsClient instead.
+ * Console UI: shows service/pairing state, lets the user enter the SERVER-ISSUED
+ * pairing code (from the GoSosmed dashboard) + WS URL, and exposes a local
+ * command channel (dump/tap/text/global actions) so the agent can be validated
+ * on a device WITHOUT a running agenthub server yet.
+ *
+ * M2/M3: the WebSocket is owned by AgentForegroundService (not this activity),
+ * so the connection survives the UI being closed. This activity only sends
+ * intents (set pairing / stop) and renders status broadcasts.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pairTv: TextView
     private lateinit var logTv: TextView
     private lateinit var wsUrlEt: EditText
+    private lateinit var pairCodeEt: EditText
     private lateinit var connectBtn: Button
     private lateinit var disconnectBtn: Button
     private lateinit var dumpBtn: Button
@@ -31,31 +39,42 @@ class MainActivity : AppCompatActivity() {
     private lateinit var backBtn: Button
     private lateinit var homeBtn: Button
     private lateinit var tapBtn: Button
-    private var ws: AgentWsClient? = null
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
-    private val pairingCode: String by lazy { loadOrCreatePairingCode() }
+
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val status = intent?.getStringExtra(AgentForegroundService.EXTRA_STATUS) ?: return
+            val rejected = intent.getBooleanExtra(AgentForegroundService.EXTRA_REJECTED, false)
+            runOnUiThread {
+                log(status)
+                if (rejected) {
+                    pairTv.text = "Device: $deviceId\nPairing DITOLAK — ambil kode baru dari dasbor GoSosmed lalu simpan di sini."
+                }
+            }
+        }
+    }
 
     private fun prefs() = getSharedPreferences("agent", MODE_PRIVATE)
 
     private fun loadWsUrl(): String = prefs().getString("ws_url", "") ?: ""
 
-    private fun saveWsUrl(url: String) {
-        prefs().edit().putString("ws_url", url).apply()
-    }
+    private fun loadPairingCode(): String = prefs().getString("pairing_code", "") ?: ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         // Start the foreground service so the process stays foreground and
-        // BroadcastReceiver commands keep working on Android 12+.
+        // the WS connection survives the UI (M3/S1). The service auto-restores
+        // a saved connection in its onCreate.
         startForegroundService(Intent(this, AgentForegroundService::class.java))
 
         statusTv = findViewById(R.id.statusTv)
         pairTv = findViewById(R.id.pairTv)
         logTv = findViewById<TextView>(R.id.logTv).apply { movementMethod = ScrollingMovementMethod() }
         wsUrlEt = findViewById(R.id.wsUrlEt)
+        pairCodeEt = findViewById(R.id.pairCodeEt)
         connectBtn = findViewById(R.id.connectBtn)
         disconnectBtn = findViewById(R.id.disconnectBtn)
         dumpBtn = findViewById(R.id.dumpBtn)
@@ -64,12 +83,16 @@ class MainActivity : AppCompatActivity() {
         homeBtn = findViewById(R.id.homeBtn)
         tapBtn = findViewById(R.id.tapBtn)
 
-        pairTv.text = "Device: $deviceId\nPairing code: $pairingCode"
+        val savedCode = loadPairingCode()
+        pairTv.text = "Device: $deviceId\nPairing code: ${if (savedCode.isEmpty()) "(belum diisi — ambil dari dasbor)" else savedCode}"
 
-        // Restore persisted WS URL.
+        // Restore persisted WS URL + pairing code.
         val saved = loadWsUrl()
         if (saved.isNotEmpty()) {
             wsUrlEt.setText(saved)
+        }
+        if (savedCode.isNotEmpty()) {
+            pairCodeEt.setText(savedCode)
         }
 
         connectBtn.setOnClickListener { connectWs() }
@@ -85,20 +108,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshStatus()
-
-        // Auto-connect if a URL was previously saved.
-        if (saved.isNotEmpty()) {
-            log("auto-connect to $saved …")
-            connectWs()
-        }
     }
 
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        // Terima update status dari service (WS owned by service).
+        val filter = IntentFilter(AgentForegroundService.ACTION_STATUS)
+        try {
+            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } catch (e: Exception) {
+            Log.w("GoAgent", "registerReceiver gagal: ${e.message}")
+        }
         // Validation driver: intent extras let us drive dump/tap/text
         // deterministically from adb (no guessing button coordinates).
         handleValidationIntent(intent)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(statusReceiver)
+        } catch (_: Exception) {
+            // belum terdaftar — abaikan
+        }
     }
 
     private fun handleValidationIntent(intent: Intent?) {
@@ -177,21 +210,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun connectWs() {
         val url = wsUrlEt.text.toString().trim()
+        val code = pairCodeEt.text.toString().trim().uppercase()
         if (url.isEmpty()) {
-            toast("Masukkan URL WS server (mis. ws://192.168.1.77:8080/v1/agent/ws)")
+            toast("Masukkan URL WS server (mis. wss://api.bamsbung.id/v1/agent/ws)")
             return
         }
-        saveWsUrl(url)
-        ws?.destroy()
-        ws = AgentWsClient(url, deviceId, pairingCode) {
-            runOnUiThread { log(it) }
+        if (code.isEmpty()) {
+            toast("Masukkan kode pairing dari dasbor GoSosmed (8 karakter)")
+            return
         }
-        ws?.start()
+        // M3/S1: WS dimiliki service — kirim kode + URL, service yang konek.
+        val i = Intent(this, AgentForegroundService::class.java).apply {
+            action = AgentForegroundService.ACTION_SET_PAIRING
+            putExtra(AgentForegroundService.EXTRA_WS_URL, url)
+            putExtra(AgentForegroundService.EXTRA_PAIRING_CODE, code)
+        }
+        startForegroundService(i)
+        pairTv.text = "Device: $deviceId\nPairing code: $code"
+        log("menghubungkan ke $url …")
     }
 
     private fun disconnectWs() {
-        ws?.destroy()
-        ws = null
+        val i = Intent(this, AgentForegroundService::class.java).apply {
+            action = AgentForegroundService.ACTION_STOP_WS
+        }
+        startService(i)
         log("disconnected")
     }
 
@@ -324,7 +367,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    // ---- Persist identity (device_id + pairing code) in SharedPreferences ----
+    // ---- Persist identity (device_id) in SharedPreferences ----
+    // M2: pairing code TIDAK lagi dibuat lokal — server-issued dari dasbor,
+    // disimpan oleh AgentForegroundService saat ACTION_SET_PAIRING.
 
     private fun loadOrCreateDeviceId(): String {
         val prefs = getSharedPreferences("agent", MODE_PRIVATE)
@@ -332,14 +377,5 @@ class MainActivity : AppCompatActivity() {
         val id = "agent-" + UUID.randomUUID().toString().substring(0, 8)
         prefs.edit().putString("device_id", id).apply()
         return id
-    }
-
-    private fun loadOrCreatePairingCode(): String {
-        val prefs = getSharedPreferences("agent", MODE_PRIVATE)
-        prefs.getString("pairing_code", null)?.let { return it }
-        // 6-digit numeric code; deterministic enough for P0.
-        val code = (100000..999999).random().toString()
-        prefs.edit().putString("pairing_code", code).apply()
-        return code
     }
 }

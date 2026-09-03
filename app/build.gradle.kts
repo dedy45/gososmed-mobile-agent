@@ -26,8 +26,8 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.2.0-p2"
+        versionCode = 5
+        versionName = "0.3.0-m1"
     }
 
     buildTypes {

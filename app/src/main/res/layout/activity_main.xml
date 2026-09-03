@@ -42,8 +42,18 @@
             android:id="@+id/wsUrlEt"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="ws://192.168.1.77:8080/v1/agent/ws"
+            android:hint="wss://api.bamsbung.id/v1/agent/ws"
             android:inputType="textUri"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/pairCodeEt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Kode pairing 8 karakter (dari dasbor GoSosmed)"
+            android:inputType="textCapCharacters"
+            android:maxLength="8"
             android:textSize="13sp" />
 
         <LinearLayout
