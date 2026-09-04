@@ -18,16 +18,16 @@ android {
     // tersebut menghasilkan APK release TIDAK bertanda tangan (unsigned);
     // workflow menolaknya lewat `apksigner verify` sebelum rilis.
     signingConfigs {
-        val ksPath = System.getenv("GOSOSMED_KEYSTORE_FILE")
-        val storePass = System.getenv("GOSOSMED_STORE_PASSWORD")
-        val keyPass = System.getenv("GOSOSMED_KEY_PASSWORD")
-        val keyAlias = System.getenv("GOSOSMED_KEY_ALIAS") ?: "gososmed"
-        if (ksPath != null && storePass != null && keyPass != null) {
+        val envKsPath = System.getenv("GOSOSMED_KEYSTORE_FILE")
+        val envStorePass = System.getenv("GOSOSMED_STORE_PASSWORD")
+        val envKeyPass = System.getenv("GOSOSMED_KEY_PASSWORD")
+        val envKeyAlias = System.getenv("GOSOSMED_KEY_ALIAS") ?: "gososmed"
+        if (envKsPath != null && envStorePass != null && envKeyPass != null) {
             create("gososmed") {
-                storeFile = file(ksPath)
-                storePassword = storePass
-                keyAlias = keyAlias
-                keyPassword = keyPass
+                storeFile = file(envKsPath)
+                storePassword = envStorePass
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPass
             }
         }
     }
