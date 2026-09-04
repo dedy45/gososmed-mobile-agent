@@ -298,12 +298,11 @@ perbaikan sebelum dipublikasikan.
 
 ## Lisensi
 
-**Belum ditetapkan.** Repo ini belum memuat berkas `LICENSE`, yang secara hukum berarti
-*all rights reserved* — kode dapat dibaca dan diaudit, tetapi tidak ada izin eksplisit untuk
-memakai, memodifikasi, atau mendistribusikan ulang.
+**Apache-2.0** — lihat [`LICENSE`](LICENSE). Copyright © 2026 Dedy (dedy45).
 
-Kalau tujuan repo ini adalah transparansi yang bisa diverifikasi, menambahkan lisensi eksplisit
-adalah langkah berikutnya yang perlu diputuskan pemilik proyek.
+Anda bebas memakai, memodifikasi, dan mendistribusikan ulang kode ini dengan syarat
+menyertakan salinan lisensi dan mencantumkan perubahan (lisensi §4). Lisensi ini TIDAK
+memberi izin memakai nama/merek proyek (§6).
 
 ---
 
