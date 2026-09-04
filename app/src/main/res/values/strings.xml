@@ -3,4 +3,9 @@
     <string name="app_name">GoSosmed Agent</string>
     <string name="accessibility_service_label">GoSosmed Agent Controller</string>
     <string name="accessibility_service_description">Menghubungkan smartphone ini ke server otomasi GoSosmed untuk mengontrol aplikasi sosial (Facebook, TikTok, Instagram) atas persetujuan Anda.</string>
+    <string name="pair_hint">Cara termudah: buka dasbor GoSosmed di browser HP ini → HP Pengguna (BYOD) → Terbitkan kode → Hubungkan HP ini. Aplikasi terbuka dan tersambung otomatis.</string>
+    <string name="pair_code_hint">Atau ketik kode 8 karakter dari dasbor</string>
+    <string name="tab_beranda">Beranda</string>
+    <string name="tab_setup">Setup</string>
+    <string name="tab_log">Log</string>
 </resources>

@@ -1,4 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Palet semantik GoSosmed Agent.
+  Prinsip: semua warna UI merujuk NAMA di sini (bukan hex statis di layout)
+  agar light/dark mode konsisten. Nilai night ada di values-night/colors.xml.
+  Log panel sengaja selalu gelap (console) di kedua mode — kontras maksimum.
+-->
 <resources>
-    <color name="primary">#0ea5e9</color>
+    <!-- Brand / tema -->
+    <color name="primary">#0EA5E9</color>
+    <color name="on_primary">#FFFFFF</color>
+
+    <!-- Permukaan kartu & banner -->
+    <color name="card_bg">#F2F5F9</color>
+    <color name="banner_bg">#E7F0FA</color>
+    <color name="divider">#1E101823</color>
+
+    <!-- Status banner -->
+    <color name="status_ok">#1B7F3B</color>
+    <color name="status_warn">#9A6B00</color>
+    <color name="status_err">#B3261E</color>
+    <color name="status_idle">#6B7280</color>
+
+    <!-- Log panel (console gelap konstan, light & dark sama) -->
+    <color name="log_bg">#10151D</color>
+    <color name="log_fg">#D7DEE8</color>
+    <color name="log_ok">#7BD88F</color>
+    <color name="log_err">#FF7B72</color>
+    <color name="log_info">#6FB7FF</color>
+    <color name="log_dim">#8A93A6</color>
 </resources>

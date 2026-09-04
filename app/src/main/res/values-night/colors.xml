@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Varian dark mode: permukaan gelap, warna status lebih terang agar kontras.
+     Warna log panel sengaja TIDAK dioverride — console tetap gelap di semua mode. -->
+<resources>
+    <color name="primary">#38BDF8</color>
+    <color name="on_primary">#0B1620</color>
+
+    <color name="card_bg">#161C26</color>
+    <color name="banner_bg">#13202E</color>
+    <color name="divider">#24FFFFFF</color>
+
+    <color name="status_ok">#6EE7A0</color>
+    <color name="status_warn">#FBBF5B</color>
+    <color name="status_err">#FF8A80</color>
+    <color name="status_idle">#9AA3B2</color>
+</resources>

@@ -1,0 +1,12 @@
+v0.5.0-dev.1: UI tab-based profesional + panel log (jeda/salin/bersih) + dark mode + kanal rilis
+
+- Layout: TabLayout Beranda/Setup/Log, TANPA scroll halaman panjang;
+  banner status & tab selalu terlihat, konten tab scroll internal.
+- Tema: Material3 DayNight NoActionBar, palet semantik values-night,
+  kartu membulat (bg_card/bg_banner/bg_log) - warna terbaca di dark.
+- Panel log: entri bertipe OK/ERR/INFO berwarna (hijau/merah/biru),
+  tombol Jeda/Lanjut + Salin + Bersihkan, counter baris + indikator dijeda.
+- Klarifikasi data: log screenshot eksplisit "dikirim ke server (base64)
+  - TIDAK disimpan di HP"; dump/listPackages juga dijelaskan.
+- CHANGELOG.md (Keep a Changelog) + workflow release.yml (tag v* ->
+  GitHub Release; -dev = prerelease) + README badge & seksi kanal rilis.

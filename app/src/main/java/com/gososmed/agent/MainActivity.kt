@@ -2,6 +2,8 @@ package com.gososmed.agent
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -11,29 +13,32 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.text.method.ScrollingMovementMethod
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import com.google.android.material.tabs.TabLayout
 import java.util.UUID
-
 /**
- * UI produksi agent (v0.4.1) — informatif ala referensi NeuralBridge:
- * banner status besar, kartu info perangkat, checklist izin dengan status
- * nyata + tombol aksi, dan log aktivitas dengan latensi yang selalu terlihat.
+ * UI produksi agent (v0.5.0) — tab-based, TANPA scroll halaman panjang.
  *
- * Prinsip: pengguna TIDAK mengetik URL server, TIDAK wajib mengetik kode.
- * Jalur utama = auto-pairing lewat deep link `gososmed://pair?ws=<url>&code=<kode>`
- * yang diterbitkan dasbor. Jalur cadangan = ketik kode 8 karakter saja.
+ * Tiga tab tetap: Beranda (status perangkat + hubungkan), Setup (izin),
+ * Log (aktivitas). Banner status selalu terlihat di atas tab. Panel log
+ * bergaya console dengan warna per jenis entri (✓ hijau / ✗ merah /
+ * kejadian biru) plus aksi Jeda / Salin / Bersihkan.
  *
- * Mode debug (uji lokal + override URL) tersembunyi; buka dengan tap 7× pada
- * teks versi. WS tetap dimiliki AgentForegroundService sehingga koneksi
- * bertahan saat UI ditutup.
+ * Prinsip pairing tidak berubah: pengguna TIDAK mengetik URL server; jalur
+ * utama auto-pairing lewat deep link `gososmed://pair?ws=<url>&code=<kode>`,
+ * cadangan ketik kode 8 karakter. Mode debug (override URL + uji lokal)
+ * tersembunyi — tap 7× teks versi. WS tetap dimiliki AgentForegroundService.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -45,7 +50,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var permA11yTv: TextView
     private lateinit var permBatteryTv: TextView
     private lateinit var permNotifTv: TextView
+    private lateinit var tabLayout: TabLayout
+    private lateinit var panelBeranda: View
+    private lateinit var panelSetup: View
+    private lateinit var panelLog: View
     private lateinit var logTv: TextView
+    private lateinit var logScroll: ScrollView
+    private lateinit var logCountTv: TextView
+    private lateinit var logPauseBtn: Button
+    private lateinit var logCopyBtn: Button
+    private lateinit var logClearBtn: Button
     private lateinit var wsUrlEt: EditText
     private lateinit var pairCodeEt: EditText
     private lateinit var connectBtn: Button
@@ -58,11 +72,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batteryBtn: Button
     private lateinit var notifBtn: Button
     private lateinit var openA11yBtn: Button
-    private lateinit var debugSection: LinearLayout
+    private lateinit var debugSection: View
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
     private var versionTapCount = 0
     private var lastStatus = ""
+    private var logPaused = false
+    private var pausedDirty = false
+    private val logSb = SpannableStringBuilder()
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -100,7 +117,16 @@ class MainActivity : AppCompatActivity() {
         permA11yTv = findViewById(R.id.permA11yTv)
         permBatteryTv = findViewById(R.id.permBatteryTv)
         permNotifTv = findViewById(R.id.permNotifTv)
-        logTv = findViewById<TextView>(R.id.logTv).apply { movementMethod = ScrollingMovementMethod() }
+        tabLayout = findViewById(R.id.tabLayout)
+        panelBeranda = findViewById(R.id.panelBeranda)
+        panelSetup = findViewById(R.id.panelSetup)
+        panelLog = findViewById(R.id.panelLog)
+        logTv = findViewById(R.id.logTv)
+        logScroll = findViewById(R.id.logScroll)
+        logCountTv = findViewById(R.id.logCountTv)
+        logPauseBtn = findViewById(R.id.logPauseBtn)
+        logCopyBtn = findViewById(R.id.logCopyBtn)
+        logClearBtn = findViewById(R.id.logClearBtn)
         wsUrlEt = findViewById(R.id.wsUrlEt)
         pairCodeEt = findViewById(R.id.pairCodeEt)
         connectBtn = findViewById(R.id.connectBtn)
@@ -114,6 +140,8 @@ class MainActivity : AppCompatActivity() {
         notifBtn = findViewById(R.id.notifBtn)
         openA11yBtn = findViewById(R.id.openAccessibilityBtn)
         debugSection = findViewById(R.id.debugSection)
+
+        setupTabs()
 
         versionTv.text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
         // Mode debug: tap 7× pada versi (pola developer options).
@@ -135,8 +163,8 @@ class MainActivity : AppCompatActivity() {
 
         connectBtn.setOnClickListener { connectWs() }
         disconnectBtn.setOnClickListener { disconnectWs() }
-        dumpBtn.setOnClickListener { log(runDump()) }
-        packageBtn.setOnClickListener { log(runPackage()) }
+        dumpBtn.setOnClickListener { AgentLog.event(runDump()) }
+        packageBtn.setOnClickListener { AgentLog.event(runPackage()) }
         backBtn.setOnClickListener { doGlobal { it.pressBack() } }
         homeBtn.setOnClickListener { doGlobal { it.pressHome() } }
         tapBtn.setOnClickListener { doTapFirstClickable() }
@@ -147,50 +175,118 @@ class MainActivity : AppCompatActivity() {
         batteryBtn.setOnClickListener { requestBatteryExemption() }
         notifBtn.setOnClickListener { requestNotifPermission() }
 
-        // Log aktivitas: render isi yang sudah ada + dengarkan baris baru.
+        // Panel log: render isi yang sudah ada + dengarkan entri baru.
         // Pemilik HP selalu melihat apa yang diminta server (transparansi).
-        logTv.text = AgentLog.snapshot().joinToString("\n")
-        AgentLog.listener = { line -> runOnUiThread { appendLog(line) } }
+        logPauseBtn.setOnClickListener { toggleLogPause() }
+        logClearBtn.setOnClickListener { clearLog() }
+        logCopyBtn.setOnClickListener { copyLog() }
+        AgentLog.listener = { entry -> runOnUiThread { appendLogEntry(entry) } }
+        rerenderLog()
 
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
         handlePairIntent(intent)
         refreshStatus()
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handlePairIntent(intent)
-        handleValidationIntent(intent)
+    // ---- Tab ----
+
+    private fun setupTabs() {
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_beranda))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_setup))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_log))
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) = showPanel(tab.position)
+            override fun onTabUnselected(tab: TabLayout.Tab) {}
+            override fun onTabReselected(tab: TabLayout.Tab) {}
+        })
+        showPanel(0)
     }
 
-    override fun onResume() {
-        super.onResume()
-        refreshStatus()
-        val filter = IntentFilter(AgentForegroundService.ACTION_STATUS)
-        try {
-            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } catch (e: Exception) {
-            Log.w("GoAgent", "registerReceiver gagal: ${e.message}")
+    private fun showPanel(index: Int) {
+        panelBeranda.visibility = if (index == 0) View.VISIBLE else View.GONE
+        panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
+        panelLog.visibility = if (index == 2) View.VISIBLE else View.GONE
+    }
+
+    // ---- Panel log (berwarna + jeda/salin/bersih) ----
+
+    private fun colorFor(kind: AgentLog.Kind): Int = ContextCompat.getColor(this, when (kind) {
+        AgentLog.Kind.OK -> R.color.log_ok
+        AgentLog.Kind.ERR -> R.color.log_err
+        AgentLog.Kind.INFO -> R.color.log_info
+    })
+
+    private fun renderEntry(sb: SpannableStringBuilder, e: AgentLog.Entry) {
+        val start = sb.length
+        sb.append(e.toString()).append("\n")
+        sb.setSpan(
+            ForegroundColorSpan(colorFor(e.kind)),
+            start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+    }
+
+    private fun rerenderLog() {
+        logSb.clear()
+        AgentLog.snapshot().forEach { renderEntry(logSb, it) }
+        logTv.text = logSb
+        updateLogCount()
+        scrollLogToBottom()
+    }
+
+    private fun appendLogEntry(e: AgentLog.Entry) {
+        if (logPaused) {
+            pausedDirty = true
+            updateLogCount()
+            return
         }
-        handleValidationIntent(intent)
+        renderEntry(logSb, e)
+        logTv.text = logSb
+        updateLogCount()
+        scrollLogToBottom()
     }
 
-    override fun onPause() {
-        super.onPause()
-        try {
-            unregisterReceiver(statusReceiver)
-        } catch (_: Exception) {
-            // belum terdaftar — abaikan
+    private fun toggleLogPause() {
+        logPaused = !logPaused
+        if (!logPaused && pausedDirty) {
+            pausedDirty = false
+            rerenderLog()
         }
+        logPauseBtn.text = if (logPaused) "Lanjut" else "Jeda"
+        updateLogCount()
     }
 
-    override fun onDestroy() {
-        AgentLog.listener = null
-        super.onDestroy()
+    private fun clearLog() {
+        AgentLog.clear()
+        logPaused = false
+        pausedDirty = false
+        logPauseBtn.text = "Jeda"
+        logSb.clear()
+        logTv.text = logSb
+        updateLogCount()
     }
 
-    // ---- Info perangkat & status izin (kartu informatif) ----
+    private fun copyLog() {
+        val cm = getSystemService(ClipboardManager::class.java)
+        cm.setPrimaryClip(
+            ClipData.newPlainText("gososmed-agent-log", AgentLog.snapshot().joinToString("\n"))
+        )
+        toast("Log disalin ke clipboard")
+    }
+
+    private fun updateLogCount() {
+        val suffix = when {
+            logPaused && pausedDirty -> " · DIJEDA (ada entri baru)"
+            logPaused -> " · DIJEDA"
+            else -> ""
+        }
+        logCountTv.text = "${AgentLog.size()} baris$suffix"
+    }
+
+    private fun scrollLogToBottom() {
+        logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    // ---- Info perangkat & status izin ----
 
     private fun renderDeviceInfo() {
         val dm = resources.displayMetrics
@@ -279,23 +375,23 @@ class MainActivity : AppCompatActivity() {
         when {
             lastStatus.contains("paired") -> {
                 statusBigTv.text = "● TERSAMBUNG"
-                statusBigTv.setTextColor(0xFF1B7F3B.toInt())
+                statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
             }
             lastStatus.contains("connecting") -> {
                 statusBigTv.text = "● MENGHUBUNGKAN…"
-                statusBigTv.setTextColor(0xFFB58900.toInt())
+                statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_warn))
             }
             lastStatus.contains("ditolak") || lastStatus.contains("stopped") -> {
                 statusBigTv.text = "● TERPUTUS"
-                statusBigTv.setTextColor(0xFFB00020.toInt())
+                statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_err))
             }
             else -> {
                 statusBigTv.text = "● BELUM TERHUBUNG"
-                statusBigTv.setTextColor(0xFF6B7280.toInt())
+                statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_idle))
             }
         }
         statusTv.text = buildString {
-            append(if (a11yReady) "✓ Akses otomatisasi aktif" else "✗ Akses otomatisasi belum aktif — aktifkan di Setup")
+            append(if (a11yReady) "✓ Akses otomatisasi aktif" else "✗ Akses otomatisasi belum aktif — buka tab Setup")
             if (paired) append("\n✓ Kode tersimpan — agent akan menyambung otomatis")
         }
         refreshPerms()
@@ -336,6 +432,41 @@ class MainActivity : AppCompatActivity() {
         lastStatus = "stopped"
         AgentLog.event("sambungan diputus oleh pengguna")
         refreshStatus()
+    }
+
+    // ---- Lifecycle: terima broadcast status dari service ----
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePairIntent(intent)
+        handleValidationIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()
+        val filter = IntentFilter(AgentForegroundService.ACTION_STATUS)
+        try {
+            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } catch (e: Exception) {
+            Log.w("GoAgent", "registerReceiver gagal: ${e.message}")
+        }
+        handleValidationIntent(intent)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try {
+            unregisterReceiver(statusReceiver)
+        } catch (_: Exception) {
+            // belum terdaftar — abaikan
+        }
+    }
+
+    override fun onDestroy() {
+        AgentLog.listener = null
+        super.onDestroy()
     }
 
     // ---- Kanal validasi adb (dipakai QA; tidak terlihat di UI produksi) ----
@@ -412,7 +543,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun doGlobal(action: (AgentAccessibilityService) -> Boolean) {
-        log(runGlobal("global", action))
+        AgentLog.event(runGlobal("global", action))
         refreshStatus()
     }
 
@@ -427,10 +558,10 @@ class MainActivity : AppCompatActivity() {
         AgentAccessibilityService.withInstance { svc ->
             val b = svc.tapFirstClickable()
             runOnUiThread {
-                if (b != null) log("tap first clickable at [${b.left},${b.top}][${b.right},${b.bottom}]")
-                else log("no clickable node found")
+                if (b != null) AgentLog.event("tap first clickable at [${b.left},${b.top}][${b.right},${b.bottom}]")
+                else AgentLog.event("no clickable node found")
             }
-        } ?: runOnUiThread { toast("Aktifkan aksesibilitas dulu di bagian Setup") }
+        } ?: runOnUiThread { toast("Aktifkan aksesibilitas dulu di tab Setup") }
     }
 
     private fun runTapByText(text: String): String {
@@ -476,8 +607,8 @@ class MainActivity : AppCompatActivity() {
         } ?: "ERR_SERVICE_NOT_READY"
     }
 
-    // Menulis hasil ke logcat + internal files dir (run-as readable) agar adb
-    // dapat mengambil bukti deterministik tanpa izin storage.
+    // Menulis hasil ke internal files dir (run-as readable) agar adb dapat
+    // mengambil bukti deterministik tanpa izin storage.
     private fun writeResult(tag: String, value: String) {
         AgentReceiver.ResultStore.write(this, tag, value)
     }
@@ -489,14 +620,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e("GoAgent", "writeRawXml failed: ${e.message}")
         }
-    }
-
-    private fun log(line: String) = appendLog(line)
-
-    private fun appendLog(line: String) {
-        logTv.append(line + "\n")
-        val scroll = (logTv.layout?.getLineTop(logTv.lineCount) ?: 0) - logTv.height
-        if (scroll > 0) logTv.scrollTo(0, scroll)
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

@@ -1,317 +1,413 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- UI produksi v0.4.1 — informatif ala referensi NeuralBridge:
-     banner status besar, kartu info perangkat, checklist izin dengan status
-     GRANTED/tombol aksi, log perintah dengan latensi yang selalu terlihat.
-     Mode debug (uji lokal + override URL) tetap tersembunyi: tap 7× versi. -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  UI v0.5.0 — tab-based, TANPA scroll halaman panjang.
+  Struktur tetap: header + banner status + TabLayout (Beranda/Setup/Log).
+  Hanya konten tab yang bisa scroll internal bila layar kecil; tinggi panel
+  dikunci (weight=1) sehingga tombol & log tidak pernah "hanyut".
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:orientation="vertical"
+    android:paddingHorizontal="16dp">
 
+    <!-- ===== HEADER ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:layout_marginTop="14dp"
+        android:baselineAligned="false"
+        android:gravity="bottom"
+        android:orientation="horizontal">
 
         <TextView
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:text="@string/app_name"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/versionTv"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:padding="6dp"
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary" />
+    </LinearLayout>
 
-        <!-- ===== STATUS ===== -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="#EEF2F7"
-            android:orientation="vertical"
-            android:padding="14dp">
+    <!-- ===== BANNER STATUS (selalu terlihat, tidak ikut scroll) ===== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_banner"
+        android:orientation="vertical"
+        android:padding="14dp">
 
-            <TextView
-                android:id="@+id/statusBigTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="● MEMERIKSA…"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/statusTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textSize="13sp"
-                android:textColor="?android:attr/textColorSecondary" />
-        </LinearLayout>
-
-        <!-- ===== INFO PERANGKAT (ala DEVICE INFO NeuralBridge) ===== -->
         <TextView
+            android:id="@+id/statusBigTv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="PERANGKAT INI"
-            android:textSize="12sp"
+            android:text="● MEMERIKSA…"
+            android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:textColor="@color/status_idle" />
 
         <TextView
-            android:id="@+id/deviceInfoTv"
+            android:id="@+id/statusTv"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="#F7F8FA"
-            android:padding="12dp"
-            android:textSize="13sp"
-            android:lineSpacingMultiplier="1.35" />
-
-        <!-- ===== SETUP: checklist izin ===== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="SETUP"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="?android:attr/textColorSecondary" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="#F7F8FA"
-            android:orientation="vertical"
-            android:padding="12dp">
-
-            <!-- Aksesibilitas -->
-            <TextView
-                android:id="@+id/permA11yTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Akses otomatisasi (Aksesibilitas)"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Inti otomatisasi: membaca layar dan mengetuk atas persetujuan Anda"
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary" />
-            <Button
-                android:id="@+id/openAccessibilityBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Aktifkan" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginVertical="10dp"
-                android:background="#22000000" />
-
-            <!-- Baterai -->
-            <TextView
-                android:id="@+id/permBatteryTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Bebas hemat baterai"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Mencegah Android mematikan agent di latar belakang (penting di Xiaomi/Oppo/Vivo)"
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary" />
-            <Button
-                android:id="@+id/batteryBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Bebaskan" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginVertical="10dp"
-                android:background="#22000000" />
-
-            <!-- Notifikasi -->
-            <TextView
-                android:id="@+id/permNotifTv"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Notifikasi"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Menampilkan status koneksi agent yang sedang berjalan"
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary" />
-            <Button
-                android:id="@+id/notifBtn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Izinkan" />
-        </LinearLayout>
-
-        <!-- ===== HUBUNGKAN ===== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="HUBUNGKAN"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="?android:attr/textColorSecondary" />
-
-        <TextView
-            android:id="@+id/pairHintTv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Cara termudah: buka dasbor GoSosmed di browser HP ini → HP Pengguna (BYOD) → Terbitkan kode → Hubungkan HP ini. Aplikasi terbuka dan tersambung otomatis."
+            android:layout_marginTop="4dp"
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary" />
+    </LinearLayout>
 
-        <EditText
-            android:id="@+id/pairCodeEt"
+    <!-- ===== TABS ===== -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        app:tabGravity="fill"
+        app:tabIndicatorColor="@color/primary"
+        app:tabMode="fixed"
+        app:tabSelectedTextColor="@color/primary"
+        app:tabTextColor="?android:attr/textColorSecondary" />
+
+    <!-- ===== KONTEN TAB (tinggi terkunci; scroll internal per tab) ===== -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- ---------- TAB: BERANDA ---------- -->
+        <ScrollView
+            android:id="@+id/panelBeranda"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="Atau ketik kode 8 karakter dari dasbor"
-            android:inputType="textCapCharacters"
-            android:maxLength="8"
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/connectBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Hubungkan" />
-
-        <Button
-            android:id="@+id/disconnectBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Putuskan Sambungan" />
-
-        <TextView
-            android:id="@+id/pairTv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center"
-            android:textSize="12sp"
-            android:textColor="?android:attr/textColorSecondary" />
-
-        <!-- ===== LOG (selalu terlihat — transparansi untuk pemilik HP) ===== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="LOG AKTIVITAS"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:textColor="?android:attr/textColorSecondary" />
-
-        <TextView
-            android:id="@+id/logTv"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="#F5F5F5"
-            android:minLines="10"
-            android:padding="10dp"
-            android:textSize="11sp"
-            android:typeface="monospace" />
-
-        <!-- ===== MODE DEBUG (tersembunyi; tap 7× pada versi) ===== -->
-        <LinearLayout
-            android:id="@+id/debugSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginVertical="14dp"
-                android:background="#33000000" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="MODE DEBUG"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/wsUrlEt"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:hint="Override URL WS (kosong = default produksi)"
-                android:inputType="textUri"
-                android:textSize="13sp" />
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="none">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    style="@style/GosoSectionLabel"
+                    android:layout_marginTop="14dp"
+                    android:text="Perangkat ini" />
+
+                <TextView
+                    android:id="@+id/deviceInfoTv"
+                    style="@style/GosoCard"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingMultiplier="1.3"
+                    android:textSize="13sp" />
+
+                <TextView
+                    style="@style/GosoSectionLabel"
+                    android:layout_marginTop="16dp"
+                    android:text="Hubungkan ke GoSosmed" />
+
+                <TextView
+                    android:id="@+id/pairHintTv"
+                    style="@style/GosoHint"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/pair_hint" />
+
+                <EditText
+                    android:id="@+id/pairCodeEt"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/pair_code_hint"
+                    android:importantForAutofill="no"
+                    android:inputType="textCapCharacters"
+                    android:maxLength="8"
+                    android:textSize="15sp" />
 
                 <Button
-                    android:id="@+id/dumpBtn"
-                    android:layout_width="0dp"
+                    android:id="@+id/connectBtn"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Dump" />
+                    android:layout_marginTop="10dp"
+                    android:text="Hubungkan" />
 
                 <Button
-                    android:id="@+id/packageBtn"
-                    android:layout_width="0dp"
+                    android:id="@+id/disconnectBtn"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Package" />
+                    android:layout_marginTop="2dp"
+                    android:text="Putuskan Sambungan" />
 
-                <Button
-                    android:id="@+id/backBtn"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Back" />
+                <TextView
+                    android:id="@+id/pairTv"
+                    style="@style/GosoHint"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center" />
 
-                <Button
-                    android:id="@+id/homeBtn"
-                    android:layout_width="0dp"
+                <!-- ===== MODE DEBUG (tap 7× versi) ===== -->
+                <LinearLayout
+                    android:id="@+id/debugSection"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Home" />
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:orientation="vertical"
+                    android:padding="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        style="@style/GosoSectionLabel"
+                        android:text="Mode debug" />
+
+                    <EditText
+                        android:id="@+id/wsUrlEt"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="Override URL WS (kosong = default produksi)"
+                        android:importantForAutofill="no"
+                        android:inputType="textUri"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/dumpBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Dump"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/packageBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:text="Package"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/backBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:text="Back"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/homeBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:text="Home"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/tapBtn"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Tap First Clickable"
+                        android:textSize="12sp" />
+                </LinearLayout>
             </LinearLayout>
+        </ScrollView>
 
-            <Button
-                android:id="@+id/tapBtn"
+        <!-- ---------- TAB: SETUP ---------- -->
+        <ScrollView
+            android:id="@+id/panelSetup"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Tap First Clickable" />
+                android:orientation="vertical"
+                android:paddingBottom="16dp">
+
+                <!-- Aksesibilitas -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="14dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/permA11yTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Akses otomatisasi (Aksesibilitas)"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Inti otomatisasi: membaca layar dan mengetuk atas persetujuan Anda." />
+
+                    <Button
+                        android:id="@+id/openAccessibilityBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Aktifkan" />
+                </LinearLayout>
+
+                <!-- Baterai -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/permBatteryTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Bebas hemat baterai"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Mencegah Android mematikan agent di latar belakang (penting di Xiaomi/Oppo/Vivo)." />
+
+                    <Button
+                        android:id="@+id/batteryBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Bebaskan" />
+                </LinearLayout>
+
+                <!-- Notifikasi -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/permNotifTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Notifikasi"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Menampilkan status koneksi agent yang sedang berjalan." />
+
+                    <Button
+                        android:id="@+id/notifBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Izinkan" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ---------- TAB: LOG ---------- -->
+        <LinearLayout
+            android:id="@+id/panelLog"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Toolbar log: counter + aksi. Tetap terlihat; hanya daftar log
+                 yang scroll di bawahnya. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/logCountTv"
+                    style="@style/GosoSectionLabel"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:text="0 baris" />
+
+                <Button
+                    android:id="@+id/logPauseBtn"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="Jeda"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/logCopyBtn"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="Salin"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/logClearBtn"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="10dp"
+                    android:text="Bersihkan"
+                    android:textColor="@color/status_err"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <ScrollView
+                android:id="@+id/logScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_log"
+                android:scrollbars="vertical">
+
+                <TextView
+                    android:id="@+id/logTv"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:padding="12dp"
+                    android:textColor="@color/log_fg"
+                    android:textIsSelectable="true"
+                    android:textSize="11sp" />
+            </ScrollView>
         </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </FrameLayout>
+</LinearLayout>

@@ -6,7 +6,14 @@ Aplikasi ini menghubungkan HP Android milik Anda ke server otomasi GoSosmed **ta
 tengah, tanpa `adb`, dan tanpa root**. Ia menggantikan model "sewa HP di data center" yang
 biasa dipakai layanan sejenis.
 
+[![Build APK](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml)
+[![Rilis terbaru](https://img.shields.io/github/v/release/dedy45/gososmed-mobile-agent?include_prereleases&label=rilis)](https://github.com/dedy45/gososmed-mobile-agent/releases)
 [![Dokumentasi](https://img.shields.io/badge/docs-gososmed--docs.pages.dev-4f46e5)](https://gososmed-docs.pages.dev/agent/ikhtisar/)
+
+> **Status: PENGEMBANGAN (dev).** Tervalidasi end-to-end (backend + dasbor +
+> APK) pada satu perangkat nyata (Xiaomi garnet); **belum** diuji lintas
+> merek. Rilis **stabil** diklaim mulai `v1.0.0` — versi & kanal rilis:
+> [CHANGELOG.md](CHANGELOG.md). Versi saat ini: **0.5.0-dev.1**.
 
 ---
 
@@ -187,6 +194,19 @@ Panduan lengkap: [Memasang & Memasangkan](https://gososmed-docs.pages.dev/agent/
 struktur elemen layar **aplikasi target**, serta hasil eksekusi termasuk tangkapan layar bila
 diperlukan untuk audit.
 
+**Ke mana data pergi (jujur & spesifik):**
+
+- **Tangkapan layar TIDAK disimpan di HP.** Saat server meminta `screenshot`, agent menangkap
+  layar lewat Accessibility API (Android 11+), mengubahnya jadi PNG/JPEG **base64**, dan
+  mengirimkannya sebagai balasan perintah lewat WebSocket yang sama. Tidak ada berkas gambar
+  yang ditulis di penyimpanan HP.
+- Demikian pula struktur layar (`dump`): dikirim ke server untuk dieksekusi job, tidak
+  disimpan permanen di HP (kecuali berkas debug `agent_dump_raw.xml` di penyimpanan internal
+  aplikasi, hanya saat mode debug dipakai).
+- Semua aktivitas ini terlihat di **tab Log** aplikasi: tiap perintah tercatat dengan waktu,
+  latensi, status ✓/✗, dan keterangan ke mana datanya pergi. Log bisa dijeda, disalin,
+  atau dibersihkan dari UI.
+
 Struktur layar aplikasi target dapat memuat teks yang tampil di layar itu. Kalau Anda
 menjalankan job pada akun yang menampilkan informasi sensitif, informasi itu ikut terbaca dalam
 konteks job tersebut. Ini konsekuensi wajar dari cara kerjanya, dan lebih baik Anda tahu
@@ -221,9 +241,15 @@ gradle.properties       properti build
 
 ---
 
-## Status
+## Status & kanal rilis
 
-Fase P0 — fondasi berjalan, validasi perangkat nyata masih berlangsung.
+**Status proyek: PENGEMBANGAN (dev)** — bukan rilis stabil.
+
+| Kanal | Cara mendapatkannya | Untuk siapa |
+|---|---|---|
+| **Stabil** | GitHub Releases ber-tag `vX.Y.Z` **tanpa** akhiran `-dev`, plus badge "Latest" | Pengguna akhir |
+| **Dev** | Build CI dari `main` (artifact `gososmed-agent-debug` tiap push) atau rilis ber-tag `...-dev.N` | Kontributor / penguji |
+| **Riwayat perubahan** | [CHANGELOG.md](CHANGELOG.md) — semua versi dengan tanggal & rincian | Semua orang |
 
 - [x] Proyek Android + AccessibilityService
 - [x] Serializer hierarki (XML kompatibel `uiautomator dump`)
@@ -235,7 +261,10 @@ Fase P0 — fondasi berjalan, validasi perangkat nyata masih berlangsung.
 - [x] Integrasi agenthub sisi server: pairing multi-user (kode server-issued,
       tenant binding), `register_ack`, revoke device — **tervalidasi di 1
       perangkat nyata** (Xiaomi garnet) meliputi backend + UI dasbor + APK.
+- [x] UI produksi tab-based (Beranda/Setup/Log), dark mode, panel log dengan
+      Jeda/Salin/Bersihkan + keterangan ke mana data perintah pergi
 - [ ] Validasi menyeluruh di perangkat nyata lintas merek
+- [ ] Rilis stabil v1.0.0 (setelah lintas merek tervalidasi)
 
 **Jangan gambarkan ini lebih matang daripada kenyataannya.** Cakupan pengujian lintas merek
 dan versi Android masih terbatas.

@@ -61,7 +61,7 @@ object AgentCommand {
 
         if (svc == null) {
             resp.put("ok", false).put("error", "accessibility service not connected/ready")
-            AgentLog.add(cmd, false, 0)
+            AgentLog.add(cmd, false, 0, "aksesibilitas belum aktif")
             return resp
         }
         // Use the non-null svc instance safely inside the block.
@@ -71,9 +71,29 @@ object AgentCommand {
         val start = System.currentTimeMillis()
         val result = executeWith(svc, cmd, req)
         val ms = System.currentTimeMillis() - start
-        AgentLog.add(cmd, result.optBoolean("ok", false), ms)
+        AgentLog.add(cmd, result.optBoolean("ok", false), ms, dataDetail(cmd, result))
         result.put("id", id)
         return result
+    }
+
+    /**
+     * v0.5.0: keterangan jujur ke mana DATA sebuah command pergi, supaya log
+     * tidak ambigu. Screenshot TIDAK disimpan di HP — gambarnya dikirim ke
+     * server sebagai base64 di respons WS. Dump/hierarchy juga dikirim, bukan
+     * disimpan permanen (kecuali mode debug menulis raw XML lokal).
+     */
+    private fun dataDetail(cmd: String, resp: JSONObject): String? {
+        if (!resp.optBoolean("ok", false)) return null
+        return when (cmd) {
+            CMD_SCREENSHOT -> {
+                val fmt = resp.optJSONObject("result")?.optString("format", "png.base64")
+                "gambar $fmt dikirim ke server (base64) — TIDAK disimpan di HP"
+            }
+            CMD_DUMP -> "hierarki layar dikirim ke server"
+            CMD_DUMP_WINDOWS -> "daftar window dikirim ke server"
+            CMD_LIST_PACKAGES -> "daftar paket dikirim ke server"
+            else -> null
+        }
     }
 
     private fun executeWith(svc: AgentAccessibilityService, cmd: String, req: JSONObject): JSONObject {
