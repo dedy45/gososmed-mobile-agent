@@ -332,7 +332,7 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- ---------- TAB: LOG ---------- -->
+        <!-- TAB: LOG -->
         <LinearLayout
             android:id="@+id/panelLog"
             android:layout_width="match_parent"
