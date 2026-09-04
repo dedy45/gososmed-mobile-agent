@@ -83,7 +83,7 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- ---------- TAB: BERANDA ---------- -->
+        <!-- TAB: BERANDA -->
         <ScrollView
             android:id="@+id/panelBeranda"
             android:layout_width="match_parent"
@@ -234,7 +234,7 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- ---------- TAB: SETUP ---------- -->
+        <!-- TAB: SETUP -->
         <ScrollView
             android:id="@+id/panelSetup"
             android:layout_width="match_parent"
