@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P0-3 (Plan 07): default KETAT — semua trafik cleartext ditolak di build
+     release. Produksi memakai wss://api.bamsbung.id (TLS lewat Cloudflare
+     Tunnel). Tidak ada pengecualian domain di build release. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

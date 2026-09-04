@@ -16,3 +16,9 @@ var/apk/
 var/ks/
 # CI-downloaded artifact dir
 var/
+
+# P0-1 (Plan 07): signing material TIDAK di repo. Keystore lama MATI
+# (pernah publik); keystore baru hanya di GitHub Secrets + backup offline
+# pemilik (lihat CHANGELOG v0.6.0).
+keystore/
+*.jks

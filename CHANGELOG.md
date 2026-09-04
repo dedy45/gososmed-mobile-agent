@@ -11,6 +11,41 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-04
+
+> ⚠️ **WAJIB uninstall-install ulang**: keystore signing dirotasi (lihat
+> Security di bawah) — APK lama TIDAK bisa di-upgrade ke 0.6.0
+> (INSTALL_FAILED_UPDATE_INCOMPATIBLE). Ini perubahan sekali jalan demi
+> keamanan distribusi.
+
+### Security (Plan 07 Fase P0)
+- **Rotasi keystore (P0-1)**: keystore lama yang pernah tersimpan di repo
+  publik (password in-repo) dinyatakan MATI. Signing kini dari GitHub
+  Secrets (`GOSOSMED_KEYSTORE_B64`/`STORE_PASSWORD`/`KEY_ALIAS`/
+  `KEY_PASSWORD`); folder `keystore/` dihapus dari repo dan workflow
+  `generate-keystore.yml` dihapus.
+- **Receiver dikunci (P0-2)**: broadcast `com.gososmed.agent.CMD` (jalur adb)
+  kini hanya aktif di build DEBUG — build release menolaknya, app lain di HP
+  tidak bisa memicu dump/tap/setText.
+- **Cleartext ditutup (P0-3)**: `usesCleartextTraffic` global diganti
+  `networkSecurityConfig` — build release menolak semua trafik cleartext
+  (wss:// saja); build debug tetap boleh ws:// LAN untuk pengembangan.
+
+### Fixed
+- **Race map pending (GAP-K12)**: `AgentWsClient.pending` kini
+  `ConcurrentHashMap` + id atomik + `pairingCode` `@Volatile` — diakses
+  bersamaan oleh thread reader OkHttp dan coroutine heartbeat/timeout.
+- **Tidak ada sleep di main thread (K13)**: retry re-bind MIUI dipindah ke
+  thread IO di `AgentWsClient`; `AgentCommand.execute` kini fail cepat dengan
+  pesan jujur, bukan tidur ±2 detik menyumbat main looper.
+- **Dump dibatasi (GAP-K6)**: `MAX_NODES` (2000) diterapkan sungguhan —
+  dump layar berat berhenti tepat waktu dan ditandai
+  `<hierarchy truncated="true">`; sebelumnya konstanta hanya dead code.
+
+### Removed
+- Jalur JSON dump tanpa pemanggil: `dumpJson()` /
+  `HierarchySerializer.dumpToJson()` / `appendNodeJson()` (dead code).
+
 ## [0.5.1-dev.1] — 2026-09-04
 
 ### Changed

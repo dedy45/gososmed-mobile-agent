@@ -74,8 +74,6 @@ class AgentAccessibilityService : AccessibilityService() {
     /** Dumps the current active window as uiautomator-compatible XML. */
     fun dumpXml(): String = HierarchySerializer.dump(rootInActiveWindow)
 
-    fun dumpJson(): String = HierarchySerializer.dumpToJson(rootInActiveWindow)
-
     fun currentPackage(): String {
         val root = rootInActiveWindow ?: return ""
         return root.packageName?.toString() ?: ""

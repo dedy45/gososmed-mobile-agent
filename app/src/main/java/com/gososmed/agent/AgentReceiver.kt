@@ -7,13 +7,18 @@ import android.util.Log
 import org.json.JSONObject
 
 /**
- * Allows driving the agent from `adb shell am broadcast` (validation / P0)
- * without MainActivity being in the foreground. Because the Accessibility
- * service keeps reading the ACTIVE window, a `cmd=dump` fired while Facebook
- * or TikTok is in the foreground dumps THAT app's window — real evidence that
- * the agent reads third-party app UIs, not just its own.
+ * Validation/control channel for `adb shell am broadcast` (build DEBUG saja).
+ * Because the Accessibility service keeps reading the ACTIVE window, a
+ * `cmd=dump` fired while Facebook or TikTok is in the foreground dumps THAT
+ * app's window — real evidence that the agent reads third-party app UIs, not
+ * just its own.
  *
- * Usage (from adb):
+ * P0-2 (Plan 07): di build RELEASE receiver ini MENOLAK semua broadcast
+ * (`BuildConfig.DEBUG` guard) — app lain di HP tidak boleh memicu
+ * dump/tap/setText diam-diam. Jalur produksi tetap lewat WSS agenthub yang
+ * terikat pairing, bukan broadcast lokal.
+ *
+ * Usage (from adb, DEBUG build only):
  *   adb shell am broadcast -a com.gososmed.agent.CMD \
  *     --es cmd dump
  *   adb shell am broadcast -a com.gososmed.agent.CMD \
@@ -28,6 +33,13 @@ import org.json.JSONObject
 class AgentReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // P0-2: tanpa guard ini, siapa pun di HP bisa broadcast CMD. Debug
+        // tetap lengkap untuk validasi adb (kriteria lulus P0-2: release
+        // menolak, debug jalan).
+        if (!BuildConfig.DEBUG) {
+            Log.w("GoAgent", "CMD broadcast ditolak: build release tidak menerima broadcast lokal (P0-2)")
+            return
+        }
         val cmd = intent.getStringExtra("cmd") ?: return
         val req = JSONObject().put("cmd", cmd)
         intent.getStringExtra("text")?.let { req.put("text", it) }

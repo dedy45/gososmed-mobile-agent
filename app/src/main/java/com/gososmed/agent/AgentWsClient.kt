@@ -21,7 +21,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Outbound WebSocket client to the GoSosmed agenthub.
@@ -47,7 +49,9 @@ class AgentWsClient(
     private val context: Context,
     private val url: String,
     private val deviceId: String,
-    private var pairingCode: String,
+    // @Volatile: ditulis dari UI (updatePairingCode) dan dibaca di thread
+    // reader OkHttp saat onOpen → register().
+    @Volatile private var pairingCode: String,
     private val onStatus: (String) -> Unit,
     private val onPairingRejected: (String) -> Unit = {}
 ) {
@@ -80,8 +84,12 @@ class AgentWsClient(
     // network-callback saling memicu. Dua socket dengan device_id sama akan
     // saling menendang di server (duplicate registration → flap register/putus).
     private var connecting = false
-    private var idSeq = 0L
-    private val pending = mutableMapOf<Long, (JSONObject) -> Unit>()
+    // GAP-K12 (Plan 07): map pending diakses dari thread reader OkHttp
+    // (onMessage) DAN coroutine heartbeat/timeout (Dispatchers.IO) —
+    // LinkedHashMap tidak aman untuk itu; id juga harus atomik karena
+    // nextId() dipanggil dari thread yang sama.
+    private val idSeq = AtomicInteger(0)
+    private val pending = ConcurrentHashMap<Long, (JSONObject) -> Unit>()
 
     fun start() {
         if (connected || connecting) return
@@ -163,12 +171,25 @@ class AgentWsClient(
                     // Accessibility API must run on the main thread, so we post
                     // the execution there (webSocket.send is thread-safe).
                     if (obj.has("cmd")) {
-                        mainHandler.post {
-                            try {
-                                val resp = AgentCommand.execute(obj)
-                                webSocket.send(resp.toString())
-                            } catch (e: Exception) {
-                                Log.w(TAG, "cmd exec error", e)
+                        // K13 (Plan 07): JANGAN tidur di main thread (dulu
+                        // Thread.sleep di AgentCommand.execute menyumbat main
+                        // looper ±2 dtk saat service MIUI re-bind). Tunggu
+                        // re-bind di thread IO (kebijakan retry lama tetap:
+                        // maks 10×200 ms), eksekusi TETAP di main thread
+                        // karena Accessibility API wajib main looper.
+                        scope.launch {
+                            var tries = 0
+                            while (AgentAccessibilityService.instance == null && tries < 10) {
+                                delay(200)
+                                tries++
+                            }
+                            mainHandler.post {
+                                try {
+                                    val resp = AgentCommand.execute(obj)
+                                    webSocket.send(resp.toString())
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "cmd exec error", e)
+                                }
                             }
                         }
                         return
@@ -305,7 +326,7 @@ class AgentWsClient(
         }
     }
 
-    private fun nextId(): Long = ++idSeq
+    private fun nextId(): Long = idSeq.incrementAndGet().toLong()
 
     private fun send(json: JSONObject) {
         val w = ws ?: return

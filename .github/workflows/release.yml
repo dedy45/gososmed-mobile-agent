@@ -34,8 +34,42 @@ jobs:
           unzip -q gradle-8.9-bin.zip
           echo "$GITHUB_WORKSPACE/gradle-8.9/bin" >> "$GITHUB_PATH"
 
-      - name: Build release APK (ditandatangani keystore repo)
+      # P0-1 (Plan 07): keystore TIDAK lagi di repo — di-decode dari Secrets
+      # ke RUNNER_TEMP (dibersihkan otomatis), env dilempar ke Gradle.
+      # Gagal diam-diam = unsigned APK, jadi secrets dicek KERAS di sini.
+      - name: Siapkan keystore dari Secrets
+        env:
+          GOSOSMED_KEYSTORE_B64: ${{ secrets.GOSOSMED_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GOSOSMED_KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Secrets signing belum lengkap: GOSOSMED_KEYSTORE_B64 / STORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS."
+            exit 1
+          fi
+          echo "$GOSOSMED_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/gososmed-release.jks"
+          {
+            echo "GOSOSMED_KEYSTORE_FILE=$RUNNER_TEMP/gososmed-release.jks"
+            echo "GOSOSMED_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "GOSOSMED_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "GOSOSMED_KEY_ALIAS=${KEY_ALIAS:-gososmed}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK (ditandatangani dari Secrets)
         run: gradle assembleRelease --no-daemon
+
+      # P0-5 (Plan 07): rilis hanya sah bila signature benar-benar ada —
+      # APK unsigned (env signing tidak lengkap) GAGAL di sini, bukan
+      # terbit diam-diam.
+      - name: Verifikasi signature + buat SHA256SUMS
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          APKSIGNER=$(ls "$ANDROID_HOME/build-tools"/*/apksigner | sort | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK" | tee signing-certs.txt
+          sha256sum "$APK" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Tentukan kanal (stabil vs dev) dari nama tag
         id: chan
@@ -67,4 +101,6 @@ jobs:
           name: ${{ steps.chan.outputs.title }}
           prerelease: ${{ steps.chan.outputs.prerelease }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            SHA256SUMS.txt

@@ -46,18 +46,13 @@ object AgentCommand {
         val resp = JSONObject()
         resp.put("id", id)
 
-        // Retry: the AccessibilityService's static instance can briefly become
-        // null when MIUI calls onDestroy (on startActivity to another app,
-        // e.g. XSpace Dual Apps resolver) then quickly re-binds. Wait a short
-        // moment for the re-bound instance to come back before giving up.
-        var svc = AgentAccessibilityService.instance
-        if (svc == null) {
-            for (i in 0..9) {
-                Thread.sleep(200)
-                svc = AgentAccessibilityService.instance
-                if (svc != null) break
-            }
-        }
+        // K13 (Plan 07): fail cepat + status jujur — TIDAK ada Thread.sleep
+        // di sini lagi (execute berjalan di main looper; tidur ±2 dtk di
+        // main thread = risiko ANR dan menumpuk saat burst dasbor). Retry
+        // re-bind MIUI sudah ditangani pemanggil di thread IO
+        // (AgentWsClient menunggu maks 10×200 ms) atau AgentReceiver
+        // (menunggu isServiceReady maks ±3 s) sebelum memanggil execute.
+        val svc = AgentAccessibilityService.instance
 
         if (svc == null) {
             resp.put("ok", false).put("error", "accessibility service not connected/ready")

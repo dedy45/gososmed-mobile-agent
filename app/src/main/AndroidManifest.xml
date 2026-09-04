@@ -23,20 +23,18 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.GosomedAgent"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true">
+        android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- usesCleartextTraffic=true: the agent is a BYOD device-automation
-             tool whose agenthub server URL is user-configurable (often a LAN
-             IP over plain ws://, or a WSS tunnel in production). Android 9+
-             blocks cleartext by default; without this flag the outbound
-             ws:// handshake fails with "CLEARTEXT communication not
-             permitted". The agent only exchanges UI-hierarchy dump/tap/text
-             commands, never user credentials, over this channel. Production
-             deployments should still prefer wss:// (Cloudflare Tunnel). -->
+        <!-- P0-3 (Plan 07): cleartext TIDAK lagi dibuka global. Config utama
+             (res/xml/network_security_config.xml) menolak seluruh trafik
+             cleartext — produksi wss:// (Cloudflare Tunnel) saja. Build DEBUG
+             menimpa lewat src/debug/res/xml agar ws:// LAN dev tetap bisa
+             dipakai saat pengembangan; kriteria lulus P0-3: domain ws://
+             arbitrary GAGAL di build release. -->
 
-        <!-- Validation/control channel reachable from `adb shell am broadcast`
-             (P0): lets the server-hub-less flow run dump/tap/text on whatever
-             app is currently foreground. Exported so adb can deliver it. -->
+        <!-- Validation/control channel (DEBUG saja — kode menolak di release,
+             lihat AgentReceiver). Exported agar adb shell am broadcast bisa
+             mengirim untuk validasi P0. -->
         <receiver
             android:name=".AgentReceiver"
             android:exported="true">

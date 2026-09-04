@@ -7,18 +7,28 @@ android {
     namespace = "com.gososmed.agent"
     compileSdk = 34
 
-    // Stable signature across builds: the keystore is committed to the repo
-    // so the same APK signature is always produced. This removes
-    // INSTALL_FAILED_UPDATE_INCOMPATIBLE and the need to uninstall before
-    // installing a new build on a device. NOTE: this is an INTERNAL dev
-    // keystore (password in-repo) for the P0 agent only — a production build
-    // still needs Play App Signing + a secret-held signing key (§7.5.2).
+    // P0-1 (Plan 07): signing material TIDAK lagi tinggal di repo. Keystore
+    // lama (keystore/gososmed-release.jks, password pernah in-repo) PERNYAH
+    // PUBLIK → dinyatakan MATI dan tidak dipakai lagi; APK lama tidak bisa
+    // upgrade ke APK baru (signature beda) → uninstall-install ulang.
+    // Release kini ditandatangani dari environment:
+    //   GOSOSMED_KEYSTORE_FILE, GOSOSMED_STORE_PASSWORD,
+    //   GOSOSMED_KEY_ALIAS,   GOSOSMED_KEY_PASSWORD
+    // — diisi workflow release dari GitHub Secrets. Build lokal tanpa env
+    // tersebut menghasilkan APK release TIDAK bertanda tangan (unsigned);
+    // workflow menolaknya lewat `apksigner verify` sebelum rilis.
     signingConfigs {
-        create("gososmed") {
-            storeFile = rootProject.file("keystore/gososmed-release.jks")
-            storePassword = "gososmed123"
-            keyAlias = "gososmed"
-            keyPassword = "gososmed123"
+        val ksPath = System.getenv("GOSOSMED_KEYSTORE_FILE")
+        val storePass = System.getenv("GOSOSMED_STORE_PASSWORD")
+        val keyPass = System.getenv("GOSOSMED_KEY_PASSWORD")
+        val keyAlias = System.getenv("GOSOSMED_KEY_ALIAS") ?: "gososmed"
+        if (ksPath != null && storePass != null && keyPass != null) {
+            create("gososmed") {
+                storeFile = file(ksPath)
+                storePassword = storePass
+                keyAlias = keyAlias
+                keyPassword = keyPass
+            }
         }
     }
 
@@ -26,8 +36,8 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.5.1-dev.1"
+        versionCode = 11
+        versionName = "0.6.0"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
@@ -41,10 +51,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("gososmed")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("gososmed")
+            signingConfig = signingConfigs.findByName("gososmed")
         }
     }
 
