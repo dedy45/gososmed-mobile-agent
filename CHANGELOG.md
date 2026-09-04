@@ -11,6 +11,15 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-04
+
+### Added
+- **agent_version di hello register**: agent kini melaporkan versinya
+  (`BuildConfig.VERSION_NAME`) dalam `device_info` saat menyambung ke
+  server. Dasbor BYOD memakainya untuk menampilkan badge
+  "update tersedia" (server bandingkan dengan `GOSOSMED_AGENT_LATEST_VERSION`).
+  Agent ≤0.6.0 tidak mengirim field ini → tanpa badge (degradasi jujur).
+
 ## [0.6.0] — 2026-09-04
 
 > ⚠️ **WAJIB uninstall-install ulang**: keystore signing dirotasi (lihat
@@ -147,7 +156,9 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   `device_id` persisten.
 - CI GitHub Actions: build APK per push (artifact `gososmed-agent-debug`).
 
-[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.5.0-dev.1...HEAD
+[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.5.0-dev.1...v0.6.0
 [0.5.0-dev.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.4.1...v0.5.0-dev.1
 [0.4.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.3.1...v0.4.0

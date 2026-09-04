@@ -232,6 +232,8 @@ class AgentWsClient(
         // v0.4.1: laporkan info perangkat (model, Android, layar, density) agar
         // dasbor menampilkan kartu perangkat informatif ala referensi
         // NeuralBridge — user tidak lagi menebak device_id.
+        // v0.6.1: + agent_version untuk badge "update tersedia" di dasbor
+        // (server bandingkan dengan GOSOSMED_AGENT_LATEST_VERSION).
         val dm = context.resources.displayMetrics
         val hello = JSONObject()
             .put("type", "register")
@@ -243,7 +245,8 @@ class AgentWsClient(
                 .put("android_ver", Build.VERSION.RELEASE ?: "")
                 .put("sdk_int", Build.VERSION.SDK_INT)
                 .put("screen", "${dm.widthPixels}x${dm.heightPixels}")
-                .put("density", "${dm.density}x"))
+                .put("density", "${dm.density}x")
+                .put("agent_version", BuildConfig.VERSION_NAME))
         webSocket.send(hello.toString())
     }
 
