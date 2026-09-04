@@ -11,6 +11,13 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.5.1-dev.1] — 2026-09-04
+
+### Changed
+- **Log tenang**: sukses `screenshot` (dipoll dasbor tiap ~1,5 dtk saat viewer
+  aktif) hanya dicatat maksimal tiap 30 detik; kegagalan selalu dicatat.
+  Tab Log kini berisi kejadian penting, bukan spam polling.
+
 ## [0.5.0-dev.1] — 2026-09-04
 
 > **Kanal DEV** — perubahan UI mayor; belum diuji lintas perangkat.

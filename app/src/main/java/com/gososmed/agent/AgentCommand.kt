@@ -68,13 +68,25 @@ object AgentCommand {
         // v0.4.1: ukur latensi tiap command dan catat ke AgentLog agar pemilik
         // HP melihat langsung apa yang diminta server dan seberapa cepat
         // dikerjakan (transparansi ala tab Logs pada referensi NeuralBridge).
+        // v0.5.1: screenshot dipoll dasbor tiap ~1,5 dtk saat viewer aktif —
+        // kalau semua dicatat, tab Log penuh spam. Sukses screenshot dicatat
+        // paling cepat tiap 30 dtk (ringkas); GAGAL selalu dicatat (itu penting).
         val start = System.currentTimeMillis()
         val result = executeWith(svc, cmd, req)
         val ms = System.currentTimeMillis() - start
-        AgentLog.add(cmd, result.optBoolean("ok", false), ms, dataDetail(cmd, result))
         result.put("id", id)
+        val ok = result.optBoolean("ok", false)
+        if (cmd == CMD_SCREENSHOT && ok) {
+            val now = System.currentTimeMillis()
+            if (now - lastScreenshotLogAt < SCREENSHOT_LOG_INTERVAL_MS) return result
+            lastScreenshotLogAt = now
+        }
+        AgentLog.add(cmd, ok, ms, dataDetail(cmd, result))
         return result
     }
+
+    private var lastScreenshotLogAt = 0L
+    private const val SCREENSHOT_LOG_INTERVAL_MS = 30_000L
 
     /**
      * v0.5.0: keterangan jujur ke mana DATA sebuah command pergi, supaya log
