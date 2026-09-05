@@ -79,4 +79,7 @@ dependencies {
     // P1-1 (Plan 07): unit test JVM pertama (HierarchySerializer/AgentCommand
     // jalur service-null) — dijalankan CI step testDebugUnitTest.
     testImplementation("junit:junit:4.13.2")
+    // org.json di android.jar adalah stub yang melempar "not mocked" di JVM
+    // unit test; artifact asli menggantikan stub agar JSONObject bekerja.
+    testImplementation("org.json:json:20240303")
 }
