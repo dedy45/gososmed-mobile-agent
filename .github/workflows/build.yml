@@ -39,6 +39,11 @@ jobs:
           unzip -q gradle-8.9-bin.zip
           echo "$GITHUB_WORKSPACE/gradle-8.9/bin" >> "$GITHUB_PATH"
 
+      # P1-1 (Plan 07): unit test JVM pertama — CI merah bila test gagal,
+      # sebelum APK dibangun (fail-fast).
+      - name: Unit tests
+        run: gradle testDebugUnitTest --no-daemon
+
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
 

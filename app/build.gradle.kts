@@ -76,4 +76,7 @@ dependencies {
     // OkHttp for outbound WebSocket to the GoSosmed agenthub.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // P1-1 (Plan 07): unit test JVM pertama (HierarchySerializer/AgentCommand
+    // jalur service-null) — dijalankan CI step testDebugUnitTest.
+    testImplementation("junit:junit:4.13.2")
 }
