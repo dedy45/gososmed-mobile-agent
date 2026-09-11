@@ -33,11 +33,10 @@ jobs:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
 
-      - name: Install Gradle 8.9 (deterministic, no wrapper jar needed)
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip
-          echo "$GITHUB_WORKSPACE/gradle-8.9/bin" >> "$GITHUB_PATH"
+      - name: Setup Gradle 8.9 (cached, action resmi — stabil, tanpa wget manual)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
       # P1-1 (Plan 07): unit test JVM pertama — CI merah bila test gagal,
       # sebelum APK dibangun (fail-fast).

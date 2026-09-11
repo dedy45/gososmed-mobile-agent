@@ -156,6 +156,20 @@ class AgentWsClient(
                         if (obj.optBoolean("ok")) {
                             onStatus("paired ✓")
                             AgentLog.event("pairing diterima ✓")
+                            // v0.7.0: server menyertakan versi agent terbaru +
+                            // URL APK di register_ack (satu sumber kebenaran
+                            // dengan dasbor BYOD) → simpan untuk banner update.
+                            obj.optJSONObject("result")?.let { res ->
+                                val latest = res.optString("latest_agent_version", "")
+                                val apkUrl = res.optString("apk_url", "")
+                                if (latest.isNotEmpty()) {
+                                    AgentUpdateState.latestVersion = latest
+                                    if (apkUrl.isNotEmpty()) AgentUpdateState.apkUrl = apkUrl
+                                    if (AgentUpdateState.isNewer(BuildConfig.VERSION_NAME)) {
+                                        AgentLog.event("update tersedia: v$latest (terpasang v${BuildConfig.VERSION_NAME}) — buka tab Setup → Cek Update")
+                                    }
+                                }
+                            }
                         } else {
                             val reason = obj.optString("error", "pairing ditolak")
                             onStatus("pairing ditolak: $reason")
@@ -246,8 +260,40 @@ class AgentWsClient(
                 .put("sdk_int", Build.VERSION.SDK_INT)
                 .put("screen", "${dm.widthPixels}x${dm.heightPixels}")
                 .put("density", "${dm.density}x")
-                .put("agent_version", BuildConfig.VERSION_NAME))
+                .put("agent_version", BuildConfig.VERSION_NAME)
+                .put("installed_platforms", installedSocialPlatforms()))
         webSocket.send(hello.toString())
+    }
+
+    /**
+     * v0.7.0 — laporkan platform sosial yang benar-benar terpasang di user
+     * primary (clone MIUI/XSpace di user lain tidak terlihat PackageManager —
+     * sesuai kebutuhan: hanya app murni yang di-automasi). Dasbor memakainya
+     * untuk menawarkan hanya app yang ada di HP ini. Dibaca via PackageManager
+     * langsung agar tidak bergantung status service aksesibilitas saat hello
+     * dikirim.
+     */
+    private fun installedSocialPlatforms(): org.json.JSONArray {
+        val known = linkedMapOf(
+            "instagram" to listOf("com.instagram.android"),
+            "tiktok" to listOf("com.ss.android.ugc.trill", "com.zhiliaoapp.musically"),
+            "youtube" to listOf("com.google.android.youtube"),
+            "facebook" to listOf("com.facebook.katana"),
+            "threads" to listOf("com.instagram.barcelona"),
+        )
+        val out = org.json.JSONArray()
+        for ((platform, pkgs) in known) {
+            val installed = pkgs.any { pkg ->
+                try {
+                    context.packageManager.getPackageInfo(pkg, 0)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            if (installed) out.put(platform)
+        }
+        return out
     }
 
     private fun handleReject(reason: String) {

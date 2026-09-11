@@ -28,11 +28,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle 8.9
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip
-          echo "$GITHUB_WORKSPACE/gradle-8.9/bin" >> "$GITHUB_PATH"
+      - name: Setup Gradle 8.9 (cached, action resmi — stabil, tanpa wget manual)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
       # P0-1 (Plan 07): keystore TIDAK lagi di repo — di-decode dari Secrets
       # ke RUNNER_TEMP (dibersihkan otomatis), env dilempar ke Gradle.

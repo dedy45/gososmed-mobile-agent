@@ -13,7 +13,7 @@ import org.json.JSONObject
  * Request  : { "id": 1, "cmd": "dump" | "tap" | "tapByText" | "setText"
  *                    | "back" | "home" | "recents" | "notify" | "package"
  *                    | "startApp" | "killApp" | "hasPackage" | "listPackages"
- *                    | "dumpWindows" | "screenshot" | "ping", ...args }
+ *                    | "dumpWindows" | "screenshot" | "ping" | "wake", ...args }
  * Response : { "id": 1, "ok": true,  "result": {...} }
  *          : { "id": 1, "ok": false, "error": "..." }
  */
@@ -38,6 +38,8 @@ object AgentCommand {
     const val CMD_DUMP_WINDOWS = "dumpWindows"
     // FG2: capture current display as PNG (AccessibilityService API 30+).
     const val CMD_SCREENSHOT = "screenshot"
+    // v0.7.0: nyalakan layar sebelum job saat layar padam (blueprint P0-4).
+    const val CMD_WAKE = "wake"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -182,6 +184,12 @@ object AgentCommand {
             }
             CMD_LIST_PACKAGES -> {
                 resp.put("ok", true).put("result", JSONObject().put("packages", svc.listPackages()))
+            }
+            CMD_WAKE -> {
+                // v0.7.0: result.ok=false = PowerManager gagal — sisi Go
+                // memperlakukan wake sebagai best-effort dan membaca dump
+                // berikutnya sebagai kebenaran (layar terkunci = jujur gagal).
+                resp.put("ok", true).put("result", JSONObject().put("ok", svc.wakeScreen()))
             }
             CMD_DUMP_WINDOWS -> {
                 try {

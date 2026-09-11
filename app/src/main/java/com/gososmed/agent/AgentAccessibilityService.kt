@@ -291,13 +291,47 @@ class AgentAccessibilityService : AccessibilityService() {
 
     /**
      * Launches the app identified by [packageName] (e.g. com.facebook.katana).
-     * When [activity] is provided, launches its explicit component via
-     * setClassName — this avoids the Android resolver (app chooser) that
-     * appears when a clone / dual-app matches the same implicit launcher intent.
-     * Without [activity], falls back to getLaunchIntentForPackage (implicit).
+     *
+     * v0.7.0 — jalur utama memakai LauncherApps.startMainActivity dengan
+     * UserHandle PRIMARY (user 0): MIUI XSpace TIDAK menampilkan resolver
+     * Dual Apps bila user target eksplisit, jadi chooser bukan kewajiban dan
+     * seharusnya tidak pernah muncul (pelajaran produksi 2026-09-11: chooser
+     * menelan launch TikTok/FB dan verify gagal "layar tidak dikenali").
+     * Clone XSpace hidup di user lain (999) — getActivityList(primary) tidak
+     * melihatnya, jadi app murni selalu yang dipilih; jika yang terpasang
+     * HANYA clone, daftar kosong → jujur gagal lewat jalur fallback.
+     *
+     * Fallback (perilaku lama): [activity] → komponen eksplisit setClassName;
+     * tanpa [activity] → getLaunchIntentForPackage (implisit).
      * Returns false if the app is not installed or launch fails.
      */
     fun startApp(packageName: String, activity: String? = null): Boolean {
+        try {
+            val lm = getSystemService(android.content.Context.LAUNCHER_APPS_SERVICE) as? android.content.pm.LauncherApps
+            if (lm != null) {
+                val me = android.os.Process.myUserHandle()
+                val items = lm.getActivityList(packageName, me)
+                if (items.isNotEmpty()) {
+                    val target = if (!activity.isNullOrEmpty()) {
+                        android.content.ComponentName(packageName, expandActivityName(packageName, activity))
+                    } else {
+                        null
+                    }
+                    // Activity yang diminta dipakai hanya bila ia memang
+                    // launcher activity user primary; selain itu pakai
+                    // launcher default agar startMainActivity tidak gagal diam-diam.
+                    val component = if (target != null && items.any { it.componentName == target }) {
+                        target
+                    } else {
+                        items[0].componentName
+                    }
+                    lm.startMainActivity(component, me, null, null)
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "startApp($packageName, $activity) jalur LauncherApps gagal, fallback intent", e)
+        }
         val intent = if (activity != null) {
             Intent().setClassName(packageName, activity)
         } else {
@@ -316,6 +350,47 @@ class AgentAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.w(TAG, "startApp($packageName, $activity) gagal", e)
             return false
+        }
+    }
+
+    /** Mengubah nama activity relatif (".LoginActivity") menjadi absolut. */
+    private fun expandActivityName(pkg: String, activity: String): String {
+        return if (activity.startsWith(".")) pkg + activity else activity
+    }
+
+    // ---- Act: screen state (wake) ----
+
+    /**
+     * v0.7.0 — command `wake` (blueprint Go-sosmed docs/3-ops/15 P0-4):
+     * nyalakan layar saat job tiba dalam keadaan layar padam. Tanpa ini dump
+     * UI mengembalikan null root dan verify/harvest gagal "layar tidak
+     * dikenali".
+     *
+     * Wakelock ACQUIRE_CAUSES_WAKEUP menyalakan layar tanpa izin khusus
+     * (deprecated tapi masih berfungsi di API 26+). Keyguard PIN/pola TIDAK
+     * bisa dibuka dari sini — caller membaca dump berikutnya sebagai kondisi
+     * terkunci yang jujur, bukan retry buta. true berarti layar menyala atau
+     * wake terkirim; false bila PowerManager tidak tersedia/gagal.
+     */
+    fun wakeScreen(): Boolean {
+        return try {
+            val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+                ?: return false
+            if (!pm.isInteractive) {
+                @Suppress("DEPRECATION")
+                val wl = pm.newWakeLock(
+                    android.os.PowerManager.FULL_WAKE_LOCK or
+                        android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                        android.os.PowerManager.ON_AFTER_RELEASE,
+                    "gososmed:wake"
+                )
+                wl.acquire(5_000)
+                wl.release()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "wakeScreen gagal", e)
+            false
         }
     }
 

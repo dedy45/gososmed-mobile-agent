@@ -73,6 +73,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var notifBtn: Button
     private lateinit var openA11yBtn: Button
     private lateinit var debugSection: View
+    private lateinit var updateInfoTv: TextView
+    private lateinit var checkUpdateBtn: Button
+    private lateinit var downloadUpdateBtn: Button
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
     private var versionTapCount = 0
@@ -140,6 +143,14 @@ class MainActivity : AppCompatActivity() {
         notifBtn = findViewById(R.id.notifBtn)
         openA11yBtn = findViewById(R.id.openAccessibilityBtn)
         debugSection = findViewById(R.id.debugSection)
+        updateInfoTv = findViewById(R.id.updateInfoTv)
+        checkUpdateBtn = findViewById(R.id.checkUpdateBtn)
+        downloadUpdateBtn = findViewById(R.id.downloadUpdateBtn)
+        checkUpdateBtn.setOnClickListener { checkUpdateNow() }
+        downloadUpdateBtn.setOnClickListener { openApkDownload() }
+        // Jalur manual cadangan: tahan teks versi (tap biasa tetap mode debug).
+        versionTv.setOnLongClickListener { checkUpdateNow(); true }
+        refreshUpdateState()
 
         setupTabs()
 
@@ -186,6 +197,82 @@ class MainActivity : AppCompatActivity() {
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
         handlePairIntent(intent)
         refreshStatus()
+    }
+
+    // ---- Cek update APK (v0.7.0) ----
+
+    private fun refreshUpdateState() {
+        val current = BuildConfig.VERSION_NAME
+        when {
+            AgentUpdateState.isNewer(current) -> {
+                updateInfoTv.text = "Update tersedia: v${AgentUpdateState.latestVersion} (terpasang v$current)."
+                downloadUpdateBtn.visibility =
+                    if (AgentUpdateState.apkUrl.isNotEmpty()) View.VISIBLE else View.GONE
+            }
+            AgentUpdateState.latestVersion.isNotEmpty() -> {
+                updateInfoTv.text = "Sudah versi terbaru (v$current)."
+                downloadUpdateBtn.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun checkUpdateNow() {
+        updateInfoTv.text = "Memeriksa update…"
+        Thread {
+            try {
+                val req = okhttp3.Request.Builder()
+                    .url("https://api.github.com/repos/dedy45/gososmed-mobile-agent/releases/latest")
+                    .header("Accept", "application/vnd.github+json")
+                    .build()
+                okhttp3.OkHttpClient().newCall(req).execute().use { resp ->
+                    val body = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) throw IllegalStateException("GitHub HTTP ${resp.code}")
+                    val json = org.json.JSONObject(body)
+                    val tag = json.optString("tag_name", "").removePrefix("v")
+                    var apk = ""
+                    val assets = json.optJSONArray("assets")
+                    if (assets != null) {
+                        for (i in 0 until assets.length()) {
+                            val a = assets.getJSONObject(i)
+                            if (a.optString("name", "").endsWith(".apk")) {
+                                apk = a.optString("browser_download_url", "")
+                                break
+                            }
+                        }
+                    }
+                    if (tag.isNotEmpty()) {
+                        AgentUpdateState.latestVersion = tag
+                        if (apk.isNotEmpty()) AgentUpdateState.apkUrl = apk
+                        AgentUpdateState.checkedAt = System.currentTimeMillis()
+                    }
+                    val msg = if (AgentUpdateState.isNewer(BuildConfig.VERSION_NAME)) {
+                        "Update tersedia: v${AgentUpdateState.latestVersion}"
+                    } else {
+                        "Sudah versi terbaru (v${BuildConfig.VERSION_NAME})"
+                    }
+                    runOnUiThread {
+                        refreshUpdateState()
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                        AgentLog.event("cek update: $msg")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    updateInfoTv.text = "Gagal cek update: ${e.message}"
+                    AgentLog.event("cek update gagal: ${e.message}")
+                }
+            }
+        }.start()
+    }
+
+    private fun openApkDownload() {
+        val url = AgentUpdateState.apkUrl
+        if (url.isEmpty()) return
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Tidak bisa membuka tautan unduhan", Toast.LENGTH_LONG).show()
+        }
     }
 
     // ---- Tab ----
@@ -446,6 +533,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        refreshUpdateState()
         val filter = IntentFilter(AgentForegroundService.ACTION_STATUS)
         try {
             registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)

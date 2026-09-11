@@ -11,6 +11,32 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-11
+
+### Added
+- **Command `wake`** (blueprint Go-sosmed P0-4): server bisa menyalakan layar
+  HP yang padam sebelum verify/harvest (wakelock ACQUIRE_CAUSES_WAKEUP).
+  Tanpa ini dump UI mengembalikan null root saat layar mati. Keyguard
+  PIN/pola tetap tidak bisa dibuka — kondisi itu dilaporkan jujur.
+- **Sinkron versi / cek update**: kartu "Pembaruan aplikasi" baru di tab
+  Setup — tombol **Cek Update** (menanyakan GitHub Releases) + tombol
+  **Unduh APK** saat ada versi lebih baru. Otomatis: server menyertakan
+  `latest_agent_version` + `apk_url` di `register_ack` setiap koneksi, jadi
+  status update tampil tanpa cek manual. Cadangan: tahan teks versi di header.
+- **`installed_platforms` di hello**: agent melaporkan platform sosial yang
+  benar-benar terpasang di user primary (instagram/tiktok/youtube/facebook/
+  threads) supaya dasbor hanya menawarkan app yang ada di HP ini.
+
+### Fixed
+- **Anti-chooser Dual Apps MIUI di sumbernya**: `startApp` kini memakai
+  `LauncherApps.startMainActivity` dengan UserHandle primary (user 0) —
+  resolver XSpace (com.miui.securitycore) tidak lagi muncul saat server
+  meluncurkan TikTok/Facebook di HP yang punya app clone (insiden produksi
+  2026-09-11: chooser menelan launch → verify "layar tidak dikenali").
+  Clone berbagi nama package dengan app murni tetapi hidup di user lain
+  (999); getActivityList(primary) tidak melihatnya, jadi yang diluncurkan
+  selalu app murni. Jalur intent lama tetap ada sebagai fallback.
+
 ## [0.6.1] — 2026-09-04
 
 ### Added
@@ -156,7 +182,8 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   `device_id` persisten.
 - CI GitHub Actions: build APK per push (artifact `gososmed-agent-debug`).
 
-[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.5.0-dev.1...v0.6.0
 [0.5.0-dev.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.4.1...v0.5.0-dev.1

@@ -329,6 +329,48 @@
                         android:layout_marginTop="8dp"
                         android:text="Izinkan" />
                 </LinearLayout>
+
+                <!-- Pembaruan aplikasi (v0.7.0) -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Pembaruan aplikasi"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/updateInfoTv"
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Versi terbaru dicek otomatis setiap tersambung ke server. Tahan teks versi di atas untuk cek manual." />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/checkUpdateBtn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Cek Update" />
+
+                        <Button
+                            android:id="@+id/downloadUpdateBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="Unduh APK"
+                            android:visibility="gone" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
         </ScrollView>
 
