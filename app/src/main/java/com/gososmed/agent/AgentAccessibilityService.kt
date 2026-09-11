@@ -32,6 +32,13 @@ class AgentAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "GoAgent"
+
+        /** Batas tunggu bukti foreground setelah launch (v0.7.1). Cold start
+         *  app berat (Facebook/TikTok) di HP kelas menengah bisa 5-7 detik. */
+        private const val LAUNCH_VERIFY_TIMEOUT_MS = 10_000L
+
+        /** Jarak antar pemeriksaan foreground; murah karena lokal di HP. */
+        private const val FOREGROUND_POLL_MS = 250L
         @Volatile
         var instance: AgentAccessibilityService? = null
             private set
@@ -305,7 +312,78 @@ class AgentAccessibilityService : AccessibilityService() {
      * tanpa [activity] → getLaunchIntentForPackage (implisit).
      * Returns false if the app is not installed or launch fails.
      */
-    fun startApp(packageName: String, activity: String? = null): Boolean {
+    fun startApp(packageName: String, activity: String? = null): Boolean =
+        startAppVerified(packageName, activity).first
+
+    /**
+     * v0.7.1 — launch yang TIDAK BOLEH berbohong.
+     *
+     * Versi lama mengembalikan true begitu startMainActivity/startActivity
+     * tidak melempar exception. Itu hanya tanda terima PENGIRIMAN, bukan bukti
+     * eksekusi: sejak Android 10 permintaan launch dari background (BAL)
+     * ditelan sistem tanpa exception, sehingga server menerima ok=true padahal
+     * layar tetap di launcher (insiden produksi 2026-09-11 di 5 platform).
+     *
+     * Urutan baru:
+     *  1. pasang overlay 1x1 (pengecualian BAL) — lihat AgentOverlay;
+     *  2. kirim launch;
+     *  3. TUNGGU sampai foreground benar-benar milik package target;
+     *  4. bila tidak terbukti → false + alasan yang bisa ditindak, bukan
+     *     sukses palsu.
+     *
+     * Menunggu di sisi APK (event lokal, 250 ms) jauh lebih murah daripada
+     * polling dari server yang butuh puluhan round-trip WebSocket.
+     */
+    fun startAppVerified(packageName: String, activity: String? = null): Pair<Boolean, String?> {
+        if (!hasPackage(packageName)) {
+            return false to "not_installed: $packageName tidak terpasang di HP ini"
+        }
+        val overlayOk = AgentOverlay.ensure(this)
+        if (!startAppRaw(packageName, activity)) {
+            return false to "launch_rejected: sistem menolak permintaan membuka $packageName"
+        }
+        val shown = awaitForeground(packageName, LAUNCH_VERIFY_TIMEOUT_MS)
+        if (shown) return true to null
+        val current = currentPackage().ifEmpty { "tidak diketahui" }
+        val reason = if (!overlayOk) {
+            "bal_blocked: launch diblokir sistem (yang tampil: $current). " +
+                "Izin 'tampil di atas app lain' belum aktif untuk GoSosmed Agent" +
+                if (android.os.Build.MANUFACTURER.lowercase().contains("xiaomi") ||
+                    android.os.Build.MANUFACTURER.lowercase().contains("redmi") ||
+                    android.os.Build.MANUFACTURER.lowercase().contains("poco")
+                ) {
+                    "; di MIUI/HyperOS aktifkan juga Izin lainnya → 'Tampilkan jendela pop-up saat berjalan di latar belakang' dan Autostart"
+                } else {
+                    ""
+                }
+        } else {
+            "launch_not_foreground: $packageName tidak muncul dalam " +
+                "${LAUNCH_VERIFY_TIMEOUT_MS / 1000}s (yang tampil: $current)"
+        }
+        return false to reason
+    }
+
+    /**
+     * Menunggu package target menjadi pemilik window aktif. Mengembalikan
+     * false bila grace habis — pemanggil WAJIB memperlakukannya sebagai gagal
+     * jujur, bukan alasan untuk menap buta (insiden browser Comet terbuka
+     * karena tap jatuh di home screen).
+     */
+    private fun awaitForeground(packageName: String, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (currentPackage() == packageName) return true
+            try {
+                Thread.sleep(FOREGROUND_POLL_MS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return currentPackage() == packageName
+            }
+        }
+        return currentPackage() == packageName
+    }
+
+    private fun startAppRaw(packageName: String, activity: String? = null): Boolean {
         try {
             val lm = getSystemService(android.content.Context.LAUNCHER_APPS_SERVICE) as? android.content.pm.LauncherApps
             if (lm != null) {
@@ -413,6 +491,49 @@ class AgentAccessibilityService : AccessibilityService() {
         val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return false
         am.killBackgroundProcesses(packageName)
         return true
+    }
+
+    /**
+     * v0.7.1 — killApp yang menyatakan BATASNYA, bukan hanya true.
+     *
+     * `killBackgroundProcesses` TIDAK sama dengan `am force-stop`: proses yang
+     * sedang di foreground / punya service hidup tidak akan mati. Server dulu
+     * menganggap true = layar sudah direset ke kondisi deterministik — asumsi
+     * palsu yang membuat harvest menap layar yang salah. Sekarang mode
+     * dilaporkan apa adanya supaya Go bisa memilih strategi (HOME + relaunch)
+     * ketimbang percaya reset yang tidak pernah terjadi.
+     */
+    fun killAppMode(packageName: String): String {
+        val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager
+            ?: return "unavailable"
+        am.killBackgroundProcesses(packageName)
+        return if (currentPackage() == packageName) "foreground_survived" else "background_only"
+    }
+
+    /**
+     * v0.7.1 — kapabilitas nyata perangkat ini, dibaca dari sistem (bukan
+     * asumsi). Dipakai backend untuk PREFLIGHT: job harvest yang pasti gagal
+     * ditolak lebih awal dengan alasan yang bisa ditindak pemilik HP,
+     * ketimbang menumpuk job yang berakhir platform_error.
+     */
+    fun capabilitiesJson(): JSONObject {
+        val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        return JSONObject().apply {
+            put("agent_version", BuildConfig.VERSION_NAME)
+            put("api_level", Build.VERSION.SDK_INT)
+            put("manufacturer", Build.MANUFACTURER)
+            put("model", Build.MODEL)
+            put("a11y_ready", isServiceReady())
+            // Pengecualian Background Activity Launch — penentu bisa/tidaknya
+            // membuka app target dari server.
+            put("can_draw_overlay", AgentOverlay.canDraw(this@AgentAccessibilityService))
+            put("overlay_attached", AgentOverlay.isAttached())
+            put("can_launch_app", AgentOverlay.canDraw(this@AgentAccessibilityService))
+            put("can_force_stop", false)
+            put("can_screenshot", Build.VERSION.SDK_INT >= 30)
+            put("battery_unrestricted", pm?.isIgnoringBatteryOptimizations(packageName) == true)
+            put("screen_interactive", pm?.isInteractive == true)
+        }
     }
 
     /**

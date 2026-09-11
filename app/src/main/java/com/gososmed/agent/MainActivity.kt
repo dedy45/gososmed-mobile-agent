@@ -79,6 +79,9 @@ class MainActivity : AppCompatActivity() {
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
     private var versionTapCount = 0
+    // v0.7.1: dialog izin overlay hanya sekali per sesi UI (tidak menghantui
+    // pemilik HP setiap kali activity resume).
+    private var overlayAsked = false
     private var lastStatus = ""
     private var logPaused = false
     private var pausedDirty = false
@@ -451,6 +454,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Izin "tampil di atas app lain" (v0.7.1, PENENTU harvest) ----
+
+    /**
+     * Tanpa izin ini agent TIDAK BISA membuka app target dari server: Android
+     * memblokir Background Activity Launch dan permintaan launch ditelan tanpa
+     * error (insiden produksi 2026-09-11: kelima platform gagal, layar tetap
+     * di launcher). Izin overlay adalah pengecualian BAL resmi — pola yang
+     * dipakai mobilerun-portal. Karena itu izin ini diminta SEKALI per sesi
+     * secara proaktif, bukan disembunyikan di tab Setup.
+     */
+    private fun maybeAskOverlay() {
+        if (AgentOverlay.canDraw(this) || overlayAsked) return
+        overlayAsked = true
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Satu izin lagi agar otomasi bisa jalan")
+            .setMessage(
+                "GoSosmed Agent butuh izin \"Tampilkan di atas aplikasi lain\".\n\n" +
+                    "Tanpa izin ini Android memblokir agent saat membuka " +
+                    "Instagram/TikTok/Facebook/Threads/YouTube, sehingga cek sesi " +
+                    "selalu gagal." +
+                    if (isXiaomiFamily()) {
+                        "\n\nKhusus MIUI/HyperOS: di halaman izin aplikasi, nyalakan juga " +
+                            "\"Tampilkan jendela pop-up saat berjalan di latar belakang\" " +
+                            "dan \"Mulai otomatis\" (Autostart)."
+                    } else {
+                        ""
+                    }
+            )
+            .setPositiveButton("Buka Setelan") { _, _ -> openOverlaySettings() }
+            .setNegativeButton("Nanti", null)
+            .show()
+    }
+
+    private fun openOverlaySettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) {
+            // Sebagian ROM menolak intent per-package — buka daftar umumnya.
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            } catch (e2: Exception) {
+                toast("Buka Setelan → Aplikasi → GoSosmed Agent → Tampilkan di atas aplikasi lain")
+            }
+        }
+    }
+
+    private fun isXiaomiFamily(): Boolean {
+        val m = Build.MANUFACTURER.lowercase()
+        return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco")
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         refreshPerms()
@@ -534,6 +591,10 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshStatus()
         refreshUpdateState()
+        // v0.7.1: izin overlay = pengecualian Background Activity Launch.
+        // Tanpa ini agent tidak pernah bisa membuka app target dari server.
+        maybeAskOverlay()
+        if (AgentOverlay.canDraw(this)) AgentOverlay.ensure(this)
         val filter = IntentFilter(AgentForegroundService.ACTION_STATUS)
         try {
             registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)

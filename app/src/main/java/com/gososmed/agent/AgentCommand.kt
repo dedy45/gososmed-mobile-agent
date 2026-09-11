@@ -40,6 +40,10 @@ object AgentCommand {
     const val CMD_SCREENSHOT = "screenshot"
     // v0.7.0: nyalakan layar sebelum job saat layar padam (blueprint P0-4).
     const val CMD_WAKE = "wake"
+    // v0.7.1: kapabilitas nyata perangkat (izin overlay/BAL, force-stop,
+    // screenshot, baterai) untuk PREFLIGHT backend — menolak job yang pasti
+    // gagal, bukan menumpuk platform_error.
+    const val CMD_CAPABILITIES = "capabilities"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -164,9 +168,18 @@ object AgentCommand {
                     resp.put("ok", false).put("error", "startApp requires package")
                 } else {
                     val activity = req.optString("activity", "")
+                    // v0.7.1: hasil launch TERVERIFIKASI (foreground benar-benar
+                    // milik package target), bukan tanda terima pengiriman.
+                    // result.ok=false + reason yang bisa ditindak pemilik HP.
+                    val (launched, reason) = svc.startAppVerified(pkg, activity.ifEmpty { null })
                     resp.put("ok", true).put(
                         "result",
-                        JSONObject().put("ok", svc.startApp(pkg, activity.ifEmpty { null }))
+                        JSONObject().apply {
+                            put("ok", launched)
+                            put("package", pkg)
+                            put("foreground", svc.currentPackage())
+                            if (reason != null) put("reason", reason)
+                        }
                     )
                 }
             }
@@ -175,7 +188,19 @@ object AgentCommand {
                 if (pkg.isEmpty()) {
                     resp.put("ok", false).put("error", "killApp requires package")
                 } else {
-                    resp.put("ok", true).put("result", JSONObject().put("ok", svc.killApp(pkg)))
+                    // v0.7.1: nyatakan BATAS killApp. killBackgroundProcesses
+                    // bukan force-stop; app yang sedang di foreground selamat.
+                    // mode dilaporkan agar server tidak mengasumsikan layar
+                    // sudah direset ke kondisi deterministik.
+                    val mode = svc.killAppMode(pkg)
+                    resp.put("ok", true).put(
+                        "result",
+                        JSONObject().apply {
+                            put("ok", mode != "unavailable")
+                            put("mode", mode)
+                            put("force_stop", false)
+                        }
+                    )
                 }
             }
             CMD_HAS_PACKAGE -> {
@@ -184,6 +209,11 @@ object AgentCommand {
             }
             CMD_LIST_PACKAGES -> {
                 resp.put("ok", true).put("result", JSONObject().put("packages", svc.listPackages()))
+            }
+            CMD_CAPABILITIES -> {
+                // v0.7.1: kapabilitas dibaca dari sistem, dipakai backend untuk
+                // preflight (tolak job yang pasti gagal, dengan alasan jelas).
+                resp.put("ok", true).put("result", svc.capabilitiesJson())
             }
             CMD_WAKE -> {
                 // v0.7.0: result.ok=false = PowerManager gagal — sisi Go

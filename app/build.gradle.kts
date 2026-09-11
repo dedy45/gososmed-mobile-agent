@@ -36,8 +36,8 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.7.0"
+        versionCode = 14
+        versionName = "0.7.1"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

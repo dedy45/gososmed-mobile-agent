@@ -17,6 +17,37 @@
          user bisa membebaskan agent dari optimasi baterai dalam 1 tap dari
          UI onboarding (penyebab kegagalan #1 di MIUI/dkk). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- v0.7.1 AKAR MASALAH HARVEST (bukti produksi 2026-09-11: startApp
+         melapor ok=true tetapi foreground tetap com.miui.home di 5 platform).
+
+         Sejak Android 10 (API 29) memulai activity dari background DIBLOKIR
+         (Background Activity Launch). AccessibilityService kita tidak punya
+         window terlihat, jadi setiap startApp dihitung sebagai BAL dan ditelan
+         sistem TANPA exception - itulah sebabnya APK melapor sukses palsu.
+
+         SYSTEM_ALERT_WINDOW adalah pengecualian BAL yang didokumentasikan:
+         app yang punya overlay window dianggap punya window terlihat. Ini
+         pola yang dipakai mobilerun-portal (droidrun) dan satu-satunya izin
+         penting yang TIDAK kita miliki. Overlay 1x1 transparan dipasang
+         AgentOverlay tepat sebelum launch. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- wakeScreen() memanggil PowerManager.newWakeLock; TANPA izin ini
+         wakelock melempar SecurityException sehingga command `wake` (P0-4)
+         selalu gagal diam-diam saat layar padam. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Agent kembali online setelah HP reboot tanpa dibuka manual. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Android 11+ package visibility: selain QUERY_ALL_PACKAGES, deklarasi
+         <queries> eksplisit memastikan queryIntentActivities /
+         getLaunchIntentForPackage / LauncherApps.getActivityList tetap
+         melihat app target (pola mobilerun-portal). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:label="@string/app_name"
