@@ -36,8 +36,8 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "0.7.1"
+        versionCode = 15
+        versionName = "0.8.0"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
@@ -76,6 +76,14 @@ dependencies {
     // OkHttp for outbound WebSocket to the GoSosmed agenthub.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // v0.8.0 TRANSPORT TIER 1 — Shizuku: menjalankan perintah sebagai uid
+    // 2000 (user `shell`), hak yang sama dengan `adb shell`. Dipakai untuk
+    // `am start` (lolos Background Activity Launch), `am force-stop` (reset
+    // deterministik) dan `input tap` (INJECT_EVENTS). `provider` menyediakan
+    // rikka.shizuku.ShizukuProvider yang dideklarasikan di AndroidManifest.
+    // Keduanya ada di mavenCentral (sudah terdaftar di settings.gradle.kts).
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     // P1-1 (Plan 07): unit test JVM pertama (HierarchySerializer/AgentCommand
     // jalur service-null) — dijalankan CI step testDebugUnitTest.
     testImplementation("junit:junit:4.13.2")

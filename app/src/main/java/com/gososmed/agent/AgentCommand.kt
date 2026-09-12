@@ -44,6 +44,13 @@ object AgentCommand {
     // screenshot, baterai) untuk PREFLIGHT backend — menolak job yang pasti
     // gagal, bukan menumpuk platform_error.
     const val CMD_CAPABILITIES = "capabilities"
+    // v0.8.0: eksekusi shell sebagai uid 2000 lewat Shizuku (TIER 1).
+    // Hanya biner di daftar izin ShizukuShell yang boleh jalan; bila Shizuku
+    // tidak siap perintah DITOLAK dengan reason yang bisa ditindak, bukan
+    // gagal senyap. Server memakainya untuk am/input/pm/dumpsys.
+    const val CMD_SHELL = "shell"
+    // v0.8.0: minta izin Shizuku dari sisi server (memunculkan dialog di HP).
+    const val CMD_SHIZUKU_REQUEST = "shizukuRequest"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -178,6 +185,10 @@ object AgentCommand {
                             put("ok", launched)
                             put("package", pkg)
                             put("foreground", svc.currentPackage())
+                            // v0.8.0: server tahu keandalan launch ini
+                            // (shell_shizuku = deterministik, accessibility =
+                            // best-effort dan bisa diblokir BAL/OEM).
+                            put("transport", svc.lastLaunchTransport)
                             if (reason != null) put("reason", reason)
                         }
                     )
@@ -198,7 +209,19 @@ object AgentCommand {
                         JSONObject().apply {
                             put("ok", mode != "unavailable")
                             put("mode", mode)
-                            put("force_stop", false)
+                            // v0.8.0: force_stop kini BISA true — hanya bila
+                            // jalur shell (Shizuku) dipakai. Server boleh
+                            // menganggap layar benar-benar direset HANYA saat
+                            // mode == "force_stop".
+                            put("force_stop", mode == "force_stop")
+                            put(
+                                "transport",
+                                if (mode == "force_stop") {
+                                    AgentAccessibilityService.TRANSPORT_SHELL
+                                } else {
+                                    AgentAccessibilityService.TRANSPORT_A11Y
+                                }
+                            )
                         }
                     )
                 }
@@ -214,6 +237,48 @@ object AgentCommand {
                 // v0.7.1: kapabilitas dibaca dari sistem, dipakai backend untuk
                 // preflight (tolak job yang pasti gagal, dengan alasan jelas).
                 resp.put("ok", true).put("result", svc.capabilitiesJson())
+            }
+            CMD_SHELL -> {
+                // v0.8.0: jalur setara adb. Kegagalan SELALU membawa `reason`
+                // yang bisa ditindak pemilik HP (pasang/nyalakan Shizuku,
+                // beri izin), tidak pernah sukses palsu.
+                val command = req.optString("command", "")
+                if (command.isBlank()) {
+                    resp.put("ok", false).put("error", "shell requires command")
+                } else {
+                    val timeout = req.optLong("timeoutMs", 15_000L).coerceIn(1_000L, 60_000L)
+                    val res = ShizukuShell.exec(command, timeout)
+                    resp.put("ok", true).put(
+                        "result",
+                        JSONObject().apply {
+                            put("ok", res.ok)
+                            put("exit_code", res.exitCode)
+                            put("stdout", res.stdout)
+                            put("stderr", res.stderr)
+                            put("transport", AgentAccessibilityService.TRANSPORT_SHELL)
+                            if (res.failure != null) put("reason", res.failure)
+                        }
+                    )
+                }
+            }
+            CMD_SHIZUKU_REQUEST -> {
+                // Memunculkan dialog izin Shizuku di HP. ok=false berarti
+                // Shizuku belum berjalan — pemilik HP harus membukanya dulu.
+                val asked = ShizukuShell.requestPermission()
+                resp.put("ok", true).put(
+                    "result",
+                    JSONObject().apply {
+                        put("ok", asked)
+                        put("shizuku_running", ShizukuShell.binderAlive())
+                        put("shizuku_permission", ShizukuShell.hasPermission())
+                        if (!asked) {
+                            put(
+                                "reason",
+                                "shizuku_unavailable: layanan Shizuku belum berjalan di HP ini"
+                            )
+                        }
+                    }
+                )
             }
             CMD_WAKE -> {
                 // v0.7.0: result.ok=false = PowerManager gagal — sisi Go

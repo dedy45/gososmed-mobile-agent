@@ -37,6 +37,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Agent kembali online setelah HP reboot tanpa dibuka manual. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- v0.8.0 TRANSPORT TIER 1 (Shizuku). Izin ini membuat agent bisa
+         meminta binder Shizuku dan menjalankan perintah sebagai uid 2000
+         (user `shell`) - hak yang sama dengan `adb shell`. Dampaknya:
+         `am start` bukan lagi Background Activity Launch, `am force-stop`
+         benar-benar mereset app, dan `input tap` memakai INJECT_EVENTS.
+         Ini jalur yang dipakai proyek terbukti produksi (scrcpy, atx-agent,
+         appium-uiautomator2-server), bukan eksperimen. Bila Shizuku tidak
+         dipasang, izin ini tidak berefek dan agent tetap jalan di jalur
+         accessibility (degradasi mulus, bukan crash). -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <!-- Android 11+ package visibility: selain QUERY_ALL_PACKAGES, deklarasi
          <queries> eksplisit memastikan queryIntentActivities /
@@ -62,6 +72,19 @@
              menimpa lewat src/debug/res/xml agar ws:// LAN dev tetap bisa
              dipakai saat pengembangan; kriteria lulus P0-3: domain ws://
              arbitrary GAGAL di build release. -->
+
+        <!-- v0.8.0: ShizukuProvider WAJIB ada agar binder Shizuku diterima
+             saat proses agent dimulai (tanpa ini Shizuku.pingBinder() selalu
+             false walau Shizuku berjalan). authorities memakai
+             ${applicationId}.shizuku sesuai dokumentasi Shizuku-API.
+             multiprocess=false karena agent single-process. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Validation/control channel (DEBUG saja — kode menolak di release,
              lihat AgentReceiver). Exported agar adb shell am broadcast bisa

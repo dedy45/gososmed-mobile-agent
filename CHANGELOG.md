@@ -11,6 +11,46 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-12
+
+### Added
+- **Transport Tier 1 — Shizuku (uid 2000 / shell).** Perintah kini bisa
+  dijalankan dengan hak setara `adb shell` tanpa root dan tanpa PC:
+  `am start` (lolos Background Activity Launch), `am force-stop` (reset
+  layar deterministik), `input tap` (INJECT_EVENTS), `input keyevent 224`.
+  Berkas baru `ShizukuShell.kt` — lihat `docs/SHIZUKU-TRANSPORT.md`.
+- **Command `shell`**: eksekusi perintah dengan daftar putih biner
+  (`am input monkey pm dumpsys wm settings cmd`). Di luar daftar ditolak
+  dengan `reason=blocked`.
+- **Command `shizukuRequest`**: server bisa memunculkan dialog izin Shizuku
+  di HP.
+- **Field `transport`** pada hasil `startApp`/`killApp`/`shell`
+  (`shell_shizuku` = deterministik, `accessibility` = best-effort).
+- **`capabilities` diperluas**: `transport_tier`, `last_launch_transport`,
+  `shizuku_installed/running/permission/permission_denied_forever/uid/version`,
+  `can_shell`, `can_inject_input`.
+- **Dokumentasi kontrak** `docs/AGENT-COMMAND-CONTRACT.md`: daftar command,
+  envelope JSON, seluruh kode `reason`, aturan preflight fail-closed untuk
+  backend, dan copy remediasi untuk frontend `/accounts`.
+
+### Changed
+- `killApp` kini melaporkan `force_stop=true` **hanya** bila force-stop nyata
+  terjadi (jalur Shizuku). Sebelumnya selalu `false`; server tidak boleh lagi
+  mengasumsikan layar sudah bersih tanpa memeriksa field ini.
+- `can_force_stop` dan `can_launch_app` dihitung dari kondisi nyata perangkat,
+  bukan konstanta.
+- `tap` dan `wake` memakai jalur shell bila tersedia, dengan fallback otomatis
+  ke gesture/wakelock.
+
+### Notes
+- Tanpa Shizuku, agent **tetap berfungsi** di Tier 2 (accessibility + overlay
+  v0.7.1) — degradasi mulus, bukan crash.
+- `Shizuku.newProcess` privat sejak API 13; dipakai lewat refleksi dengan
+  fallback aman. Risiko dan rencana migrasi ke `UserService` AIDL
+  didokumentasikan di `docs/SHIZUKU-TRANSPORT.md`.
+- Setelah HP reboot, Shizuku harus di-start ulang (pairing wireless
+  debugging); selama itu transport turun ke Tier 2 secara jujur.
+
 ## [0.7.0] — 2026-09-11
 
 ### Added
