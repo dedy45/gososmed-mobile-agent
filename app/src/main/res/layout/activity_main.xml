@@ -249,10 +249,32 @@
                 android:orientation="vertical"
                 android:paddingBottom="16dp">
 
-                <!-- Aksesibilitas -->
+                <!-- ============================================================
+                     v0.9.0 — TIGA LANGKAH BERURUTAN.
+
+                     Struktur ini mencerminkan kontrak docs/SETUP-3-LANGKAH.md:
+                       Langkah 1 (WAJIB)   : Aksesibilitas
+                       Langkah 2 (WAJIB)   : Izin "tampilkan di atas aplikasi lain"
+                       Langkah 3 (OPSIONAL): Otomasi Lanjutan (ADB lokal)
+
+                     Sebelum v0.9.0 tidak ada kartu izin overlay sama sekali,
+                     padahal izin itu WAJIB (tanpa itu Android menelan permintaan
+                     buka aplikasi tanpa error). Itu sebabnya pengguna bisa
+                     merasa "sudah mengaktifkan semua" tetapi otomasi tetap gagal.
+                     ============================================================ -->
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Langkah 1 — Wajib"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- Langkah 1: Aksesibilitas -->
                 <LinearLayout
                     style="@style/GosoCard"
-                    android:layout_marginTop="14dp"
+                    android:layout_marginTop="6dp"
                     android:orientation="vertical">
 
                     <TextView
@@ -276,10 +298,103 @@
                         android:text="Aktifkan" />
                 </LinearLayout>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Langkah 2 — Wajib"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- Langkah 2: Izin overlay (BAL) — BARU di v0.9.0 -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/permOverlayTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Tampilkan di atas aplikasi lain"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Sejak Android 10, tanpa izin ini sistem membatalkan permintaan membuka Instagram/TikTok/Facebook/Threads/YouTube TANPA pesan error apa pun." />
+
+                    <Button
+                        android:id="@+id/openOverlayBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Aktifkan" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Langkah 3 — Opsional"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- Langkah 3: Otomasi Lanjutan / ADB lokal (v0.9.0) -->
+                <LinearLayout
+                    style="@style/GosoCard"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/adbStatusTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Otomasi Lanjutan (ADB)"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        style="@style/GosoHint"
+                        android:layout_marginTop="2dp"
+                        android:text="Opsional. Membuat pembukaan aplikasi lebih andal (terutama TikTok). Cukup untuk sebagian besar pemakaian tanpa langkah ini. Perlu diulang setiap HP selesai di-restart — itu perilaku Android, bukan aplikasi ini. Tidak perlu memasang aplikasi tambahan apa pun." />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/adbPairBtn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Hubungkan" />
+
+                        <Button
+                            android:id="@+id/adbForgetBtn"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="Putuskan"
+                            android:visibility="gone" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="Dukungan"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
                 <!-- Baterai -->
                 <LinearLayout
                     style="@style/GosoCard"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="6dp"
                     android:orientation="vertical">
 
                     <TextView

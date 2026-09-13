@@ -20,12 +20,14 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
+import com.gososmed.agent.privileged.AdbPairingController
 import java.util.UUID
 /**
  * UI produksi agent (v0.5.0) — tab-based, TANPA scroll halaman panjang.
@@ -48,8 +50,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceInfoTv: TextView
     private lateinit var pairTv: TextView
     private lateinit var permA11yTv: TextView
+    private lateinit var permOverlayTv: TextView
     private lateinit var permBatteryTv: TextView
     private lateinit var permNotifTv: TextView
+    private lateinit var adbStatusTv: TextView
+    private lateinit var adbPairBtn: Button
+    private lateinit var adbForgetBtn: Button
     private lateinit var tabLayout: TabLayout
     private lateinit var panelBeranda: View
     private lateinit var panelSetup: View
@@ -72,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batteryBtn: Button
     private lateinit var notifBtn: Button
     private lateinit var openA11yBtn: Button
+    private lateinit var openOverlayBtn: Button
     private lateinit var debugSection: View
     private lateinit var updateInfoTv: TextView
     private lateinit var checkUpdateBtn: Button
@@ -121,8 +128,12 @@ class MainActivity : AppCompatActivity() {
         deviceInfoTv = findViewById(R.id.deviceInfoTv)
         pairTv = findViewById(R.id.pairTv)
         permA11yTv = findViewById(R.id.permA11yTv)
+        permOverlayTv = findViewById(R.id.permOverlayTv)
         permBatteryTv = findViewById(R.id.permBatteryTv)
         permNotifTv = findViewById(R.id.permNotifTv)
+        adbStatusTv = findViewById(R.id.adbStatusTv)
+        adbPairBtn = findViewById(R.id.adbPairBtn)
+        adbForgetBtn = findViewById(R.id.adbForgetBtn)
         tabLayout = findViewById(R.id.tabLayout)
         panelBeranda = findViewById(R.id.panelBeranda)
         panelSetup = findViewById(R.id.panelSetup)
@@ -145,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         batteryBtn = findViewById(R.id.batteryBtn)
         notifBtn = findViewById(R.id.notifBtn)
         openA11yBtn = findViewById(R.id.openAccessibilityBtn)
+        openOverlayBtn = findViewById(R.id.openOverlayBtn)
         debugSection = findViewById(R.id.debugSection)
         updateInfoTv = findViewById(R.id.updateInfoTv)
         checkUpdateBtn = findViewById(R.id.checkUpdateBtn)
@@ -186,8 +198,12 @@ class MainActivity : AppCompatActivity() {
         openA11yBtn.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        openOverlayBtn.setOnClickListener { openOverlaySettings() }
         batteryBtn.setOnClickListener { requestBatteryExemption() }
         notifBtn.setOnClickListener { requestNotifPermission() }
+        // v0.9.0 — Langkah 3 (opsional): otomasi lanjutan lewat ADB lokal.
+        adbPairBtn.setOnClickListener { showAdbPairDialog() }
+        adbForgetBtn.setOnClickListener { confirmAdbForget() }
 
         // Panel log: render isi yang sudah ada + dengarkan entri baru.
         // Pemilik HP selalu melihat apa yang diminta server (transparansi).
@@ -408,6 +424,179 @@ class MainActivity : AppCompatActivity() {
         permNotifTv.text = "Notifikasi — ${if (notifGranted) "AKTIF ✓" else "BELUM"}"
         notifBtn.isEnabled = !notifGranted
         notifBtn.text = if (notifGranted) "Sudah Aktif" else "Izinkan"
+
+        // v0.9.0 — Langkah 2 (WAJIB): izin overlay / Background Activity Launch.
+        // Sebelum v0.9.0 kartu ini TIDAK ADA di UI, padahal tanpa izin ini
+        // Android menelan permintaan buka aplikasi tanpa error apa pun —
+        // pemilik HP bisa merasa "sudah mengaktifkan semuanya" tetapi otomasi
+        // tetap gagal tanpa petunjuk.
+        val overlayOk = AgentOverlay.canDraw(this)
+        permOverlayTv.text = "Tampilkan di atas aplikasi lain — ${if (overlayOk) "AKTIF ✓" else "BELUM AKTIF"}"
+        openOverlayBtn.isEnabled = !overlayOk
+        openOverlayBtn.text = if (overlayOk) "Sudah Aktif" else "Aktifkan"
+
+        refreshAdbStatus()
+    }
+
+    /**
+     * v0.9.0 — render status Langkah 3 (otomasi lanjutan / ADB lokal).
+     *
+     * Kejujuran status adalah inti kartu ini: "belum pernah dihubungkan"
+     * (tindakan: hubungkan) berbeda dari "terputus setelah HP restart"
+     * (tindakan: hubungkan ULANG). Keduanya ditampilkan apa adanya, bukan
+     * disamarkan menjadi satu pesan "tidak aktif".
+     */
+    private fun refreshAdbStatus() {
+        val st = AdbPairingController.status()
+        val label = when {
+            st.connected -> "Otomasi Lanjutan (ADB) — TERSAMBUNG ✓"
+            st.paired -> "Otomasi Lanjutan (ADB) — TERPUTUS"
+            else -> "Otomasi Lanjutan (ADB) — BELUM DIHUBUNGKAN"
+        }
+        adbStatusTv.text = label
+        adbPairBtn.text = if (st.connected) "Hubungkan Ulang" else "Hubungkan"
+        // Tombol "Putuskan" hanya berguna bila sudah pernah dipasangkan,
+        // karena itulah yang menghapus identitas tersimpan.
+        adbForgetBtn.visibility = if (st.paired) View.VISIBLE else View.GONE
+
+        // Alasan spesifik ditampilkan supaya pemilik HP tahu langkah berikutnya.
+        if (!st.connected && st.error.isNotEmpty()) {
+            adbStatusTv.append("\n${adbReasonText(st.error)}")
+        }
+    }
+
+    /**
+     * Terjemahkan kode `adb_*` (kontrak §4.1) menjadi kalimat yang bisa
+     * ditindak. Kode tak dikenal ditampilkan APA ADANYA, bukan disembunyikan —
+     * menyembunyikan kode membuat penelusuran mustahil.
+     */
+    private fun adbReasonText(code: String): String {
+        val bare = code.substringBefore(':').trim()
+        return when (bare) {
+            "adb_not_paired" ->
+                "Belum dihubungkan. Ketuk Hubungkan, lalu masukkan kode 6 angka dari Pengaturan > Opsi Pengembang > Debug nirkabel > Pairing baru."
+            "adb_pair_failed" ->
+                "Pairing gagal — kode salah atau sudah kedaluwarsa (berlaku 10 menit). Buat kode baru lalu coba lagi."
+            "adb_auth_failed" ->
+                "Kunci agent ditolak perangkat. Ketuk Putuskan, lalu Hubungkan lagi dengan kode baru."
+            "adb_disconnected" ->
+                "Sesi terputus. Biasanya karena Debug nirkabel mati (HP baru di-restart). Nyalakan lagi lalu Hubungkan."
+            "adb_port_unknown" ->
+                "Port Debug nirkabel tidak ditemukan otomatis. Isi alamat IP dan port secara manual di dialog Hubungkan."
+            "adb_disabled" ->
+                "Debug nirkabel sedang mati di HP. Nyalakan di Pengaturan > Opsi Pengembang."
+            else -> code
+        }
+    }
+
+    /**
+     * v0.9.0 — dialog Langkah 3: kumpulkan host/port/kode lalu jalankan pairing.
+     *
+     * Host default 127.0.0.1 (HP memasangkan DIRINYA SENDIRI, koneksi lokal —
+     * tidak menyentuh server GoSosmed). Port dan kode diambil dari layar
+     * Opsi Pengembang > Debug nirkabel.
+     *
+     * Pairing memakan sampai ~20 detik (SPAKE2 + TLS), jadi dijalankan di
+     * thread sendiri dan tombolnya dinonaktifkan selama proses — bukan di
+     * main thread, dan bukan tanpa umpan balik.
+     */
+    private fun showAdbPairDialog() {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val hostEt = EditText(this).apply {
+            hint = "Alamat (biasanya 127.0.0.1)"
+            setText("127.0.0.1")
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+        }
+        val portEt = EditText(this).apply {
+            hint = "Port (dari layar Debug nirkabel)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val codeEt = EditText(this).apply {
+            hint = "Kode 6 angka"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        wrap.addView(
+            TextView(this).apply {
+                text = "Buka Pengaturan > Opsi Pengembang > Debug nirkabel, ketuk " +
+                    "\"Pairing baru\", lalu isi alamat, port, dan kode 6 angka di bawah " +
+                    "(kode berlaku 10 menit)."
+                textSize = 12f
+                setPadding(0, 0, 0, pad / 2)
+            }
+        )
+        wrap.addView(hostEt)
+        wrap.addView(portEt)
+        wrap.addView(codeEt)
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Hubungkan Otomasi Lanjutan")
+            .setView(wrap)
+            .setPositiveButton("Hubungkan", null)
+            .setNegativeButton("Batal", null)
+            .create()
+        dialog.show()
+        // Override listener supaya dialog TIDAK auto-tutup saat gagal validasi:
+        // menutup dialog pada input salah memaksa pengguna membuka ulang dan
+        // mengetik ulang, padahal hanya satu kolom yang salah.
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            .setOnClickListener {
+                val host = hostEt.text.toString().trim().ifEmpty { "127.0.0.1" }
+                val port = portEt.text.toString().trim().toIntOrNull() ?: 0
+                val code = codeEt.text.toString().trim()
+                if (port <= 0) {
+                    portEt.error = "Isi port dari layar Debug nirkabel"
+                    return@setOnClickListener
+                }
+                if (code.length < 6) {
+                    codeEt.error = "Kode pairing 6 angka"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                runAdbPair(host, port, code)
+            }
+    }
+
+    /** Jalankan pairing di thread IO dengan umpan balik di UI. */
+    private fun runAdbPair(host: String, port: Int, code: String) {
+        AgentLog.event("otomasi lanjutan: menghubungkan…")
+        adbPairBtn.isEnabled = false
+        adbStatusTv.text = "Otomasi Lanjutan (ADB) — MENGHUBUNGKAN…"
+        Thread {
+            val (ok, reason) = AdbPairingController.pair(host, port, code)
+            runOnUiThread {
+                adbPairBtn.isEnabled = true
+                if (ok) {
+                    toast("Otomasi lanjutan terhubung")
+                    AgentLog.event("otomasi lanjutan: terhubung ✓")
+                } else {
+                    toast(adbReasonText(reason))
+                    AgentLog.event("otomasi lanjutan gagal: ${reason.ifEmpty { "tanpa alasan" }}")
+                }
+                refreshPerms()
+            }
+        }.start()
+    }
+
+    /** Konfirmasi sebelum menghapus identitas otomasi secara permanen. */
+    private fun confirmAdbForget() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Putuskan otomasi lanjutan?")
+            .setMessage(
+                "Kunci otomasi di HP ini akan dihapus. Setelah itu Anda harus " +
+                    "melakukan pairing ulang dengan kode baru dari Debug nirkabel.\n\n" +
+                    "Otomasi dasar (Aksesibilitas) TIDAK terpengaruh dan tetap berjalan."
+            )
+            .setPositiveButton("Putuskan") { _, _ ->
+                AdbPairingController.forget()
+                AgentLog.event("otomasi lanjutan: diputuskan, kunci dihapus")
+                refreshPerms()
+            }
+            .setNegativeButton("Batal", null)
+            .show()
     }
 
     // ---- Auto-pairing (deep link dari dasbor) ----
