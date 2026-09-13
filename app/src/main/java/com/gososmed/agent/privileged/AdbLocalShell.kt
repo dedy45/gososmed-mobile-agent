@@ -345,27 +345,51 @@ internal class AdbLocalShell(
         false
     }
 
-    /** Putuskan sesi (kunci TETAP tersimpan, jadi pairing tidak perlu diulang). */
+    /**
+     * Putuskan sesi (kunci TETAP tersimpan, jadi pairing tidak perlu diulang).
+     *
+     * TIDAK MEMBLOKIR PEMANGGIL (bug yang diperbaiki di v0.9.2):
+     * `disconnect()` pada library meminta `synchronized (mLock)` — kunci yang
+     * bisa sedang ditahan `autoConnect()` sampai ~11 dtk. Metode ini dipanggil
+     * dari MAIN THREAD (tombol "Putuskan" di tab Setup), jadi memanggilnya
+     * langsung berisiko ANR. Sekarang flag status diturunkan SEKETIKA (UI
+     * langsung melihat "terputus"), sedangkan penutupan socket sebenarnya
+     * dijadwalkan ke thread IO.
+     */
     fun disconnectNow() {
+        // Status dulu: UI harus langsung jujur bahwa sesi sudah tidak dipakai.
         linkUp = false
-        closeActiveStream()
-        try {
-            disconnect()
-        } catch (t: Throwable) {
-            Log.w(TAG, "disconnect gagal", t)
-        }
         cachedUid = -1
+        // Penutupan sebenarnya di thread IO — tidak menahan pemanggil.
+        io.execute {
+            closeActiveStream()
+            try {
+                disconnect()
+            } catch (t: Throwable) {
+                Log.w(TAG, "disconnect gagal", t)
+            }
+        }
     }
 
     /**
-     * Bersihkan resource permanen.
+     * Bersihkan resource permanen (saat ini TIDAK dipanggil siapa pun; disediakan
+     * untuk kelengkapan siklus hidup proses).
      *
      * PENTING: sengaja TIDAK memanggil `close()` dari kelas induk, karena
      * `close()` memusnahkan kunci privat (`PrivateKey.destroy()`), yang membuat
-     * koneksi berikutnya mustahil tanpa generate ulang. Kita hanya `disconnect()`.
+     * koneksi berikutnya mustahil tanpa generate ulang. Kita hanya memutus sesi.
+     *
+     * Karena [disconnectNow] MENJADWALKAN penutupan ke thread IO, kita beri
+     * tenggang singkat agar tugas itu sempat berjalan sebelum executor dimatikan —
+     * tanpa itu socket bisa tertinggal terbuka sampai proses berakhir.
      */
     fun shutdown() {
         disconnectNow()
+        try {
+            io.awaitTermination(1, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
         io.shutdownNow()
     }
 

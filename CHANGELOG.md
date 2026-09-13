@@ -11,6 +11,33 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-09-13
+
+### Fixed — ANR pada tombol "Putuskan" (lanjutan temuan v0.9.2)
+Menutup satu-satunya jalur yang masih memanggil metode library ber-kunci dari
+**main thread**.
+
+`disconnectNow()` memanggil `disconnect()` pada library, yang meminta
+`synchronized (mLock)` — kunci yang bisa sedang ditahan penyambungan latar
+sampai ~11 detik. Metode ini dipanggil dari main thread (tombol **Putuskan** di
+tab Setup, dan `AdbPairingController.forget()`), sehingga menekan tombol itu
+saat penyambungan berjalan bisa membekukan UI.
+
+Sekarang status diturunkan **seketika** (UI langsung jujur bahwa sesi tidak lagi
+dipakai), sedangkan penutupan socket sebenarnya dijadwalkan ke thread IO
+sehingga tidak menahan pemanggil.
+
+### Notes
+- Setelah perbaikan ini, **tidak ada lagi** pemanggilan metode library yang
+  menahan `mLock` dari main thread: `status()`/`exec()` hanya membaca field
+  `@Volatile`; `connect*`, `disconnect`, `openStream` seluruhnya di thread IO.
+- Yang MASIH berjalan di main thread dan dicatat sebagai pekerjaan lanjutan:
+  pemanggilan shell dari command aksesibilitas (`tap`, `startApp`, `wakeScreen`,
+  `killAppMode`) serta `awaitForeground()`. Ini diwarisi dari v0.8.0 dan
+  perbaikannya menuntut pemindahan dispatch perintah secara keseluruhan —
+  terlalu berisiko dilakukan tanpa pengujian perangkat.
+- Belum diuji pada perangkat nyata (rencana fase F9).
+
 ## [0.9.2] — 2026-09-13
 
 ### Fixed — tiga cacat pada transport ADB, ditemukan lewat penelusuran ulang
