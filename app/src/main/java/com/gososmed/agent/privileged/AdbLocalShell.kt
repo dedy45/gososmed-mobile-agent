@@ -165,8 +165,13 @@ internal class AdbLocalShell(
 
     init {
         setApi(android.os.Build.VERSION.SDK_INT)
-        // Pairing selalu ke HP ini sendiri — tidak pernah ke perangkat lain.
-        setHostAddress("127.0.0.1")
+        // Gunakan IP lokal dinamis dari antarmuka Wi-Fi aktual atau fallback loopback
+        try {
+            val detectedIp = io.github.muntashirakon.adb.android.AndroidUtils.getHostIpAddress(appContext)
+            setHostAddress(detectedIp)
+        } catch (_: Exception) {
+            setHostAddress("127.0.0.1")
+        }
         setTimeout(SOCKET_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         // Kita INGIN tahu saat adbd menolak kunci (butuh pairing ulang) supaya
         // bisa melaporkan `adb_auth_failed`, bukan gagal diam-diam.

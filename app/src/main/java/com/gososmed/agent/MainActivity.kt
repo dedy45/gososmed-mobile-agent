@@ -28,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
 import com.gososmed.agent.privileged.AdbPairingController
+import com.gososmed.agent.privileged.AdbPairingOverlay
 import java.util.UUID
 /**
  * UI produksi agent (v0.5.0) — tab-based, TANPA scroll halaman panjang.
@@ -490,25 +491,51 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * v0.9.0 — dialog Langkah 3: kumpulkan host/port/kode lalu jalankan pairing.
+     * v0.9.4 — UX Professional: Seamless Floating Overlay & Intent Navigator.
      *
-     * Host default 127.0.0.1 (HP memasangkan DIRINYA SENDIRI, koneksi lokal —
-     * tidak menyentuh server GoSosmed). Port dan kode diambil dari layar
-     * Opsi Pengembang > Debug nirkabel.
+     * MASALAH KRUSIAL YANG DIATASI:
+     * Pop-up dialog pairing Android di Setelan Wireless Debugging OTOMATIS
+     * TERTUTUP jika pengguna beralih aplikasi. Ketika tertutup, sistem Android
+     * MENGUBAH kode 6-digit dan port pairing menjadi acak baru!
      *
-     * Pairing memakan sampai ~20 detik (SPAKE2 + TLS), jadi dijalankan di
-     * thread sendiri dan tombolnya dinonaktifkan selama proses — bukan di
-     * main thread, dan bukan tanpa umpan balik.
+     * SOLUSI ELEGAN:
+     * 1. Jika izin overlay aktif: Munculkan Floating Window Overlay (AdbPairingOverlay)
+     *    lalu otomatis buka Setelan Opsi Pengembang/Debug nirkabel!
+     * 2. Jendela input melayang di atas layar Setelan tanpa menutup pop-up Android.
+     * 3. IP Wi-Fi terdeteksi otomatis, port dideteksi via mDNS, kode langsung diketik.
+     * 4. Jika izin overlay belum ada, fallback ke dialog reguler di dalam app.
      */
     private fun showAdbPairDialog() {
+        if (AgentOverlay.canDraw(this)) {
+            // Luncurkan Floating Window Input
+            AdbPairingOverlay.show(this) {
+                runOnUiThread { refreshPerms() }
+            }
+
+            // Buka langsung halaman Opsi Pengembang / Wireless Debugging
+            try {
+                val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                startActivity(intent)
+            } catch (_: Exception) {
+                try {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                } catch (e2: Exception) {
+                    toast("Buka Setelan > Opsi Pengembang > Debug nirkabel")
+                }
+            }
+            return
+        }
+
+        // Fallback jika belum beri izin overlay: Dialog biasa di dalam Activity
+        val localIp = io.github.muntashirakon.adb.android.AndroidUtils.getHostIpAddress(this)
         val pad = (16 * resources.displayMetrics.density).toInt()
         val wrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad / 2, pad, 0)
         }
         val hostEt = EditText(this).apply {
-            hint = "Alamat (biasanya 127.0.0.1)"
-            setText("127.0.0.1")
+            hint = "Alamat IP"
+            setText(localIp)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
         }
         val portEt = EditText(this).apply {
@@ -521,9 +548,8 @@ class MainActivity : AppCompatActivity() {
         }
         wrap.addView(
             TextView(this).apply {
-                text = "Buka Pengaturan > Opsi Pengembang > Debug nirkabel, ketuk " +
-                    "\"Pairing baru\", lalu isi alamat, port, dan kode 6 angka di bawah " +
-                    "(kode berlaku 10 menit)."
+                text = "Tips: Aktifkan izin 'Tampilkan di atas aplikasi lain' di Langkah 2 agar jendela input bisa melayang di atas Setelan!\n\n" +
+                    "Buka: Opsi Pengembang > Debug nirkabel > Pairing baru, lalu isi di bawah:"
                 textSize = 12f
                 setPadding(0, 0, 0, pad / 2)
             }
@@ -539,12 +565,10 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Batal", null)
             .create()
         dialog.show()
-        // Override listener supaya dialog TIDAK auto-tutup saat gagal validasi:
-        // menutup dialog pada input salah memaksa pengguna membuka ulang dan
-        // mengetik ulang, padahal hanya satu kolom yang salah.
+
         dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
             .setOnClickListener {
-                val host = hostEt.text.toString().trim().ifEmpty { "127.0.0.1" }
+                val host = hostEt.text.toString().trim().ifEmpty { localIp }
                 val port = portEt.text.toString().trim().toIntOrNull() ?: 0
                 val code = codeEt.text.toString().trim()
                 if (port <= 0) {

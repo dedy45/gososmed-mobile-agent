@@ -36,11 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 19 = v0.9.3 (perbaikan ANR tombol Putuskan).
+        // versionCode 20 = v0.9.4 (Floating Window Pairing Overlay & Dynamic IP ADB).
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 19
-        versionName = "0.9.3"
+        versionCode = 20
+        versionName = "0.9.4"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

@@ -11,6 +11,19 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-09-13
+
+### Added — Floating Overlay Window & Dynamic IP for Seamless ADB Pairing
+Solusi tuntas untuk masalah Wireless Debugging Android 11+:
+1. **Floating Window Overlay (`AdbPairingOverlay`):** Saat tombol "Hubungkan" ditekan,
+   jendela input melayang di atas layar Pengaturan Wireless Debugging dan otomatis membuka
+   menu Opsi Pengembang/Debug nirkabel. Pop-up kode 6-digit Android **TIDAK AKAN TERTUTUP**
+   dan kodenya tidak berubah-ubah lagi!
+2. **mDNS Auto-Discovery Listener:** Otomatis mendeteksi port pairing acak dari sistem via `_adb-tls-pairing._tcp`
+   sehingga pengguna tidak perlu mengetik port secara manual jika mDNS aktif.
+3. **Dynamic IP Adapter:** Tidak lagi memakai hardcoded `127.0.0.1`, melainkan membaca antarmuka
+   Wi-Fi lokal (`AndroidUtils.getHostIpAddress`) sesuai yang ditampilkan pada layar Debug nirkabel.
+
 ## [0.9.3] — 2026-09-13
 
 ### Fixed — ANR pada tombol "Putuskan" (lanjutan temuan v0.9.2)
