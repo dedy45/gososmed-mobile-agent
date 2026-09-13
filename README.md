@@ -3,8 +3,12 @@
 **Agent Android untuk GoSosmed BYOD — HP Anda sendiri yang mengeksekusi otomasi.**
 
 Aplikasi ini menghubungkan HP Android milik Anda ke server otomasi GoSosmed **tanpa PC di
-tengah, tanpa `adb`, dan tanpa root**. Ia menggantikan model "sewa HP di data center" yang
+tengah dan tanpa root**. Ia menggantikan model "sewa HP di data center" yang
 biasa dipakai layanan sejenis.
+
+> **Sejak v0.9.0 tidak perlu aplikasi tambahan apa pun.** Transport shell (hak setara
+> `adb shell`) kini dibawa di dalam APK ini sendiri. Anda **tidak lagi** perlu memasang
+> Shizuku seperti pada v0.8.0 ke bawah.
 
 [![Build APK](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml)
 [![Rilis terbaru](https://img.shields.io/github/v/release/dedy45/gososmed-mobile-agent?include_prereleases&label=rilis)](https://github.com/dedy45/gososmed-mobile-agent/releases)
@@ -13,7 +17,13 @@ biasa dipakai layanan sejenis.
 > **Status: PENGEMBANGAN (dev).** Tervalidasi end-to-end (backend + dasbor +
 > APK) pada satu perangkat nyata (Xiaomi garnet); **belum** diuji lintas
 > merek. Rilis **stabil** diklaim mulai `v1.0.0` — versi & kanal rilis:
-> [CHANGELOG.md](CHANGELOG.md). Versi saat ini: **0.5.0-dev.1**.
+> [CHANGELOG.md](CHANGELOG.md). Versi saat ini: **0.9.0**.
+>
+> **Catatan jujur untuk v0.9.0:** kode transport ADB lokal sudah lulus build CI
+> dan uji unit, tetapi **pairing pada perangkat nyata belum diverifikasi** pada
+> saat rilis ini. Bila pairing gagal di HP Anda, aplikasi tetap berfungsi dengan
+> kemampuan terbatas (aksesibilitas + overlay) dan statusnya dilaporkan apa
+> adanya di tab Setup.
 
 ---
 
@@ -163,14 +173,33 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Atau pindahkan APK ke HP dan buka seperti biasa. Lalu:
 
-1. **Setelan → Aksesibilitas → GoSosmed Agent** → aktifkan.
-   Android sengaja mewajibkan aktivasi manual oleh pemilik perangkat; tidak ada aplikasi yang
-   boleh mengaktifkannya sendiri.
-2. Minta **kode pairing** dari dasbor GoSosmed (**Kode Pairing HP Anda →
-   Terbitkan kode pairing**), masukkan di aplikasi agent. Agent lalu
-   menyimpan `device_id` permanen — tidak perlu dipasangkan ulang setiap kali.
-   Alur lengkap & kenapa desainnya aman: [docs/PAIRING-FLOW.md](docs/PAIRING-FLOW.md).
-3. **Kecualikan agent dari optimasi baterai.** Jangan lewati langkah ini.
+**Langkah 1 — Aksesibilitas (WAJIB).**
+**Setelan → Aksesibilitas → GoSosmed Agent** → aktifkan.
+Android sengaja mewajibkan aktivasi manual oleh pemilik perangkat; tidak ada aplikasi yang
+boleh mengaktifkannya sendiri.
+
+**Langkah 2 — Izin "Tampilkan di atas aplikasi lain" (WAJIB).**
+**Setelan → Aplikasi → GoSosmed Agent → Tampilkan di atas aplikasi lain** → aktifkan.
+Sejak Android 10, tanpa izin ini sistem **membatalkan** permintaan membuka
+Instagram/TikTok/Facebook/Threads/YouTube **tanpa pesan error apa pun** — sehingga otomasi
+tampak "tidak terjadi apa-apa". Di **Xiaomi/Redmi/POCO** aktifkan juga *Autostart* dan izin
+pop-up latar belakang.
+Kedua langkah di atas **sudah cukup** untuk mulai memakai aplikasi.
+
+**Langkah 3 — Otomasi Lanjutan / ADB (OPSIONAL).**
+Membuat pembukaan aplikasi lebih andal (terutama TikTok). **Tidak perlu aplikasi tambahan** —
+fitur ini ada di dalam APK ini. Cara: aktifkan **Opsi Pengembang** (Setelan → Tentang HP →
+ketuk *Nomor build* 7×), lalu **Setelan → Sistem → Opsi Pengembang → Debug nirkabel** →
+*Pairing baru* → masukkan kode 6 angka di **tab Setup** aplikasi agent.
+> Kode berlaku **10 menit**, dan langkah ini **harus diulang setiap HP selesai di-restart**
+> karena Android mematikan Debug nirkabel otomatis. Pairing terjadi antara HP dan dirinya
+> sendiri lewat `127.0.0.1` — koneksi lokal, tidak menyentuh server kami.
+
+**Dukungan — Kecualikan agent dari optimasi baterai.** Jangan lewati langkah ini.
+Minta **kode pairing** dari dasbor GoSosmed (**Kode Pairing HP Anda → Terbitkan kode
+pairing**), masukkan di aplikasi agent. Agent menyimpan `device_id` permanen — tidak perlu
+dipasangkan ulang setiap kali.
+Alur lengkap & kenapa desainnya aman: [docs/PAIRING-FLOW.md](docs/PAIRING-FLOW.md).
 
 > **Optimasi baterai adalah penyebab kegagalan nomor satu.** Xiaomi, Oppo, Vivo, Realme,
 > Samsung, dan Huawei punya lapisan pembatas latar belakang di luar setelan standar Android.

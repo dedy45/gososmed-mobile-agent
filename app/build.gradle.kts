@@ -36,8 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.8.0"
+        // versionCode 16 = v0.9.0 (transport ADB lokal menggantikan Shizuku).
+        // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
+        // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
+        versionCode = 16
+        versionName = "0.9.0"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

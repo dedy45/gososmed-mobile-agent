@@ -11,6 +11,69 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-13
+
+### Changed — BREAKING: Shizuku DIHAPUS TOTAL
+Transport shell (hak uid 2000 / setara `adb shell`) kini memakai **klien ADB
+milik aplikasi sendiri**, bukan aplikasi pihak ketiga Shizuku.
+**Anda tidak perlu memasang Shizuku lagi** — cukup satu APK.
+
+Yang dihapus:
+- `ShizukuShell.kt`, izin `moe.shizuku.manager.permission.API_V23`, provider
+  `rikka.shizuku.ShizukuProvider`, dependency `dev.rikka.shizuku:api` dan
+  `:provider`, serta command `shizukuRequest`.
+
+Yang menggantikannya (modul `privileged/`):
+- **`AdbKeyStore`** — pasangan kunci RSA 2048 + sertifikat X.509 self-signed,
+  digenerate sekali dan disimpan di penyimpanan privat aplikasi. Memakai
+  BouncyCastle, **bukan** `sun-security-android` (pilihan itu butuh menembus
+  API tersembunyi Android lewat `hiddenapibypass` — trik rapuh).
+- **`AdbLocalShell`** — pairing, connect, dan eksekusi shell. Semua operasi
+  berjalan di SATU thread IO (serialisasi mencegah dua stream merusak paket),
+  setiap operasi dibatasi waktu, dan `close()` induk sengaja TIDAK dipanggil
+  karena ia memusnahkan kunci privat sehingga koneksi berikutnya mustahil.
+- **`AdbPairingController`** — menyiapkan transport, menyimpan status "pernah
+  dipasangkan" sehingga UI bisa membedakan "belum pernah" dari "terputus
+  setelah HP restart".
+- **`AdbShellOutput`** — pengurai keluaran murni (teruji di JVM).
+
+Nama transport berubah: `shell_shizuku` → **`shell_adb`**. Kapabilitas
+`shizuku_*` diganti **`adb_paired` / `adb_connected` / `adb_uid` / `adb_error`**.
+`can_shell` dipertahankan namanya. Kode alasan `shizuku_*` diganti enam kode
+`adb_*`: `adb_not_paired`, `adb_pair_failed`, `adb_auth_failed`,
+`adb_disconnected`, `adb_port_unknown`, `adb_disabled`.
+
+### Added
+- **Command `adbPair`** — memulai alur pairing transport ADB dari sisi server.
+- **UI Setup 3 langkah berurut**: (1) Aksesibilitas — WAJIB, (2) izin
+  "Tampilkan di atas aplikasi lain" — WAJIB, (3) Otomasi Lanjutan (ADB) —
+  OPSIONAL dengan dialog pairing.
+- **Kartu izin overlay di tab Setup.** Sebelumnya kartu ini TIDAK ADA sama
+  sekali, padahal izinnya wajib sejak Android 10; tanpa itu Android membatalkan
+  permintaan membuka aplikasi TANPA pesan error, sehingga pemilik HP bisa merasa
+  "sudah mengaktifkan semuanya" sementara otomasi tetap gagal.
+- Command `shell` dan `adbPair` kini dijalankan di thread IO, bukan main thread.
+  Keduanya bisa memakan belasan detik; menjalankannya di main thread berisiko ANR.
+
+### Fixed
+- **Bug: tombol izin overlay tidak pernah di-`findViewById`** sehingga akan
+  melempar `UninitializedPropertyAccessException` saat diketuk. Ditemukan lewat
+  pemeriksaan silang otomatis antara id layout dan seluruh `lateinit var`.
+- **Bug: error launch menyesatkan.** Versi lama membuang error percobaan
+  pertama dan hanya melaporkan yang terakhir, sehingga kegagalan TikTok tampil
+  sebagai masalah Shizuku padahal akar aslinya adalah launch aksesibilitas yang
+  tidak muncul di foreground. Semua error percobaan kini dilaporkan berurutan.
+
+### Notes — batas yang harus Anda tahu
+- **Wireless Debugging tetap diperlukan** untuk fitur shell, dan pairing harus
+  **diulang setiap HP selesai di-restart** (Android mematikan Debug nirkabel
+  otomatis). Ini batas platform, bukan kekurangan aplikasi. Tanpa langkah ini
+  aplikasi tetap berfungsi dengan kemampuan terbatas (aksesibilitas + overlay).
+- Pairing terjadi antara HP dan **dirinya sendiri** lewat `127.0.0.1` — koneksi
+  lokal, tidak menyentuh server GoSosmed.
+- Teknik ini **tidak kompatibel** dengan Shizuku yang masih terpasang. Bila Anda
+  pernah memasang Shizuku untuk versi lama, silakan hapus — tidak dipakai lagi.
+
 ## [0.8.0] — 2026-09-12
 
 ### Added
