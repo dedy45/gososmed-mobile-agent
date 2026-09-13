@@ -11,6 +11,17 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-09-13
+
+### Fixed & Enhanced — Foreground Pairing Service & Dual Input (Overlay + Notification)
+Mengatasi masalah overlay tidak muncul di HyperOS / MIUI / Android 11+:
+1. **`AdbPairingService` (Foreground Service):** Mengangkat konteks overlay ke tingkat Service sistem
+   sehingga tidak di-kill atau ditahan oleh OS saat Activity kehilangan fokus saat membuka Pengaturan.
+2. **Notification RemoteInput (Metode Shizuku Resmi):** Notifikasi prioritas tinggi dengan tombol
+   "Ketik Kode Pairing" langsung di status bar Android! Pengguna bisa mengetik 6 digit dari tirai notifikasi
+   tanpa perlu overlay jika perangkat membatasi float view.
+3. **Draggable Floating Card:** Overlay window kini bisa digeser (touch & drag) jika menutupi angka pop-up sistem.
+
 ## [0.9.4] — 2026-09-13
 
 ### Added — Floating Overlay Window & Dynamic IP for Seamless ADB Pairing

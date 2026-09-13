@@ -28,7 +28,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
 import com.gososmed.agent.privileged.AdbPairingController
-import com.gososmed.agent.privileged.AdbPairingOverlay
+import com.gososmed.agent.privileged.AdbPairingService
 import java.util.UUID
 /**
  * UI produksi agent (v0.5.0) — tab-based, TANPA scroll halaman panjang.
@@ -491,97 +491,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * v0.9.4 — UX Professional: Seamless Floating Overlay & Intent Navigator.
-     *
-     * MASALAH KRUSIAL YANG DIATASI:
-     * Pop-up dialog pairing Android di Setelan Wireless Debugging OTOMATIS
-     * TERTUTUP jika pengguna beralih aplikasi. Ketika tertutup, sistem Android
-     * MENGUBAH kode 6-digit dan port pairing menjadi acak baru!
-     *
-     * SOLUSI ELEGAN:
-     * 1. Jika izin overlay aktif: Munculkan Floating Window Overlay (AdbPairingOverlay)
-     *    lalu otomatis buka Setelan Opsi Pengembang/Debug nirkabel!
-     * 2. Jendela input melayang di atas layar Setelan tanpa menutup pop-up Android.
-     * 3. IP Wi-Fi terdeteksi otomatis, port dideteksi via mDNS, kode langsung diketik.
-     * 4. Jika izin overlay belum ada, fallback ke dialog reguler di dalam app.
+     * v0.9.5 — UX Professional & Multi-OEM Resilient:
+     * Menjalankan AdbPairingService (Foreground Service) yang memunculkan:
+     * 1. Floating Window Overlay yang melayang bebas di atas Setelan.
+     * 2. Notifikasi interaktif berprioritas tinggi dengan RemoteInput (bisa ketik dari panel notifikasi).
+     * 3. Otomatis menavigasikan pengguna ke menu Opsi Pengembang.
      */
     private fun showAdbPairDialog() {
-        if (AgentOverlay.canDraw(this)) {
-            // Luncurkan Floating Window Input
-            AdbPairingOverlay.show(this) {
-                runOnUiThread { refreshPerms() }
-            }
+        // Luncurkan AdbPairingService (Foreground Service)
+        AdbPairingService.start(this)
 
-            // Buka langsung halaman Opsi Pengembang / Wireless Debugging
+        // Buka langsung halaman Opsi Pengembang / Wireless Debugging
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+            startActivity(intent)
+        } catch (_: Exception) {
             try {
-                val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-                startActivity(intent)
-            } catch (_: Exception) {
-                try {
-                    startActivity(Intent(Settings.ACTION_SETTINGS))
-                } catch (e2: Exception) {
-                    toast("Buka Setelan > Opsi Pengembang > Debug nirkabel")
-                }
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (e2: Exception) {
+                toast("Buka Setelan > Opsi Pengembang > Debug nirkabel")
             }
-            return
         }
-
-        // Fallback jika belum beri izin overlay: Dialog biasa di dalam Activity
-        val localIp = io.github.muntashirakon.adb.android.AndroidUtils.getHostIpAddress(this)
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val wrap = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, 0)
-        }
-        val hostEt = EditText(this).apply {
-            hint = "Alamat IP"
-            setText(localIp)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-        }
-        val portEt = EditText(this).apply {
-            hint = "Port (dari layar Debug nirkabel)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        val codeEt = EditText(this).apply {
-            hint = "Kode 6 angka"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-        wrap.addView(
-            TextView(this).apply {
-                text = "Tips: Aktifkan izin 'Tampilkan di atas aplikasi lain' di Langkah 2 agar jendela input bisa melayang di atas Setelan!\n\n" +
-                    "Buka: Opsi Pengembang > Debug nirkabel > Pairing baru, lalu isi di bawah:"
-                textSize = 12f
-                setPadding(0, 0, 0, pad / 2)
-            }
-        )
-        wrap.addView(hostEt)
-        wrap.addView(portEt)
-        wrap.addView(codeEt)
-
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Hubungkan Otomasi Lanjutan")
-            .setView(wrap)
-            .setPositiveButton("Hubungkan", null)
-            .setNegativeButton("Batal", null)
-            .create()
-        dialog.show()
-
-        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
-            .setOnClickListener {
-                val host = hostEt.text.toString().trim().ifEmpty { localIp }
-                val port = portEt.text.toString().trim().toIntOrNull() ?: 0
-                val code = codeEt.text.toString().trim()
-                if (port <= 0) {
-                    portEt.error = "Isi port dari layar Debug nirkabel"
-                    return@setOnClickListener
-                }
-                if (code.length < 6) {
-                    codeEt.error = "Kode pairing 6 angka"
-                    return@setOnClickListener
-                }
-                dialog.dismiss()
-                runAdbPair(host, port, code)
-            }
     }
 
     /**
