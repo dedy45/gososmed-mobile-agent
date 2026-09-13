@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import com.gososmed.agent.privileged.AdbPairingController
 import org.json.JSONObject
 
 /**
@@ -67,6 +68,11 @@ class AgentForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "ForegroundService created")
+        // v0.9.0 — siapkan transport ADB (generate/muat kunci, pasang ke
+        // PrivilegedShellHolder, coba sambung). Idempoten dan berjalan di
+        // thread IO sendiri, jadi aman dipanggil dari onCreate; generate kunci
+        // RSA 2048 tidak boleh menghambat main thread.
+        AdbPairingController.bootstrap(this)
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "GoSosmed Agent", NotificationManager.IMPORTANCE_LOW)

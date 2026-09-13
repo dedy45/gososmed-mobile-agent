@@ -81,13 +81,21 @@ dependencies {
     // klien ADB di dalam APK sendiri: pairing ke adbd lokal lewat Debug
     // nirkabel, tanpa aplikasi pihak ketiga.
     //
-    // CATATAN F3: dependensi berikut ditambahkan saat modul privileged/ dibangun.
-    //   implementation("com.github.MuntashirAkon:libadb-android:3.1.1")  // Apache-2.0, via JitPack
-    //   implementation("org.conscrypt:conscrypt-android:2.5.3")          // TLS 1.3 + pairing
-    //   implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")         // sertifikat X509
-    // Repo JitPack harus ditambahkan di settings.gradle.kts (bukan di sini)
-    // karena proyek memakai RepositoriesMode.FAIL_ON_PROJECT_REPOS.
-    // Bukti pemilihan library: docs/F0-LIBRARY-VALIDATION.md
+    // Koordinat diverifikasi langsung dari POM JitPack (bukan dari artikel):
+    //   https://jitpack.io/com/github/MuntashirAkon/libadb-android/3.1.1/
+    //   -> com.github.MuntashirAkon:libadb-android:3.1.1 (packaging aar)
+    // Library ini Apache-2.0 (dari dual GPL-3.0-or-later OR Apache-2.0).
+    // Ia SUDAH membawa bcprov-jdk15to18:1.81 dan spake2-android:2.2.1 sebagai
+    // dependensi runtime, jadi TLS/pairing tidak perlu ditambah manual.
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    //
+    // bcpkix dipakai HANYA untuk membuat sertifikat X.509 self-signed
+    // (AdbKeyStore). Dipilih daripada `sun-security-android` yang dipakai
+    // contoh resmi libadb, karena pilihan itu memerlukan `hiddenapibypass`
+    // untuk menembus API tersembunyi Android — trik rapuh yang bisa patah di
+    // Android berikutnya. Versi 1.81 DISAMAKAN dengan bcprov yang dibawa
+    // libadb supaya tidak ada dua versi BouncyCastle di satu classpath.
+    implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
     //
     // P1-1 (Plan 07): unit test JVM pertama (HierarchySerializer/AgentCommand
     // jalur service-null) — dijalankan CI step testDebugUnitTest.

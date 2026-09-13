@@ -185,6 +185,24 @@ class AgentWsClient(
                     // Accessibility API must run on the main thread, so we post
                     // the execution there (webSocket.send is thread-safe).
                     if (obj.has("cmd")) {
+                        val cmdName = obj.optString("cmd", "")
+                        if (cmdName in AgentCommand.SERVICE_FREE_COMMANDS) {
+                            // v0.9.0 — command ini TIDAK menyentuh UI perangkat,
+                            // tetapi bisa memakan waktu lama (`adbPair` sampai
+                            // ~20 dtk, `shell` sampai 60 dtk). Menjalankannya di
+                            // main thread = ANR. Kita jalan di thread IO dan
+                            // mengirim balasan dari sana. `webSocket.send` aman
+                            // dipanggil dari thread mana pun.
+                            scope.launch {
+                                try {
+                                    val resp = AgentCommand.execute(obj)
+                                    webSocket.send(resp.toString())
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "cmd exec (io) error", e)
+                                }
+                            }
+                            return
+                        }
                         // K13 (Plan 07): JANGAN tidur di main thread (dulu
                         // Thread.sleep di AgentCommand.execute menyumbat main
                         // looper ±2 dtk saat service MIUI re-bind). Tunggu

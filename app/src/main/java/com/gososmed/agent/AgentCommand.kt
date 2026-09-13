@@ -1,5 +1,7 @@
 package com.gososmed.agent
 
+import com.gososmed.agent.privileged.AdbPairingController
+import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONObject
 
 /**
@@ -54,12 +56,38 @@ object AgentCommand {
     // Menggantikan `shizukuRequest` v0.8.0 yang sudah DIHAPUS.
     const val CMD_ADB_PAIR = "adbPair"
 
+    /**
+     * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
+     *
+     * Dipakai dua hal:
+     *  1. [execute] menjawabnya tanpa memeriksa `AgentAccessibilityService.instance`,
+     *     sehingga tetap bekerja walau layanan aksesibilitas mati.
+     *  2. `AgentWsClient` menjalankannya di thread IO, bukan main thread —
+     *     wajib, karena `adbPair` dan `shell` bisa memakan belasan detik dan
+     *     memblokir main thread akan memicu ANR.
+     */
+    val SERVICE_FREE_COMMANDS = setOf(CMD_ADB_PAIR, CMD_SHELL)
+
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
         val id = req.optInt("id", -1)
         val cmd = req.optString("cmd", "")
         val resp = JSONObject()
         resp.put("id", id)
+
+        // v0.9.0 — command yang TIDAK menyentuh UI perangkat bisa dijawab tanpa
+        // AccessibilityService, jadi pemanggil boleh menjalankannya di thread IO.
+        // Ini penting untuk dua command yang bisa LAMA:
+        //   - `adbPair` : pairing SPAKE2 + TLS handshake, sampai ~20 detik
+        //   - `shell`   : round-trip ADB, timeout kontrak sampai 60 detik
+        // Menjalankannya di main thread berisiko ANR. Keduanya tidak butuh
+        // service, jadi tidak ada alasan menahannya di sana.
+        if (cmd in SERVICE_FREE_COMMANDS) {
+            val result = executeServiceFree(cmd, req)
+            result.put("id", id)
+            AgentLog.add(cmd, result.optBoolean("ok", false), 0, dataDetail(cmd, result))
+            return result
+        }
 
         // K13 (Plan 07): fail cepat + status jujur — TIDAK ada Thread.sleep
         // di sini lagi (execute berjalan di main looper; tidur ±2 dtk di
@@ -97,6 +125,76 @@ object AgentCommand {
 
     private var lastScreenshotLogAt = 0L
     private const val SCREENSHOT_LOG_INTERVAL_MS = 30_000L
+
+    /**
+     * v0.9.0 — jawab command yang tidak butuh UI perangkat.
+     *
+     * Aman dijalankan di thread mana pun (tidak menyentuh AccessibilityService).
+     * Kegagalan SELALU membawa `reason` berkode `adb_*` yang bisa ditindak,
+     * tidak pernah sukses palsu.
+     */
+    private fun executeServiceFree(cmd: String, req: JSONObject): JSONObject {
+        val resp = JSONObject()
+        when (cmd) {
+            CMD_SHELL -> {
+                val command = req.optString("command", "")
+                if (command.isBlank()) {
+                    // `ok` luar = command tidak bisa diproses sama sekali.
+                    resp.put("ok", false).put("error", "shell requires command")
+                } else {
+                    val timeout = req.optLong("timeoutMs", 15_000L).coerceIn(1_000L, 60_000L)
+                    val res = PrivilegedShellHolder.get().exec(command, timeout)
+                    resp.put("ok", true).put(
+                        "result",
+                        JSONObject().apply {
+                            put("ok", res.ok)
+                            put("exit_code", res.exitCode)
+                            put("stdout", res.stdout)
+                            put("stderr", res.stderr)
+                            put("transport", AgentAccessibilityService.TRANSPORT_SHELL)
+                            if (res.failure != null) put("reason", res.failure)
+                        }
+                    )
+                }
+            }
+            CMD_ADB_PAIR -> {
+                // Dua bentuk pemanggilan:
+                //  a) kirim host+port+code → jalankan pairing (blocking, di IO).
+                //  b) tanpa argumen → laporkan status saja.
+                val code = req.optString("code", "").trim()
+                val port = req.optInt("port", -1)
+                if (code.isNotEmpty() || port > 0) {
+                    val host = req.optString("host", "127.0.0.1").ifBlank { "127.0.0.1" }
+                    val (ok, reason) = AdbPairingController.pair(host, port, code)
+                    val status = AdbPairingController.status()
+                    resp.put("ok", true).put(
+                        "result",
+                        JSONObject().apply {
+                            put("ok", ok)
+                            put("paired", status.paired)
+                            put("adb_connected", status.connected)
+                            if (!ok) put("reason", reason.ifEmpty { status.error })
+                        }
+                    )
+                } else {
+                    val status = AdbPairingController.status()
+                    resp.put("ok", true).put(
+                        "result",
+                        JSONObject().apply {
+                            put("ok", status.connected)
+                            put("paired", status.paired)
+                            put("adb_connected", status.connected)
+                            if (!status.connected) {
+                                put("reason", status.error.ifEmpty { "adb_not_paired: belum dihubungkan" })
+                            }
+                        }
+                    )
+                }
+            }
+            else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
+        }
+        return resp
+    }
 
     /**
      * v0.5.0: keterangan jujur ke mana DATA sebuah command pergi, supaya log
@@ -239,50 +337,6 @@ object AgentCommand {
                 // v0.7.1: kapabilitas dibaca dari sistem, dipakai backend untuk
                 // preflight (tolak job yang pasti gagal, dengan alasan jelas).
                 resp.put("ok", true).put("result", svc.capabilitiesJson())
-            }
-            CMD_SHELL -> {
-                // v0.9.0: jalur setara adb. Kegagalan SELALU membawa `reason`
-                // yang bisa ditindak pemilik HP (hubungkan otomasi lanjutan),
-                // tidak pernah sukses palsu.
-                val command = req.optString("command", "")
-                if (command.isBlank()) {
-                    resp.put("ok", false).put("error", "shell requires command")
-                } else {
-                    val timeout = req.optLong("timeoutMs", 15_000L).coerceIn(1_000L, 60_000L)
-                    val res = com.gososmed.agent.privileged.PrivilegedShellHolder.get().exec(command, timeout)
-                    resp.put("ok", true).put(
-                        "result",
-                        JSONObject().apply {
-                            put("ok", res.ok)
-                            put("exit_code", res.exitCode)
-                            put("stdout", res.stdout)
-                            put("stderr", res.stderr)
-                            put("transport", AgentAccessibilityService.TRANSPORT_SHELL)
-                            if (res.failure != null) put("reason", res.failure)
-                        }
-                    )
-                }
-            }
-            CMD_ADB_PAIR -> {
-                // v0.9.0: mulai alur pairing transport ADB lokal (kontrak §3.2).
-                // Implementasi nyata dipasang di F3 (AdbLocalShell); sebelum itu
-                // balasan jujur: belum didukung, jangan dipalsukan.
-                val status = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
-                resp.put("ok", true).put(
-                    "result",
-                    JSONObject().apply {
-                        put("ok", status.available)
-                        put("paired", status.paired)
-                        put("adb_connected", status.connected)
-                        if (!status.available) {
-                            put(
-                                "reason",
-                                if (status.error.isNotEmpty()) status.error
-                                else "adb_not_paired: otomasi lanjutan belum dihubungkan di HP ini"
-                            )
-                        }
-                    }
-                )
             }
             CMD_WAKE -> {
                 // v0.7.0: result.ok=false = PowerManager gagal — sisi Go
