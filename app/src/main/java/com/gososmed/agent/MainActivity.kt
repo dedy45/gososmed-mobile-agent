@@ -560,23 +560,34 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    /** Jalankan pairing di thread IO dengan umpan balik di UI. */
+    /**
+     * Jalankan pairing di thread IO dengan umpan balik di UI.
+     *
+     * PESAN DIBUAT AKURAT: `pair()` mengembalikan hasil PAIRING, lalu
+     * penyambungan berjalan di belakang (lihat AdbPairingController.pair —
+     * alasan: batas 30 dtk command server). Jadi pesan sukses menyebut
+     * pairing, dan status koneksi dibaca dari kartu status beberapa saat
+     * kemudian — bukan diklaim "terhubung" padahal sesinya belum terbentuk.
+     */
     private fun runAdbPair(host: String, port: Int, code: String) {
-        AgentLog.event("otomasi lanjutan: menghubungkan…")
+        AgentLog.event("otomasi lanjutan: pairing…")
         adbPairBtn.isEnabled = false
-        adbStatusTv.text = "Otomasi Lanjutan (ADB) — MENGHUBUNGKAN…"
+        adbStatusTv.text = "Otomasi Lanjutan (ADB) — PAIRING…"
         Thread {
             val (ok, reason) = AdbPairingController.pair(host, port, code)
             runOnUiThread {
                 adbPairBtn.isEnabled = true
                 if (ok) {
-                    toast("Otomasi lanjutan terhubung")
-                    AgentLog.event("otomasi lanjutan: terhubung ✓")
+                    toast("Pairing berhasil — menyambung…")
+                    AgentLog.event("otomasi lanjutan: pairing berhasil ✓ (menyambung)")
                 } else {
                     toast(adbReasonText(reason))
                     AgentLog.event("otomasi lanjutan gagal: ${reason.ifEmpty { "tanpa alasan" }}")
                 }
                 refreshPerms()
+                // Penyambungan berjalan di belakang; segarkan sekali lagi
+                // supaya kartu status menampilkan keadaan sebenarnya.
+                adbStatusTv.postDelayed({ refreshAdbStatus() }, 4_000)
             }
         }.start()
     }

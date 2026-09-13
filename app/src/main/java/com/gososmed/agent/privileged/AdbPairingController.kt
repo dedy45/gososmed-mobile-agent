@@ -99,11 +99,21 @@ object AdbPairingController {
     // -------------------------------------------------------------------- aksi
 
     /**
-     * Pairing dengan kode 6 digit, lalu langsung sambung.
+     * Pairing dengan kode 6 digit.
      *
-     * Blocking (dipanggil dari thread IO-nya AdbLocalShell untuk kerja ADB, dan
-     * menunggu inisialisasi). Aman dipanggil dari thread apa pun, tetapi
-     * sebaiknya tidak dari main thread karena bisa memakan belasan detik.
+     * PENTING — kenapa TIDAK menyambung secara sinkron di sini:
+     * Command agent dibatasi 30 dtk di server (`agenthub.DefaultTimeout`).
+     * Pairing saja memakai sampai ~15 dtk + 2 dtk kelonggaran; menambahkan
+     * `connectNow()` (discovery mDNS 5 dtk + socket 6 dtk) secara sinkron akan
+     * membuat durasi terburuk melewati 30 dtk. Akibatnya server melaporkan
+     * GAGAL padahal pairing sudah berhasil dan tersimpan — kegagalan palsu
+     * yang menyesatkan pemilik HP.
+     *
+     * Karena itu: pairing dikembalikan sebagai hasil (itu intinya), lalu
+     * penyambungan dijalankan di BELAKANGAN. Status koneksi yang sebenarnya
+     * dibaca UI/`capabilities` pada polling berikutnya, apa adanya.
+     *
+     * Blocking hanya selama pairing. Aman dipanggil dari thread non-main.
      */
     fun pair(host: String, port: Int, code: String): Pair<Boolean, String> {
         val ctx = appContext
@@ -122,14 +132,12 @@ object AdbPairingController {
         if (!ok) {
             return false to instance.status().error.ifEmpty { "adb_pair_failed: pairing gagal" }
         }
+        // Pairing berhasil = kunci sudah diotorisasi adbd. Simpan statusnya
+        // SEKARANG (sebelum penyambungan), karena inilah hasil yang bermakna.
         rememberPaired(ctx, true)
-        // Setelah pairing, sambung; bila ini gagal, statusnya tetap jujur.
-        val connected = instance.connectNow()
-        return if (connected) {
-            true to ""
-        } else {
-            false to instance.status().error.ifEmpty { "adb_disconnected: pairing ok tetapi sesi gagal dibentuk" }
-        }
+        // Sambung di belakang; kegagalannya dilaporkan jujur oleh status().
+        instance.connectAsync()
+        return true to ""
     }
 
     /** Coba sambung dengan penemuan otomatis; blocking. */

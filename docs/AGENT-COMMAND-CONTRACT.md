@@ -150,8 +150,31 @@ Dipanggil server saat user memulai pairing dari UI (atau dari dalam APK sendiri)
 `host` biasanya `127.0.0.1` (perangkat mem-pair dirinya sendiri).
 `port` dan `code` berasal dari layar Opsi Pengembang > Debug nirkabel > Pairing baru.
 
-`code` berlaku **< 10 menit**. Setelah berhasil, `adb_paired` menjadi true dan
-`adb_connected` menyala; `can_shell` ikut menjadi true.
+`code` berlaku **< 10 menit**.
+
+**DUA BENTUK PEMANGGILAN:**
+- Dengan `host`+`port`+`code` → jalankan pairing.
+- Tanpa argumen → hanya laporkan status (`paired`, `adb_connected`).
+
+**SEMANTIK PENTING — `result.ok` berarti PAIRING, bukan sesi tersambung:**
+
+Setelah pairing berhasil, penyambungan sesi dijalankan **di belakang** (asinkron),
+sehingga `result.ok = true` dapat datang bersama `adb_connected = false`.
+
+Alasannya batas waktu: command agent dibatasi **30 detik** di server
+(`agenthub.DefaultTimeout`). Pairing saja memakai sampai ~15 dtk + kelonggaran;
+menambahkan discovery mDNS (5 dtk) + socket (6 dtk) secara sinkron akan
+melewati 30 dtk — server melaporkan GAGAL padahal pairing sudah berhasil dan
+tersimpan. Itu kegagalan palsu yang menyesatkan pemilik HP.
+
+Konsekuensi untuk backend/frontend:
+- Perlakukan `result.ok = true` sebagai **"pairing berhasil, kunci tersimpan"**.
+- Jangan menyimpulkan sesi hidup dari `result.ok`. Baca **`adb_connected`**,
+  dan bila masih `false` biarkan UI menampilkan "menyambung…" lalu perbarui
+  pada polling `capabilities`/status berikutnya (TTL cache 60 dtk).
+- **Kegagalan `result.ok = false` bersifat terminal untuk percobaan itu** —
+  `reason` menjelaskan sebabnya (`adb_pair_failed` kode salah/kedaluwarsa,
+  `adb_auth_failed` kunci ditolak, dst).
 
 ---
 

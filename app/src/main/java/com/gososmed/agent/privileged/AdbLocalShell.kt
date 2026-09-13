@@ -68,17 +68,49 @@ internal class AdbLocalShell(
         private const val TAG = "GoAgentAdbShell"
         private const val DEVICE_NAME = "GoSosmed Agent"
 
-        /** Batas mencari host+port lewat mDNS lalu menyambung. */
-        const val CONNECT_TIMEOUT_MS = 8_000L
+        /**
+         * ANGGARAN WAKTU (ditemukan lewat tinjauan ulang sebelum uji perangkat).
+         *
+         * Kenapa ini dipisah dan bukan satu angka:
+         * `connectTls(context, timeoutMillis)` memakai `timeoutMillis` untuk
+         * mDNS DISCOVERY, lalu masih menambah timeout SOCKET sendiri
+         * (`setTimeout`). Jadi durasi terburuknya = DISCOVERY + SOCKET, bukan
+         * `timeoutMillis` saja.
+         *
+         * BUG YANG DIPERBAIKI: sebelumnya batas luar (`runBounded`) hanya
+         * `timeoutMs + GRACE` (10 dtk) sementara bagian dalam bisa berjalan
+         * sampai 16 dtk. Akibatnya kita menyerah lebih dulu, dan — karena
+         * socket blocking TIDAK bisa diinterupsi — tugas itu tetap menempati
+         * SATU-SATUNYA thread IO, sehingga perintah berikutnya ikut macet.
+         * Sekarang batas luar SELALU >= durasi terburuk bagian dalam.
+         */
+        const val DISCOVERY_TIMEOUT_MS = 5_000L
 
-        /** Batas alur pairing (SPAKE2 + TLS handshake). */
-        const val PAIR_TIMEOUT_MS = 20_000L
+        /** Connect socket loopback; 6 dtk sudah sangat longgar untuk 127.0.0.1. */
+        const val SOCKET_TIMEOUT_MS = 6_000L
+
+        /**
+         * Batas alur pairing (SPAKE2 + TLS handshake) ke `127.0.0.1`.
+         * SPAKE2 lokal normalnya < 2 dtk; 15 dtk hanya jaring pengaman.
+         *
+         * Angka ini SENGAJA tidak lebih besar: pairing berjalan di dalam satu
+         * command agent, dan server membatasi setiap command 30 dtk
+         * (`agenthub.DefaultTimeout`). Lihat [AdbPairingController.pair] yang
+         * TIDAK menyambung secara sinkron setelah pairing justru karena batas
+         * ini — menggabungkan keduanya akan melewati 30 dtk dan membuat server
+         * melaporkan gagal padahal pairing berhasil.
+         */
+        const val PAIR_TIMEOUT_MS = 15_000L
 
         /**
          * Kelonggaran di atas timeout perintah supaya penutupan stream dan
          * pembersihan sempat berjalan sebelum kita menyatakan timeout.
          */
         private const val GRACE_MS = 2_000L
+
+        /** Durasi terburuk satu percobaan connect (discovery + socket + bersih-bersih). */
+        private const val CONNECT_WORST_CASE_MS =
+            DISCOVERY_TIMEOUT_MS + SOCKET_TIMEOUT_MS + GRACE_MS
 
         private const val READ_CHUNK = 8 * 1024
 
@@ -112,7 +144,7 @@ internal class AdbLocalShell(
         setApi(android.os.Build.VERSION.SDK_INT)
         // Pairing selalu ke HP ini sendiri — tidak pernah ke perangkat lain.
         setHostAddress("127.0.0.1")
-        setTimeout(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        setTimeout(SOCKET_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         // Kita INGIN tahu saat adbd menolak kunci (butuh pairing ulang) supaya
         // bisa melaporkan `adb_auth_failed`, bukan gagal diam-diam.
         setThrowOnUnauthorised(true)
@@ -209,12 +241,17 @@ internal class AdbLocalShell(
      *
      * Bila penemuan otomatis gagal (sering dibatasi OEM), pemanggil bisa
      * memakai [connectTo] dengan host+port manual dari layar Debug nirkabel.
+     *
+     * Batas luar = [CONNECT_WORST_CASE_MS] (discovery + socket + grace), yang
+     * SELALU >= durasi terburuk bagian dalam. Ini disengaja: socket blocking
+     * tidak bisa diinterupsi, jadi menyerah lebih dulu akan meninggalkan tugas
+     * yang masih menempati thread IO dan memacetkan perintah berikutnya.
      */
-    fun connectNow(timeoutMs: Long = CONNECT_TIMEOUT_MS): Boolean {
+    fun connectNow(discoveryTimeoutMs: Long = DISCOVERY_TIMEOUT_MS): Boolean {
         if (safeIsConnected()) return true
-        val done = runBounded(timeoutMs + GRACE_MS) {
+        val done = runBounded(CONNECT_WORST_CASE_MS) {
             try {
-                val ok = connectTls(appContext, timeoutMs)
+                val ok = connectTls(appContext, discoveryTimeoutMs)
                 if (ok) {
                     paired = true
                     lastError = ""
@@ -232,10 +269,23 @@ internal class AdbLocalShell(
         return done == true
     }
 
+    /**
+     * Sambung di BELAKANGAN, tanpa menahan pemanggil.
+     *
+     * Dipakai setelah pairing berhasil: `pair` + `connect` secara sinkron bisa
+     * melewati batas 30 dtk command agent (`agenthub.DefaultTimeout`), sehingga
+     * server melaporkan gagal padahal pairing sudah berhasil dan tersimpan.
+     * Status terbaru dibaca lewat [status] pada polling berikutnya.
+     */
+    fun connectAsync() {
+        io.execute { connectNow() }
+    }
+
     /** Sambung dengan host+port eksplisit (jalur cadangan bila mDNS diblokir). */
-    fun connectTo(host: String, port: Int, timeoutMs: Long = CONNECT_TIMEOUT_MS): Boolean {
+    fun connectTo(host: String, port: Int): Boolean {
         if (safeIsConnected()) return true
-        val done = runBounded(timeoutMs + GRACE_MS) {
+        // Tanpa discovery mDNS, jadi durasi terburuk = socket + grace.
+        val done = runBounded(SOCKET_TIMEOUT_MS + GRACE_MS) {
             try {
                 val ok = connect(host, port)
                 if (ok) {
