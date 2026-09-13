@@ -91,6 +91,13 @@ class MainActivity : AppCompatActivity() {
     // pemilik HP setiap kali activity resume).
     private var overlayAsked = false
     private var lastStatus = ""
+    /**
+     * v0.9.6 — Bila pengguna menekan "Hubungkan ADB" sementara izin Notifikasi
+     * belum ada, kami meminta izin dulu dan MELANJUTKAN panduan pairing secara
+     * otomatis begitu izin diberikan. Tanpa flag ini, pengguna harus menekan
+     * tombol dua kali (membingungkan, dan terasa seperti bug).
+     */
+    private var pendingPairAfterNotif = false
     private var logPaused = false
     private var pausedDirty = false
     private val logSb = SpannableStringBuilder()
@@ -406,8 +413,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshPerms() {
-        // Aksesibilitas: sumber kebenaran = service benar-benar terhubung.
-        val a11y = AgentAccessibilityService.instance?.isServiceReady() == true
+        // v0.9.6 — PERBAIKAN REGRESI LANGKAH 1.
+        //
+        // v0.9.5 memakai `instance?.isServiceReady()`, yaitu
+        // `rootInActiveWindow != null`. Nilai itu SEMENTARA null saat berpindah
+        // activity, layar terkunci, atau app target FLAG_SECURE — sehingga
+        // pengguna yang sudah mengaktifkan dengan benar tetap melihat
+        // "BELUM AKTIF" dan dipaksa mengaktifkan ulang setiap pindah tab.
+        //
+        // Sumber kebenaran yang benar untuk IZIN adalah
+        // `AgentAccessibilityService.isEnabled()` (flag `bound`), diperkuat
+        // dengan pembacaan `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`
+        // supaya status tetap benar walau OEM me-restart layanan di proses
+        // terpisah. Kesiapan live (rootInActiveWindow) TIDAK lagi dipakai di
+        // sini; ia tetap dipakai internal oleh perintah dump/tap.
+        AgentAccessibilityService.reconcileFromSettings(this)
+        val a11y = AgentAccessibilityService.isEnabled()
         permA11yTv.text = "Akses otomatisasi (Aksesibilitas) — ${if (a11y) "AKTIF ✓" else "BELUM AKTIF"}"
         openA11yBtn.isEnabled = !a11y
         openA11yBtn.text = if (a11y) "Sudah Aktif" else "Aktifkan"
@@ -491,27 +512,94 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * v0.9.5 — UX Professional & Multi-OEM Resilient:
-     * Menjalankan AdbPairingService (Foreground Service) yang memunculkan:
-     * 1. Floating Window Overlay yang melayang bebas di atas Setelan.
-     * 2. Notifikasi interaktif berprioritas tinggi dengan RemoteInput (bisa ketik dari panel notifikasi).
-     * 3. Otomatis menavigasikan pengguna ke menu Opsi Pengembang.
+     * v0.9.6 — ALUR PAIRING ala SHIZUKU (Notifikasi RemoteInput = jalur utama).
+     *
+     * CACAT v0.9.5 yang diperbaiki di sini:
+     *
+     *  1. `AdbPairingService.start(this)` lalu `startActivity(Settings)` pada
+     *     BARIS BERIKUTNYA — keduanya dalam satu frame. Service memerlukan
+     *     waktu untuk `startForeground()` dan memasang overlay; sementara
+     *     Setelan sudah merebut fokus lebih dulu. Akibatnya `addView` ditolak
+     *     dan notifikasi pun bisa belum terpasang saat pengguna sudah berada
+     *     di layar Setelan. Di sini kami memberi jeda pendek yang terukur
+     *     (250 ms) supaya notifikasi + overlay sempat terpasang.
+     *
+     *  2. TIDAK ADA penjelasan apa pun kepada pengguna tentang APA yang harus
+     *     dilakukan di layar Setelan, dan tentang KENAPA kode bisa berganti.
+     *     Kami tampilkan dialog singkat 3 langkah — inilah bagian yang membuat
+     *     alur ini benar-benar bisa dipakai orang biasa.
      */
     private fun showAdbPairDialog() {
-        // Luncurkan AdbPairingService (Foreground Service)
-        AdbPairingService.start(this)
+        // v0.9.6 — PRASYARAT KERAS jalur utama (notifikasi).
+        // Bila POST_NOTIFICATIONS belum diberikan pada Android 13+, notifikasi
+        // pairing TIDAK AKAN TERLIHAT — dan karena itu jalur utamanya hilang.
+        // Kami meminta izin lebih dulu, lalu membuka panduan setelahnya.
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Izin Notifikasi diperlukan")
+                .setMessage(
+                    "Pairing memakai baris notifikasi untuk mengetik kode 6 angka tanpa " +
+                        "menutup layar kode di Setelan. Tanpa izin Notifikasi, cara ini " +
+                        "tidak bisa dipakai.\n\nKetuk \"Izinkan\" pada permintaan berikutnya."
+                )
+                .setPositiveButton("Lanjut") { _, _ ->
+                    pendingPairAfterNotif = true
+                    requestNotifPermission()
+                }
+                .setNegativeButton("Batal", null)
+                .show()
+            return
+        }
+        openAdbPairGuide()
+    }
 
-        // Buka langsung halaman Opsi Pengembang / Wireless Debugging
-        try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-            startActivity(intent)
-        } catch (_: Exception) {
+    private fun openAdbPairGuide() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Hubungkan Otomasi Lanjutan (ADB)")
+            .setMessage(
+                buildString {
+                    append("Ikuti 3 langkah ini — jangan tutup layar kode di tengah jalan:\n\n")
+                    append("1.  Di Setelan yang terbuka, masuk ke \"Debug nirkabel\".\n\n")
+                    append("2.  Ketuk \"Pasangkan perangkat dengan kode pairing\".\n")
+                    append("     Layar kode 6 angka muncul — BIARKAN TERBUKA.\n\n")
+                    append("3.  Tarik panel notifikasi (dari atas layar), lalu ketik 6 angka\n")
+                    append("     itu di baris \"Ketik Kode Pairing\". Tidak perlu menutup\n")
+                    append("     layar kode — justru JANGAN ditutup, sebab kode akan\n")
+                    append("     berganti bila layar itu ditutup.\n\n")
+                    append("Port terdeteksi otomatis. Notifikasi adalah jalur utama; ")
+                    append("kotak melayang di layar hanya bonus bila izinnya tersedia.")
+                }
+            )
+            .setPositiveButton("Mengerti, buka Setelan") { _, _ ->
+                // BARU setelah pengguna siap: nyalakan service...
+                AdbPairingService.start(this)
+                // ...beri waktu terpasang (notifikasi + overlay), lalu navigasi.
+                adbStatusTv.postDelayed({ openDeveloperSettingsForPairing() }, 250L)
+            }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun openDeveloperSettingsForPairing() {
+        // v0.9.6 — Prioritaskan layar Debug nirkabel bila OEM menyediakannya
+        // (jalur paling sedikit ketukan), lalu Opsi Pengembang, terakhir
+        // Setelan umum.
+        val candidates = listOf(
+            "android.settings.WIRELESS_DEBUGGING_SETTINGS",
+            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
+            Settings.ACTION_SETTINGS
+        )
+        for (action in candidates) {
             try {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
-            } catch (e2: Exception) {
-                toast("Buka Setelan > Opsi Pengembang > Debug nirkabel")
+                startActivity(Intent(action))
+                return
+            } catch (_: Exception) {
+                // lanjut ke kandidat berikutnya
             }
         }
+        toast("Buka Setelan > Opsi Pengembang > Debug nirkabel")
     }
 
     /**
@@ -665,10 +753,25 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         refreshPerms()
+        // v0.9.6 — lanjutkan alur pairing yang sempat tertahan oleh permintaan
+        // izin Notifikasi (lihat showAdbPairDialog).
+        if (requestCode == 1001 && pendingPairAfterNotif) {
+            pendingPairAfterNotif = false
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                openAdbPairGuide()
+            } else {
+                toast("Tanpa izin Notifikasi, pairing lewat notifikasi tidak bisa dipakai.")
+            }
+        }
     }
 
     private fun refreshStatus() {
-        val a11yReady = AgentAccessibilityService.instance?.isServiceReady() == true
+        // v0.9.6 — status banner memakai definisi izin yang benar (lihat
+        // refreshPerms); bukan kesiapan live yang fluktuatif.
+        AgentAccessibilityService.reconcileFromSettings(this)
+        val a11yReady = AgentAccessibilityService.isEnabled()
         val paired = loadPairingCode().isNotEmpty()
         when {
             lastStatus.contains("paired") -> {
@@ -780,7 +883,12 @@ class MainActivity : AppCompatActivity() {
         val runner = object : Runnable {
             override fun run() {
                 attempts++
-                val ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                // v0.9.6 — Di sini kesiapan LIVE memang relevan (kita akan
+                // benar-benar dump/tap window). Tetap tahan terhadap instance
+                // null sesaat akibat restart layanan OEM: anggap siap bila
+                // layanan ter-bind, lalu serahkan hasil apa adanya.
+                val svc = AgentAccessibilityService.instance
+                val ready = svc != null && (svc.isServiceReady() || AgentAccessibilityService.isEnabled())
                 if (!ready && attempts < 6) {
                     logTv.postDelayed(this, 500L)
                     return

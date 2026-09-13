@@ -88,17 +88,36 @@ Kalau menu **Opsi Pengembang** belum ada di HP Anda:
 4. Kembali ke Pengaturan utama. Menu **Opsi Pengembang** sekarang ada
    (biasanya di **Pengaturan > Sistem**, atau **Pengaturan > Setelan tambahan**).
 
-### Cara melakukan pairing
+### Cara melakukan pairing (v0.9.6 — cara yang benar)
 
-1. **Pengaturan > Sistem > Opsi Pengembang > Debug nirkabel** → **AKTIFKAN**.
-   Setujui peringatan.
-2. Di layar yang sama, tekan **"Pair perangkat dengan kode pairing"**.
-   Android menampilkan tiga hal: **alamat IP**, **port**, dan **kode 6 angka**.
-3. Biarkan layar itu terbuka. Buka **GoSosmed Agent** (bisa lewat layar
-   terbagi / split screen bila HP Anda mendukung).
-4. Di tab **Setup**, tekan **Pairing**, lalu masukkan kode 6 angka.
-   Bila port tidak terdeteksi otomatis, masukkan juga alamat IP dan port.
-5. Setelah berhasil, status menjadi **Tersambung**.
+> **Kunci suksesnya:** JANGAN menutup layar kode pairing. Kode 6 angka itu
+> sekali pakai dan akan berganti begitu layar itu ditutup. Karena itu cara di
+> bawah ini memakai **baris notifikasi** untuk mengetik kodenya, sehingga
+> layar kode tetap terbuka dan kodenya tidak berubah.
+
+1. Di app GoSosmed Agent, tab **Setup** → tekan **Hubungkan** pada kartu
+   Otomasi Lanjutan (ADB).
+2. Baca panduan 3 langkah yang muncul, lalu tekan **"Mengerti, buka Setelan"**.
+   HP otomatis membuka layar **Debug nirkabel**, dan sebuah **notifikasi**
+   muncul di panel notifikasi.
+3. Di layar Debug nirkabel: **AKTIFKAN** Debug nirkabel, lalu tekan
+   **"Pasangkan perangkat dengan kode pairing"**. Layar kode 6 angka muncul —
+   **BIARKAN TERBUKA**.
+4. **Tarik panel notifikasi** dari atas layar (layar kode tetap terbuka di
+   belakangnya). Pada notifikasi **"⚡ Pairing ADB GoSosmed"**, ketuk baris
+   **"Ketik Kode Pairing"** dan masukkan 6 angka tadi.
+5. Notifikasi akan berubah menjadi **"✓ Selesai"**. Pairing berhasil dan
+   penyambungan berjalan otomatis di belakang.
+
+**Tentang IP dan port:** Anda **TIDAK perlu** mengetik alamat IP. Pairing ini
+memasangkan HP dengan dirinya sendiri, jadi alamatnya selalu `127.0.0.1`
+(loopback) — itu memang benar dan disengaja. **Port** ditemukan otomatis lewat
+penemuan mDNS. Setelah pairing, penyambungan juga memakai mDNS, sehingga IP
+Wi-Fi tidak perlu diketahui sama sekali.
+
+> Ada kotak melayang (floating window) yang muncul sebagai jalur alternatif
+> bila izin overlay Anda aktif. Itu **bonus** — jalur notifikasi di atas selalu
+> bisa dipakai walau kotak melayang diblokir oleh MIUI/HyperOS.
 
 > **Kode pairing hanya berlaku 10 menit.** Bila kedaluwarsa, buat kode baru
 > dari layar Debug nirkabel.
@@ -106,7 +125,8 @@ Kalau menu **Opsi Pengembang** belum ada di HP Anda:
 ### Setelah HP reboot
 
 Ulangi langkah 3 saja (nyalakan Debug nirkabel lalu pairing). Langkah 1 dan 2
-tidak perlu diulang.
+tidak perlu diulang. Bila status kartu ADB mengatakan **"terputus setelah HP
+restart"**, itu memang keadaannya — cukup hubungkan ulang dengan cara di atas.
 
 ---
 
@@ -115,9 +135,13 @@ tidak perlu diulang.
 | Gejala | Penyebab paling mungkin | Yang harus dilakukan |
 |---|---|---|
 | Status aksesibilitas tidak mau AKTIF | Android mematikan layanan | Buka lagi Layanan Aksesibilitas, aktifkan ulang |
+| Status aksesibilitas "BELUM AKTIF" padahal sudah diaktifkan | *Bug v0.9.5, sudah diperbaiki di v0.9.6.* Bila masih terjadi, tutup lalu buka lagi app | Perbarui ke v0.9.6 atau lebih baru |
 | Aplikasi sosial tidak mau terbuka | Izin overlay belum aktif | Ulangi Langkah 2 |
 | Muncul "Adb not paired" | Debug nirkabel mati (biasanya setelah reboot) | Ulangi Langkah 3 |
-| Muncul "Kode pairing salah/kedaluwarsa" | Kode sudah lewat 10 menit | Buat kode baru di layar Debug nirkabel |
+| Notifikasi pairing tidak muncul | Izin Notifikasi belum diberikan | Tab Setup → baris Notifikasi → **Izinkan** |
+| Muncul "Kode pairing salah/kedaluwarsa" | Kode sudah lewat 10 menit, atau layar kode sempat ditutup | Buat kode baru, lalu ketik lewat notifikasi **tanpa** menutup layar kode |
+| Muncul "Port pairing belum terdeteksi" | Debug nirkabel belum aktif saat kode diketik | Aktifkan Debug nirkabel dulu, lalu coba lagi |
+| Kotak melayang tidak muncul | MIUI/HyperOS memblokir jendela latar belakang | Tidak masalah — pakai notifikasi; atau aktifkan "Tampilkan jendela pop-up saat berjalan di latar belakang" |
 | Muncul "Koneksi otomasi terputus" | Debug nirkabel dimatikan sistem | Nyalakan lagi lalu pairing |
 | Otomasi berhenti sendiri setelah beberapa menit | Penghemat baterai mematikan aplikasi | Atur "Tanpa batasan" (lihat catatan MIUI) |
 | Semua berhasil tapi profil terbaca salah | Aplikasi sosial login sebagai akun berbeda | Periksa akun mana yang login di aplikasi itu |

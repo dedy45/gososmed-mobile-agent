@@ -11,6 +11,81 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.6] — 2026-09-13
+
+### Fixed — Pairing ADB ala Shizuku + Stabilitas Langkah 1 (regresi v0.9.4/v0.9.5)
+
+Perbaikan mendalam atas 3 keluhan lapangan + 1 regresi UX yang paling mengganggu.
+
+#### 1. Overlay pairing TIDAK muncul → AKAR TEKNIS DITEMUKAN
+- **`AdbPairingService` didaftarkan TANPA `android:foregroundServiceType`.** Dengan
+  `targetSdk 34`, memanggil `startForeground()` pada service tanpa tipe yang
+  dideklarasikan melempar `MissingForegroundServiceTypeException` — service MATI
+  sebelum overlay maupun notifikasi sempat dibuat. Jadi bukan overlay-nya yang
+  ditolak; service-nya crash lebih dulu. Kini dideklarasikan
+  `foregroundServiceType="specialUse"` + property subtype.
+- `startForeground()` dibungkus `promoteToForeground()` (overload bertipe API 34 →
+  fallback overload lama), dan kegagalan FGS kini memberi pesan yang benar, bukan
+  diam lalu mati senyap.
+- Overlay dipasang **sinkron** pada main thread (v0.9.5 memakai `main.post{}` yang
+  tiba setelah fokus OS sudah berpindah ke Setelan). Ditambah verifikasi
+  `isAttachedToWindow` agar penolakan sistem tercatat di log.
+- Deteksi izin OEM MIUI/HyperOS ("Tampilkan jendela sembulan saat berjalan di latar
+  belakang") yang terpisah dari `Settings.canDrawOverlays()`.
+- Bug tombol: `updateOverlayStatus()` memakai `findViewById<Button>(View.NO_ID)`
+  yang selalu null → tombol "Hubungkan Sekarang" tak pernah aktif kembali setelah
+  gagal. Kini dicari lewat tag.
+
+#### 2. Kode pairing berubah saat pindah ke app GoSosmed → jalur Notifikasi RemoteInput
+- Notifikasi interaktif (**jalan utama**, seperti Shizuku) diperbaiki total:
+  `RECEIVER_EXPORTED` (v0.9.5 memakai `NOT_EXPORTED`, sehingga RemoteInput dari
+  SystemUI DITOLAK senyap di Android 13+/14 — notifikasi terlihat tapi tak berfungsi),
+  `BigTextStyle` berisi instruksi, aksi "Buka Debug Nirkabel" & "Batal", channel
+  `IMPORTANCE_HIGH` + `VISIBILITY_PUBLIC`.
+- Ditangani balapan: kode bisa diketik sebelum mDNS menemukan port. Kini menunggu
+  hingga 6 detik, dan bila port tetap tak ada pesannya BENAR ("port belum
+  terdeteksi"), bukan menyesatkan ("kode salah").
+- `MainActivity` menampilkan dialog 3 langkah lebih dulu; service dinyalakan lalu
+  navigasi ke Setelan diberi jeda 250 ms agar notifikasi benar-benar terpasang.
+- Prasyarat izin `POST_NOTIFICATIONS` dicek & diminta lebih dulu — tanpa itu jalur
+  utama tidak akan terlihat.
+
+#### 3. "IP tidak 127.0.0.1" → klaim v0.9.4 berbasis premis SALAH
+- **Fakta dari sumber library (libadb-android 3.1.1, `AndroidUtils.java:39-57`):**
+  `AndroidUtils.getHostIpAddress()` mengembalikan `InetAddress.getLoopbackAddress()`
+  = `127.0.0.1`, dan pada EMULATOR `10.0.2.2`. Ia TIDAK PERNAH mengembalikan IP Wi-Fi.
+  Jadi "Dynamic IP Adapter" v0.9.4 tidak hanya tidak berguna — pada emulator ia
+  MERUSAK pairing.
+- **Pairing = SELF-PAIRING** (HP memasangkan dirinya dengan `adbd` di HP yang sama),
+  sehingga host pairing WAJIB loopback. `AdbLocalShell` & `AdbPairingService` kini
+  memakai konstanta eksplisit `LOOPBACK_HOST = "127.0.0.1"`; import `AndroidUtils`
+  dihapus dari keduanya.
+- Yang sebenarnya dibutuhkan pengguna adalah **PORT**, dan itu sudah dideteksi
+  otomatis via mDNS `_adb-tls-pairing._tcp`. Untuk CONNECT setelah pairing, libadb
+  memakai mDNS `_adb-tls-connect._tcp` dan **mengabaikan** `setHostAddress(...)`
+  sepenuhnya. IP Wi-Fi hanya relevan pada jalur cadangan manual
+  (`AdbPairingController.connectTo(host, port)`), yang tetap utuh.
+
+#### 4. REGRESI: "Langkah 1 disuruh diaktifkan ulang setiap pindah tab"
+- **Akar masalah:** `MainActivity.refreshPerms()` memakai
+  `AgentAccessibilityService.instance?.isServiceReady()`, sedangkan
+  `isServiceReady()` = `rootInActiveWindow != null`. Nilai itu SEMENTARA null saat
+  berpindah activity, layar terkunci, atau app target `FLAG_SECURE` — kondisi NORMAL,
+  bukan tanda layanan mati. Diperparah `onDestroy()` yang meng-null-kan `instance`
+  (OEM agresif seperti MIUI rutin me-restart layanan accessibility).
+- **Perbaikan:** dipisahkan tegas antara "layanan ter-BIND" dan "window siap dibaca".
+  Ditambahkan `AgentAccessibilityService.bound` (di-set di `onServiceConnected`,
+  di-reset di `onUnbind`/`onDestroy`) dan `isEnabled()` sebagai sumber kebenaran
+  untuk status IZIN, diperkuat `reconcileFromSettings()` yang membaca
+  `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`. Kesiapan live
+  (`isServiceReady()`) tetap dipakai internal oleh perintah dump/tap.
+- Laporan `capabilities` kini memisahkan `a11y_enabled` (bind) dari `a11y_ready`
+  (window live) — dua hal berbeda yang selama ini tertukar.
+
+### Notes
+- `MainActivity` (Langkah 3) tetap membaca status ADB apa adanya; perubahan ini tidak
+  menyentuh kontrak wire/command server.
+
 ## [0.9.5] — 2026-09-13
 
 ### Fixed & Enhanced — Foreground Pairing Service & Dual Input (Overlay + Notification)

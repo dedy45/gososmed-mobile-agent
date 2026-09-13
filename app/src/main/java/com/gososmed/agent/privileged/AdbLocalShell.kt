@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
-import io.github.muntashirakon.adb.android.AndroidUtils
 import java.security.PrivateKey
 import java.security.cert.Certificate
 import java.util.concurrent.Callable
@@ -117,6 +116,18 @@ internal class AdbLocalShell(
 
         /** Probe uid dibatasi pendek — ini hanya satu baris keluaran. */
         private const val UID_PROBE_TIMEOUT_MS = 3_000L
+
+        /**
+         * v0.9.6 — ALAMAT PAIRING YANG BENAR.
+         *
+         * Agent memasangkan dirinya sendiri ke `adbd` di HP yang sama, jadi
+         * alamatnya adalah LOOPBACK. Ini satu-satunya nilai yang benar untuk
+         * [pairNow]; jangan diganti dengan IP Wi-Fi (lihat komentar di `init`).
+         *
+         * Nilai ini HANYA dipakai jalur pairing. Jalur connect memakai mDNS
+         * dan library mengabaikan alamat ini.
+         */
+        const val LOOPBACK_HOST = "127.0.0.1"
     }
 
     /** Satu thread untuk SEMUA operasi ADB. Serialisasi mencegah dua stream
@@ -166,13 +177,36 @@ internal class AdbLocalShell(
 
     init {
         setApi(android.os.Build.VERSION.SDK_INT)
-        // Gunakan IP lokal dinamis dari antarmuka Wi-Fi aktual atau fallback loopback
-        try {
-            val detectedIp = AndroidUtils.getHostIpAddress(appContext)
-            setHostAddress(detectedIp)
-        } catch (_: Exception) {
-            setHostAddress("127.0.0.1")
-        }
+        // v0.9.6 — KOREKSI IP YANG SALAH (root cause "IP tidak 127.0.0.1").
+        //
+        // FAKTA DARI SUMBER LIBRARY (libadb-android 3.1.1,
+        // AndroidUtils.getHostIpAddress()):
+        //     if (SDK >= KITKAT) ipAddress = InetAddress.getLoopbackAddress().getHostAddress();
+        // Jadi fungsi itu MEMANG mengembalikan 127.0.0.1 — bukan IP Wi-Fi.
+        // v0.9.4 mengira ia membaca "IP Wi-Fi aktual" dan menggantinya ke
+        // `setHostAddress(detectedIp)`. Nilainya kebetulan sama di kebanyakan
+        // HP, TETAPI:
+        //   1. Ia bisa mengembalikan "::1" (IPv6 loopback) yang kemudian
+        //      disubstitusi library menjadi "127.0.0.1" — perilaku tidak
+        //      deterministik antar-OEM.
+        //   2. Di emulator ia mengembalikan "10.0.2.2" (host gateway), BUKAN
+        //      loopback — pairing ke 10.0.2.2 akan GAGAL karena adbd tidak
+        //      mendengarkan di gateway.
+        //   3. Komentar kode lama menyatakan "IP Wi-Fi aktual", menciptakan
+        //      keyakinan palsu yang membuat bug berikutnya sulit dilihat.
+        //
+        // KEBENARAN ARSITEKTUR: agent memasangkan DIRINYA SENDIRI ke adbd yang
+        // berjalan di HP yang sama. Alamat yang benar untuk `pair()` adalah
+        // LOOPBACK (`127.0.0.1`), bukan IP Wi-Fi — Wi-Fi tidak diperlukan untuk
+        // pairing lokal dan justru menambah titik gagal (Wi-Fi mati, AP isolasi
+        // klien, subnet berbeda).
+        //
+        // Untuk CONNECT (after pairing), libadb MEMAKAI mDNS dan MENGABAIKAN
+        // nilai ini sepenuhnya — lihat AbsAdbConnectionManager.connectTls():
+        // "Host address set by setHostAddress(String) is ignored."
+        // Jadi `setHostAddress` HANYA relevan untuk pairing (dan `pair(port)`),
+        // bukan untuk jalur connect normal.
+        setHostAddress(LOOPBACK_HOST)
         setTimeout(SOCKET_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         // Kita INGIN tahu saat adbd menolak kunci (butuh pairing ulang) supaya
         // bisa melaporkan `adb_auth_failed`, bukan gagal diam-diam.
@@ -244,7 +278,10 @@ internal class AdbLocalShell(
     /**
      * Pairing ke adbd dengan kode 6 digit dari layar Debug nirkabel.
      *
-     * [host] hampir selalu `127.0.0.1` (HP memasangkan dirinya sendiri).
+     * [host] SELALU `127.0.0.1` (lihat [LOOPBACK_HOST]) — HP memasangkan
+     * dirinya sendiri. Jangan diisi IP Wi-Fi; pairing lokal tidak melewati
+     * jaringan dan Wi-Fi hanya menambah titik gagal.
+     *
      * Blocking sampai selesai atau timeout. Selalu aman dipanggil dari thread
      * apa pun.
      */

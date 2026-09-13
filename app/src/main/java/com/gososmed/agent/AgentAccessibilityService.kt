@@ -46,9 +46,105 @@ class AgentAccessibilityService : AccessibilityService() {
          *  (uid 2000), accessibility = best-effort dan tunduk pada BAL/OEM. */
         const val TRANSPORT_SHELL = "shell_adb"
         const val TRANSPORT_A11Y = "accessibility"
+
         @Volatile
         var instance: AgentAccessibilityService? = null
             private set
+
+        /**
+         * v0.9.6 — PEMISAHAN TEGAS antara "service TER-BIND" dan "window SEDANG
+         * bisa dibaca".
+         *
+         * CACAT v0.9.5 (dan versi sebelumnya) — dinyatakan oleh laporan lapangan
+         * "Langkah 1 menjadi SANGAT tidak stabil, padahal sudah diaktifkan dan
+         * sukses; ketika berpindah tab / menutup aplikasi, Langkah 1 disuruh
+         * mengaktifkan lagi":
+         *
+         *  - `MainActivity.refreshPerms()` memakai `instance?.isServiceReady()`,
+         *    sedangkan `isServiceReady()` = `rootInActiveWindow != null`.
+         *  - `rootInActiveWindow` dapat bernilai null SEMENTARA pada banyak
+         *    kejadian normal: transisi antar-activity, layar terkunci, app
+         *    target memasang FLAG_SECURE, atau sistem menjeda layanan saat
+         *    berpindah tab. Itu BUKAN tanda "service mati".
+         *  - Selain itu `onDestroy()` meng-null-kan `instance`. OEM agresif
+         *    (MIUI/HyperOS) rutin me-restart layanan accessibility, sehingga
+         *    ada jendela waktu `instance == null` sesaat — lagi-lagi terbaca
+         *    sebagai "BELUM AKTIF" oleh UI.
+         *
+         * Akibatnya UI memantulkan status yang salah: pengguna yang sudah
+         * mengaktifkan dengan benar tetap dipaksa "Aktifkan" lagi setiap kali
+         * berpindah tab. Itu regresi UX yang fatal.
+         *
+         * PERBAIKAN: `bound` adalah sumber kebenaran untuk "layanan aktif".
+         * Ia ditandai true di `onServiceConnected()` dan tetap true walau
+         * `rootInActiveWindow` sedang null. `onDestroy()` mengubahnya ke false
+         * (layanan benar-benar putus).
+         */
+        @Volatile
+        var bound: Boolean = false
+            private set
+
+        /**
+         * Status kesiapan untuk UI/KONTROL IZIN — memisahkan dua makna:
+         *
+         *  - "layanan sudah ter-bind"(bound) → dipakai untuk menentukan apakah
+         *    tombol "Aktifkan" di Setup perlu ditampilkan. Ini yang benar untuk
+         *    UX izin: layanan yang ter-bind berarti pengguna sudah selesai.
+         *  - "window aktif bisa dibaca sekarang"(live) → hanya dibutuhkan saat
+         *    benar-benar menjalankan perintah dump/tap, BUKAN untuk status izin.
+         *
+         * `instance != null` diperiksa sebagai pinggir-aman proses (kalau proses
+         * agent mati total, `bound` juga ikut hilang).
+         */
+        fun isEnabled(): Boolean = bound || instance != null
+
+        /**
+         * v0.9.6 — dipanggil dari `Activity.onResume()` / dari tab Setup untuk
+         * memastikan `bound` benar-benar mencerminkan keadaan OS, bahkan bila
+         * layanan di-restart OEM tanpa `onServiceConnected()` pada proses ini.
+         *
+         * Sumber kebenaran eksternal: `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`.
+         *
+         * PENTING — arah dua arah:
+         *  - ADA di daftar sementara `bound == false` → tandai true (layanan
+         *    hidup di proses lain / OEM belum memanggil balik). Ini yang
+         *    mencegah UI menyuruh mengaktifkan ulang.
+         *  - TIDAK ADA di daftar → tandai false. Tanpa cabang ini, `bound`
+         *    akan lengket `true` selamanya setelah sekali benar, dan UI tidak
+         *    akan pernah menampilkan tombol "Aktifkan" walau pengguna baru
+         *    saja mematikan layanan. Itu kegagalan yang berlawanan arah.
+         *
+         * Bila pembacaan Settings gagal (mis. OEM menyembunyikannya), kami
+         * TIDAK mengubah `bound` — menghindari status palsu karena error baca.
+         *
+         * Selain itu, instance yang HIDUP selalu menang: bila layanan benar-benar
+         * terhubung di proses ini, `bound` tetap true walau daftar Settings
+         * belum ter-flush (mencegah kedip "BELUM AKTIF" tepat setelah aktivasi).
+         */
+        fun reconcileFromSettings(ctx: android.content.Context): Boolean {
+            val enabled = try {
+                android.provider.Settings.Secure.getString(
+                    ctx.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: return bound
+            } catch (_: Exception) {
+                return bound
+            }
+            // Nama komponen lengkap: "package/fully.qualified.ServiceName".
+            val me = ctx.packageName + "/" + AgentAccessibilityService::class.java.name
+            // Sebagian OEM menuliskan bentuk singkat "package/.ServiceName".
+            val meShort = ctx.packageName + "/." + AgentAccessibilityService::class.java.simpleName
+            val listed = enabled.split(':').any {
+                it.equals(me, ignoreCase = true) || it.equals(meShort, ignoreCase = true)
+            }
+            // v0.9.6 — INSTANCE HIDUP SELALU MENANG. Bila layanan kita benar-benar
+            // sedang terhubung di proses ini, itu bukti yang lebih kuat daripada
+            // daftar Settings (yang bisa belum ter-flush tepat setelah
+            // pengguna menekan tombol aktifkan). Tanpa aturan ini, UI bisa
+            // berkedip ke "BELUM AKTIF" pada detik pertama setelah aktivasi.
+            bound = listed || instance != null
+            return bound
+        }
 
         /** Bounds-based tap center → mirror of Go's ScreenBounds.Center(). */
         data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
@@ -74,6 +170,7 @@ class AgentAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        bound = true
         Log.i(TAG, "AccessibilityService connected")
         // v0.9.0: tidak ada lagi permintaan izin Shizuku di sini. Transport
         // shell kini ADB lokal, dan pairing-nya dipicu dari UI/command
@@ -88,7 +185,14 @@ class AgentAccessibilityService : AccessibilityService() {
         Log.w(TAG, "AccessibilityService interrupted")
     }
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        // v0.9.6 — layanan dilepas (mis. dimatikan manual / di-restart OEM).
+        bound = false
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        bound = false
         instance = null
         super.onDestroy()
     }
@@ -251,6 +355,16 @@ class AgentAccessibilityService : AccessibilityService() {
         return Base64.encodeToString(bytes, Base64.NO_WRAP) to null
     }
 
+    /**
+     * v0.9.6 — KESIAPAN LIVE: apakah window aktif BENAR-BENAR bisa dibaca
+     * SEKARANG. Ini satu-satunya makna yang benar untuk fungsi ini.
+     *
+     * JANGAN pakai fungsi ini untuk menampilkan status IZIN di Setup — pakai
+     * `AgentAccessibilityService.isEnabled()` (lihat companion object).
+     * `rootInActiveWindow` null pada transisi activity / layar kunci / app
+     * FLAG_SECURE adalah kondisi NORMAL dan sementara; memperlakukannya
+     * sebagai "layanan belum aktif" adalah bug regresi v0.9.5.
+     */
     fun isServiceReady(): Boolean = rootInActiveWindow != null
 
     // ---- Act: gesture tap (mirror of Go Device.tapNode) ----
@@ -639,6 +753,13 @@ class AgentAccessibilityService : AccessibilityService() {
             put("api_level", Build.VERSION.SDK_INT)
             put("manufacturer", Build.MANUFACTURER)
             put("model", Build.MODEL)
+            // v0.9.6 — DUA dimensi yang sengaja dipisah agar backend tidak
+            // salah menyimpulkan. `a11y_enabled` = layanan ter-bind (dipakai
+            // untuk keandalan transport jangka panjang). `a11y_ready` = window
+            // sedang terbaca SEKARANG (dipakai untuk memutuskan apakah perintah
+            // dump/tap punya peluang sukses pada detik ini). Nilai yang berbeda
+            // adalah keadaan NORMAL, bukan cacat.
+            put("a11y_enabled", bound)
             put("a11y_ready", isServiceReady())
             // Pengecualian Background Activity Launch — penentu bisa/tidaknya
             // membuka app target dari server.
