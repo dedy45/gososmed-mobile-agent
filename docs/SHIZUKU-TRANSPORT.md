@@ -1,5 +1,18 @@
 # Transport Tier 1 — Shizuku (uid 2000 / shell)
 
+> ## ⚠️ DOKUMEN HISTORIS — SUDAH TIDAK BERLAKU
+>
+> Dokumen ini menjelaskan desain **v0.8.0**. Mulai **v0.9.0**, Shizuku
+> **dihapus total** dan digantikan transport ADB lokal milik sendiri.
+>
+> **Baca sebagai gantinya:**
+> - [TRANSPORT-ADB-LOKAL.md](TRANSPORT-ADB-LOKAL.md) — cara kerja transport baru
+> - [AGENT-COMMAND-CONTRACT.md](AGENT-COMMAND-CONTRACT.md) — kontrak terbaru
+> - [F0-LIBRARY-VALIDATION.md](F0-LIBRARY-VALIDATION.md) — kenapa Shizuku ditinggalkan
+>
+> Disimpan hanya untuk konteks sejarah: alasan hak uid 2000 dibutuhkan tetap
+> sah dan dijelaskan di dokumen pengganti.
+
 Dokumen desain v0.8.0. Menjelaskan **kenapa** jalur ini dipilih, **apa** yang
 berubah di APK, dan **apa** yang harus dilakukan pemilik HP.
 
