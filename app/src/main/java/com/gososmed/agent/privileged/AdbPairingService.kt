@@ -212,8 +212,17 @@ class AdbPairingService : Service() {
                             NOTIF_ID,
                             buildNotification("Port pairing belum terdeteksi. Aktifkan Debug nirkabel lalu coba lagi.")
                         )
+                        // v0.9.6 — `this@AdbPairingService`, BUKAN `this`.
+                        // Blok ini berada di dalam `codeReceiver = object :
+                        // BroadcastReceiver()`, sehingga `this` menunjuk ke
+                        // BroadcastReceiver (bukan Context) dan
+                        // `Toast.makeText(this, ...)` TIDAK dapat dikompilasi
+                        // ("None of the following candidates is applicable").
+                        // Itulah tepatnya error kompilasi yang menjatuhkan CI
+                        // build-apk (step Unit tests) & release (step Build
+                        // release APK) pada commit 8ccce13.
                         Toast.makeText(
-                            this,
+                            this@AdbPairingService,
                             "Port pairing belum terdeteksi. Aktifkan 'Debug nirkabel' lalu coba lagi.",
                             Toast.LENGTH_LONG
                         ).show()

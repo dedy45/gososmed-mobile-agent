@@ -82,6 +82,19 @@ Perbaikan mendalam atas 3 keluhan lapangan + 1 regresi UX yang paling mengganggu
 - Laporan `capabilities` kini memisahkan `a11y_enabled` (bind) dari `a11y_ready`
   (window live) — dua hal berbeda yang selama ini tertukar.
 
+#### 5. Perbaikan build: error kompilasi yang menjatuhkan CI (commit 8ccce13)
+- `AdbPairingService.codeReceiver` adalah `object : BroadcastReceiver()`; di dalam
+  blok `main.post { ... }` pada cabang "port belum terdeteksi", pemanggilan
+  `Toast.makeText(this, ...)` membuat `this` menunjuk ke **BroadcastReceiver**
+  (bukan `Context`), sehingga Kotlin gagal mengompilasi:
+  `None of the following candidates is applicable` + `Unresolved reference 'show'`.
+  Ini persis penyebab `build-apk` (step *Unit tests*) dan `release`
+  (step *Build release APK*) GAGAL pada commit `8ccce131`.
+- Diperbaiki menjadi `this@AdbPairingService` (qualified `this`). Pemanggilan
+  `Toast.makeText` lain di berkas yang sama sudah benar karena berada di dalam
+  member function `Service` (bukan di dalam objek anonim).
+- Diverifikasi lokal: `gradle testDebugUnitTest assembleDebug` → **BUILD SUCCESSFUL**.
+
 ### Notes
 - `MainActivity` (Langkah 3) tetap membaca status ADB apa adanya; perubahan ini tidak
   menyentuh kontrak wire/command server.
