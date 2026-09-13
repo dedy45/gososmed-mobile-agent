@@ -128,6 +128,22 @@ menjalankan shell sembarangan. Butuh biner baru = ubah APK, bukan bypass.
 
 `timeoutMs` default 15000, dibatasi 1000–60000.
 
+**PERBEDAAN v0.8.0 → v0.9.0 pada `shell` (WAJIB diketahui backend):**
+
+| Hal | v0.8.0 (Shizuku) | v0.9.0 (ADB lokal) |
+|---|---|---|
+| `stdout` + `stderr` | terpisah | **DIGABUNG** ke `stdout` (`stderr` selalu `""`) |
+| Sumber exit code | `Process.waitFor()` | penanda `__GOSOSMED_EXIT__$?` yang ditambahkan APK |
+| Bila exit code tak terbaca | — | `exit_code = -1` dan `ok = false` (tidak ditebak) |
+| `transport` | `shell_shizuku` | `shell_adb` |
+
+Alasannya teknis: layanan `shell:` pada protokol ADB hanya menyediakan **satu**
+aliran dan tidak mengembalikan exit code (shell v2 belum dipakai library).
+Konsumen yang ada (`startAppShell`) sudah memeriksa `stdout`+`stderr`
+**digabung**, jadi perilakunya tidak berubah. Backend baru **tidak boleh**
+mengandalkan `stderr` berisi apa pun untuk transport ADB — periksa `stdout`
+dan `exit_code`.
+
 ### 3.2 `adbPair` — command baru, alur pairing
 
 Dipanggil server saat user memulai pairing dari UI (atau dari dalam APK sendiri).
