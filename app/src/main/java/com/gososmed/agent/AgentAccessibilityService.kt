@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -40,10 +41,10 @@ class AgentAccessibilityService : AccessibilityService() {
         /** Jarak antar pemeriksaan foreground; murah karena lokal di HP. */
         private const val FOREGROUND_POLL_MS = 250L
 
-        /** Nama transport yang dilaporkan ke server (v0.8.0). Backend memakai
+        /** Nama transport yang dilaporkan ke server (v0.9.0). Backend memakai
          *  ini untuk tahu tingkat keandalan perintah: shell = deterministik
          *  (uid 2000), accessibility = best-effort dan tunduk pada BAL/OEM. */
-        const val TRANSPORT_SHELL = "shell_shizuku"
+        const val TRANSPORT_SHELL = "shell_adb"
         const val TRANSPORT_A11Y = "accessibility"
         @Volatile
         var instance: AgentAccessibilityService? = null
@@ -63,40 +64,20 @@ class AgentAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Transport yang dipakai pada launch terakhir (v0.8.0). Dilaporkan di
-     *  hasil startApp + capabilities agar backend tidak menebak keandalan. */
+    /** Transport yang dipakai pada launch terakhir (v0.8.0, dipertahankan
+     *  semantiknya di v0.9.0). Dilaporkan di hasil startApp + capabilities
+     *  agar backend tidak menebak keandalan. */
     @Volatile
     var lastLaunchTransport: String = TRANSPORT_A11Y
         private set
-
-    /** Izin Shizuku hanya diminta sekali per hidup layanan agar pemilik HP
-     *  tidak dihujani dialog saat layanan di-rebind (sering di MIUI). */
-    @Volatile
-    private var shizukuAsked = false
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "AccessibilityService connected")
-        // v0.8.0: bila Shizuku sudah berjalan tetapi agent belum diizinkan,
-        // minta izin SEKALI di sini. Dialog dimunculkan aplikasi Shizuku
-        // sendiri, jadi tidak butuh Activity milik kita dan tidak mengubah
-        // layout. Semua kegagalan ditelan ShizukuShell (tidak pernah crash);
-        // bila user menolak, agent tetap jalan di jalur accessibility.
-        if (!shizukuAsked && ShizukuShell.binderAlive() && !ShizukuShell.hasPermission()) {
-            shizukuAsked = true
-            val asked = ShizukuShell.requestPermission()
-            AgentLog.add(
-                "shizuku",
-                asked,
-                0,
-                if (asked) {
-                    "meminta izin Shizuku (setujui dialog di HP untuk transport shell)"
-                } else {
-                    "Shizuku berjalan tetapi permintaan izin gagal"
-                }
-            )
-        }
+        // v0.9.0: tidak ada lagi permintaan izin Shizuku di sini. Transport
+        // shell kini ADB lokal, dan pairing-nya dipicu dari UI/command
+        // `adbPair` (kontrak §3.2) — bukan otomatis saat service ter-bind.
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -277,15 +258,16 @@ class AgentAccessibilityService : AccessibilityService() {
     /**
      * Taps the center of the whole window at absolute screen coords.
      *
-     * v0.8.0 — bila Shizuku siap, tap dikirim lewat `input tap` (uid shell,
-     * izin INJECT_EVENTS). Ini jalur yang dipakai scrcpy/uiautomator2 dan
-     * TIDAK terpengaruh dispatchGesture yang bisa senyap gagal saat app target
-     * memasang FLAG_SECURE, saat overlay OEM aktif, atau saat layanan
-     * accessibility di-throttle sistem.
+     * v0.9.0 — bila transport shell siap, tap dikirim lewat `input tap`
+     * (uid shell, izin INJECT_EVENTS). Ini jalur yang dipakai scrcpy/
+     * uiautomator2 dan TIDAK terpengaruh dispatchGesture yang bisa senyap
+     * gagal saat app target memasang FLAG_SECURE, saat overlay OEM aktif,
+     * atau saat layanan accessibility di-throttle sistem.
      */
     fun tap(x: Int, y: Int): Boolean {
-        if (ShizukuShell.ready()) {
-            val res = ShizukuShell.exec("input tap $x $y")
+        val shell = PrivilegedShellHolder.get()
+        if (shell.status().available) {
+            val res = shell.exec("input tap $x $y")
             if (res.failure == null && res.ok) return true
             Log.w(TAG, "tap via shell gagal: ${res.failure ?: res.stderr} — fallback gesture")
         }
@@ -387,11 +369,12 @@ class AgentAccessibilityService : AccessibilityService() {
         if (!hasPackage(packageName)) {
             return false to "not_installed: $packageName tidak terpasang di HP ini"
         }
-        // v0.8.0 TIER 1 — coba jalur shell (uid 2000) LEBIH DULU bila Shizuku
-        // siap. `am start` dari uid shell BUKAN background activity launch,
+        // v0.9.0 TIER 1 — coba jalur shell (uid 2000) LEBIH DULU bila transport
+        // ADB siap. `am start` dari uid shell BUKAN background activity launch,
         // jadi ia lolos dari blokade BAL Android 10+ maupun izin pop-up MIUI
         // yang menjadi akar semua kegagalan 5 platform pada 2026-09-11.
-        if (ShizukuShell.ready()) {
+        val shell = PrivilegedShellHolder.get()
+        if (shell.status().available) {
             val shellReason = startAppShell(packageName, activity)
             if (shellReason == null) {
                 lastLaunchTransport = TRANSPORT_SHELL
@@ -446,7 +429,7 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * v0.8.0 — launch lewat `am start` sebagai uid shell (Shizuku).
+     * v0.9.0 — launch lewat `am start` sebagai uid shell (ADB lokal).
      *
      * Mengembalikan null bila SUKSES TERVERIFIKASI (foreground benar-benar
      * milik package target), atau string alasan bila gagal. Sama seperti jalur
@@ -455,6 +438,7 @@ class AgentAccessibilityService : AccessibilityService() {
      * diambil dari foreground yang sesungguhnya.
      */
     private fun startAppShell(packageName: String, activity: String?): String? {
+        val shell = PrivilegedShellHolder.get()
         val target = if (!activity.isNullOrEmpty()) {
             "-n $packageName/${expandActivityName(packageName, activity)}"
         } else {
@@ -472,9 +456,9 @@ class AgentAccessibilityService : AccessibilityService() {
         }
         var lastError = "tidak ada percobaan yang dijalankan"
         for (cmd in attempts) {
-            val res = ShizukuShell.exec(cmd)
+            val res = shell.exec(cmd)
             if (res.failure != null) {
-                // Shizuku mati/ditolak di tengah jalan — percuma mencoba sisanya.
+                // Transport mati/ditolak di tengah jalan — percuma mencoba sisanya.
                 return res.failure
             }
             // `am start` melaporkan Error/Warning di stdout walau exit code 0.
@@ -560,10 +544,11 @@ class AgentAccessibilityService : AccessibilityService() {
      * wake terkirim; false bila PowerManager tidak tersedia/gagal.
      */
     fun wakeScreen(): Boolean {
-        // v0.8.0 — jalur shell paling andal: keyevent WAKEUP setara adb dan
+        // v0.9.0 — jalur shell paling andal: keyevent WAKEUP setara adb dan
         // tidak bergantung pada WAKE_LOCK yang bisa ditolak kebijakan OEM.
-        if (ShizukuShell.ready()) {
-            val res = ShizukuShell.exec("input keyevent 224")
+        val shell = PrivilegedShellHolder.get()
+        if (shell.status().available) {
+            val res = shell.exec("input keyevent 224")
             if (res.failure == null && res.ok) return true
             Log.w(TAG, "wake via shell gagal: ${res.failure ?: res.stderr} — fallback wakelock")
         }
@@ -620,11 +605,12 @@ class AgentAccessibilityService : AccessibilityService() {
      * ketimbang percaya reset yang tidak pernah terjadi.
      */
     fun killAppMode(packageName: String): String {
-        // v0.8.0 — dengan Shizuku, force-stop yang SEBENARNYA bisa dilakukan.
-        // Ini syarat kondisi awal deterministik: harvest tidak lagi mendarat
-        // di layar sisa sesi sebelumnya (feed, dialog, story viewer).
-        if (ShizukuShell.ready()) {
-            val res = ShizukuShell.exec("am force-stop $packageName")
+        // v0.9.0 — dengan transport shell, force-stop yang SEBENARNYA bisa
+        // dilakukan. Ini syarat kondisi awal deterministik: harvest tidak lagi
+        // mendarat di layar sisa sesi sebelumnya (feed, dialog, story viewer).
+        val shell = PrivilegedShellHolder.get()
+        if (shell.status().available) {
+            val res = shell.exec("am force-stop $packageName")
             if (res.failure == null && res.ok) return "force_stop"
             Log.w(TAG, "force-stop via shell gagal: ${res.failure ?: res.stderr} — fallback killBackgroundProcesses")
         }
@@ -635,13 +621,19 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * v0.7.1 — kapabilitas nyata perangkat ini, dibaca dari sistem (bukan
+     * v0.9.0 — kapabilitas nyata perangkat ini, dibaca dari sistem (bukan
      * asumsi). Dipakai backend untuk PREFLIGHT: job harvest yang pasti gagal
      * ditolak lebih awal dengan alasan yang bisa ditindak pemilik HP,
      * ketimbang menumpuk job yang berakhir platform_error.
+     *
+     * Nama field netral `adb_*` (kontrak §5). Pemetaan dari v0.8.0:
+     *   shizuku_running -> adb_connected ; shizuku_uid -> adb_uid
+     *   shizuku_installed/version/permission_denied_forever -> DIHAPUS
+     *   can_shell -> nama SAMA, sumbernya sekarang sesi ADB
      */
     fun capabilitiesJson(): JSONObject {
         val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        val shellStatus = PrivilegedShellHolder.get().status()
         return JSONObject().apply {
             put("agent_version", BuildConfig.VERSION_NAME)
             put("api_level", Build.VERSION.SDK_INT)
@@ -652,23 +644,19 @@ class AgentAccessibilityService : AccessibilityService() {
             // membuka app target dari server.
             put("can_draw_overlay", AgentOverlay.canDraw(this@AgentAccessibilityService))
             put("overlay_attached", AgentOverlay.isAttached())
-            // v0.8.0 — tingkat transport. shell = deterministik (uid 2000),
+            // v0.9.0 — tingkat transport. shell = deterministik (uid 2000),
             // accessibility = best-effort dan tunduk pada BAL/kebijakan OEM.
-            val shizukuAlive = ShizukuShell.binderAlive()
-            val shizukuReady = ShizukuShell.ready()
-            put("transport_tier", if (shizukuReady) TRANSPORT_SHELL else TRANSPORT_A11Y)
+            put("transport_tier", if (shellStatus.available) TRANSPORT_SHELL else TRANSPORT_A11Y)
             put("last_launch_transport", lastLaunchTransport)
-            put("shizuku_installed", ShizukuShell.managerInstalled(this@AgentAccessibilityService))
-            put("shizuku_running", shizukuAlive)
-            put("shizuku_permission", ShizukuShell.hasPermission())
-            put("shizuku_permission_denied_forever", ShizukuShell.permissionPermanentlyDenied())
-            put("shizuku_uid", ShizukuShell.privilegeUid())
-            put("shizuku_version", ShizukuShell.serverVersion())
-            put("can_shell", shizukuReady)
+            put("adb_paired", shellStatus.paired)
+            put("adb_connected", shellStatus.connected)
+            put("adb_uid", shellStatus.uid)
+            put("adb_error", shellStatus.error)
+            put("can_shell", shellStatus.available)
             // Dengan shell, launch tidak butuh izin overlay sama sekali.
-            put("can_launch_app", shizukuReady || AgentOverlay.canDraw(this@AgentAccessibilityService))
-            put("can_force_stop", shizukuReady)
-            put("can_inject_input", shizukuReady)
+            put("can_launch_app", shellStatus.available || AgentOverlay.canDraw(this@AgentAccessibilityService))
+            put("can_force_stop", shellStatus.available)
+            put("can_inject_input", shellStatus.available)
             put("can_screenshot", Build.VERSION.SDK_INT >= 30)
             put("battery_unrestricted", pm?.isIgnoringBatteryOptimizations(packageName) == true)
             put("screen_interactive", pm?.isInteractive == true)

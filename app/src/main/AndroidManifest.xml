@@ -37,16 +37,22 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Agent kembali online setelah HP reboot tanpa dibuka manual. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- v0.8.0 TRANSPORT TIER 1 (Shizuku). Izin ini membuat agent bisa
-         meminta binder Shizuku dan menjalankan perintah sebagai uid 2000
-         (user `shell`) - hak yang sama dengan `adb shell`. Dampaknya:
-         `am start` bukan lagi Background Activity Launch, `am force-stop`
-         benar-benar mereset app, dan `input tap` memakai INJECT_EVENTS.
-         Ini jalur yang dipakai proyek terbukti produksi (scrcpy, atx-agent,
-         appium-uiautomator2-server), bukan eksperimen. Bila Shizuku tidak
-         dipasang, izin ini tidak berefek dan agent tetap jalan di jalur
-         accessibility (degradasi mulus, bukan crash). -->
-    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- v0.9.0 TRANSPORT TIER 1 (ADB lokal).
+         v0.8.0 memakai aplikasi pihak ketiga Shizuku; mulai v0.9.0 Shizuku
+         DIHAPUS TOTAL (izin moe.shizuku.manager.permission.API_V23 dan
+         ShizukuProvider sudah tidak ada di berkas ini). Transport shell kini
+         klien ADB yang tertanam di APK sendiri: pairing ke adbd lokal lewat
+         Debug nirkabel, lalu perintah dijalankan sebagai uid 2000 (user
+         `shell`) - hak yang sama dengan `adb shell`, tanpa aplikasi tambahan.
+
+         Efeknya sama seperti sebelumnya: `am start` bukan lagi Background
+         Activity Launch, `am force-stop` benar-benar mereset app, dan
+         `input tap` memakai INJECT_EVENTS. Bila belum di-pair, agent tetap
+         jalan di jalur accessibility (degradasi mulus, bukan crash).
+
+         Tidak ada izin baru yang dibutuhkan di manifest untuk ini: ADB lokal
+         memakai socket loopback, dan INTERNET sudah dideklarasikan di atas. -->
 
     <!-- Android 11+ package visibility: selain QUERY_ALL_PACKAGES, deklarasi
          <queries> eksplisit memastikan queryIntentActivities /
@@ -73,18 +79,9 @@
              dipakai saat pengembangan; kriteria lulus P0-3: domain ws://
              arbitrary GAGAL di build release. -->
 
-        <!-- v0.8.0: ShizukuProvider WAJIB ada agar binder Shizuku diterima
-             saat proses agent dimulai (tanpa ini Shizuku.pingBinder() selalu
-             false walau Shizuku berjalan). authorities memakai
-             ${applicationId}.shizuku sesuai dokumentasi Shizuku-API.
-             multiprocess=false karena agent single-process. -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <!-- v0.9.0: ShizukuProvider DIHAPUS. Transport shell kini klien ADB
+             lokal di dalam APK ini, jadi tidak ada binder pihak ketiga yang
+             perlu diterima. -->
 
         <!-- Validation/control channel (DEBUG saja — kode menolak di release,
              lihat AgentReceiver). Exported agar adb shell am broadcast bisa

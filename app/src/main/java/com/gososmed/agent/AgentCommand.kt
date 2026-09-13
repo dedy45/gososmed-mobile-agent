@@ -13,7 +13,8 @@ import org.json.JSONObject
  * Request  : { "id": 1, "cmd": "dump" | "tap" | "tapByText" | "setText"
  *                    | "back" | "home" | "recents" | "notify" | "package"
  *                    | "startApp" | "killApp" | "hasPackage" | "listPackages"
- *                    | "dumpWindows" | "screenshot" | "ping" | "wake", ...args }
+ *                    | "dumpWindows" | "screenshot" | "ping" | "wake"
+ *                    | "capabilities" | "shell" | "adbPair", ...args }
  * Response : { "id": 1, "ok": true,  "result": {...} }
  *          : { "id": 1, "ok": false, "error": "..." }
  */
@@ -44,13 +45,14 @@ object AgentCommand {
     // screenshot, baterai) untuk PREFLIGHT backend — menolak job yang pasti
     // gagal, bukan menumpuk platform_error.
     const val CMD_CAPABILITIES = "capabilities"
-    // v0.8.0: eksekusi shell sebagai uid 2000 lewat Shizuku (TIER 1).
-    // Hanya biner di daftar izin ShizukuShell yang boleh jalan; bila Shizuku
-    // tidak siap perintah DITOLAK dengan reason yang bisa ditindak, bukan
-    // gagal senyap. Server memakainya untuk am/input/pm/dumpsys.
+    // v0.9.0: eksekusi shell sebagai uid 2000 lewat transport ADB LOKAL.
+    // Hanya biner di daftar izin PrivilegedShell yang boleh jalan; bila
+    // transport tidak siap perintah DITOLAK dengan reason yang bisa ditindak,
+    // bukan gagal senyap. Server memakainya untuk am/input/pm/dumpsys.
     const val CMD_SHELL = "shell"
-    // v0.8.0: minta izin Shizuku dari sisi server (memunculkan dialog di HP).
-    const val CMD_SHIZUKU_REQUEST = "shizukuRequest"
+    // v0.9.0: mulai alur pairing transport ADB dari sisi server (kontrak §3.2).
+    // Menggantikan `shizukuRequest` v0.8.0 yang sudah DIHAPUS.
+    const val CMD_ADB_PAIR = "adbPair"
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -185,8 +187,8 @@ object AgentCommand {
                             put("ok", launched)
                             put("package", pkg)
                             put("foreground", svc.currentPackage())
-                            // v0.8.0: server tahu keandalan launch ini
-                            // (shell_shizuku = deterministik, accessibility =
+                            // v0.9.0: server tahu keandalan launch ini
+                            // (shell_adb = deterministik, accessibility =
                             // best-effort dan bisa diblokir BAL/OEM).
                             put("transport", svc.lastLaunchTransport)
                             if (reason != null) put("reason", reason)
@@ -209,8 +211,8 @@ object AgentCommand {
                         JSONObject().apply {
                             put("ok", mode != "unavailable")
                             put("mode", mode)
-                            // v0.8.0: force_stop kini BISA true — hanya bila
-                            // jalur shell (Shizuku) dipakai. Server boleh
+                            // v0.9.0: force_stop kini BISA true — hanya bila
+                            // jalur shell (ADB lokal) dipakai. Server boleh
                             // menganggap layar benar-benar direset HANYA saat
                             // mode == "force_stop".
                             put("force_stop", mode == "force_stop")
@@ -239,15 +241,15 @@ object AgentCommand {
                 resp.put("ok", true).put("result", svc.capabilitiesJson())
             }
             CMD_SHELL -> {
-                // v0.8.0: jalur setara adb. Kegagalan SELALU membawa `reason`
-                // yang bisa ditindak pemilik HP (pasang/nyalakan Shizuku,
-                // beri izin), tidak pernah sukses palsu.
+                // v0.9.0: jalur setara adb. Kegagalan SELALU membawa `reason`
+                // yang bisa ditindak pemilik HP (hubungkan otomasi lanjutan),
+                // tidak pernah sukses palsu.
                 val command = req.optString("command", "")
                 if (command.isBlank()) {
                     resp.put("ok", false).put("error", "shell requires command")
                 } else {
                     val timeout = req.optLong("timeoutMs", 15_000L).coerceIn(1_000L, 60_000L)
-                    val res = ShizukuShell.exec(command, timeout)
+                    val res = com.gososmed.agent.privileged.PrivilegedShellHolder.get().exec(command, timeout)
                     resp.put("ok", true).put(
                         "result",
                         JSONObject().apply {
@@ -261,20 +263,22 @@ object AgentCommand {
                     )
                 }
             }
-            CMD_SHIZUKU_REQUEST -> {
-                // Memunculkan dialog izin Shizuku di HP. ok=false berarti
-                // Shizuku belum berjalan — pemilik HP harus membukanya dulu.
-                val asked = ShizukuShell.requestPermission()
+            CMD_ADB_PAIR -> {
+                // v0.9.0: mulai alur pairing transport ADB lokal (kontrak §3.2).
+                // Implementasi nyata dipasang di F3 (AdbLocalShell); sebelum itu
+                // balasan jujur: belum didukung, jangan dipalsukan.
+                val status = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
                 resp.put("ok", true).put(
                     "result",
                     JSONObject().apply {
-                        put("ok", asked)
-                        put("shizuku_running", ShizukuShell.binderAlive())
-                        put("shizuku_permission", ShizukuShell.hasPermission())
-                        if (!asked) {
+                        put("ok", status.available)
+                        put("paired", status.paired)
+                        put("adb_connected", status.connected)
+                        if (!status.available) {
                             put(
                                 "reason",
-                                "shizuku_unavailable: layanan Shizuku belum berjalan di HP ini"
+                                if (status.error.isNotEmpty()) status.error
+                                else "adb_not_paired: otomasi lanjutan belum dihubungkan di HP ini"
                             )
                         }
                     }

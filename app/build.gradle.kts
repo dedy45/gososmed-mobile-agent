@@ -76,14 +76,19 @@ dependencies {
     // OkHttp for outbound WebSocket to the GoSosmed agenthub.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    // v0.8.0 TRANSPORT TIER 1 — Shizuku: menjalankan perintah sebagai uid
-    // 2000 (user `shell`), hak yang sama dengan `adb shell`. Dipakai untuk
-    // `am start` (lolos Background Activity Launch), `am force-stop` (reset
-    // deterministik) dan `input tap` (INJECT_EVENTS). `provider` menyediakan
-    // rikka.shizuku.ShizukuProvider yang dideklarasikan di AndroidManifest.
-    // Keduanya ada di mavenCentral (sudah terdaftar di settings.gradle.kts).
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
+    // v0.9.0 TRANSPORT TIER 1 — ADB lokal (menggantikan Shizuku).
+    // Dependency dev.rikka.shizuku:* sudah DIHAPUS TOTAL. Transport shell kini
+    // klien ADB di dalam APK sendiri: pairing ke adbd lokal lewat Debug
+    // nirkabel, tanpa aplikasi pihak ketiga.
+    //
+    // CATATAN F3: dependensi berikut ditambahkan saat modul privileged/ dibangun.
+    //   implementation("com.github.MuntashirAkon:libadb-android:3.1.1")  // Apache-2.0, via JitPack
+    //   implementation("org.conscrypt:conscrypt-android:2.5.3")          // TLS 1.3 + pairing
+    //   implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")         // sertifikat X509
+    // Repo JitPack harus ditambahkan di settings.gradle.kts (bukan di sini)
+    // karena proyek memakai RepositoriesMode.FAIL_ON_PROJECT_REPOS.
+    // Bukti pemilihan library: docs/F0-LIBRARY-VALIDATION.md
+    //
     // P1-1 (Plan 07): unit test JVM pertama (HierarchySerializer/AgentCommand
     // jalur service-null) — dijalankan CI step testDebugUnitTest.
     testImplementation("junit:junit:4.13.2")
