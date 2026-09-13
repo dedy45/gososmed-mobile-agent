@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
+import io.github.muntashirakon.adb.android.AndroidUtils
 import java.security.PrivateKey
 import java.security.cert.Certificate
 import java.util.concurrent.Callable
@@ -167,7 +168,7 @@ internal class AdbLocalShell(
         setApi(android.os.Build.VERSION.SDK_INT)
         // Gunakan IP lokal dinamis dari antarmuka Wi-Fi aktual atau fallback loopback
         try {
-            val detectedIp = io.github.muntashirakon.adb.android.AndroidUtils.getHostIpAddress(appContext)
+            val detectedIp = AndroidUtils.getHostIpAddress(appContext)
             setHostAddress(detectedIp)
         } catch (_: Exception) {
             setHostAddress("127.0.0.1")
