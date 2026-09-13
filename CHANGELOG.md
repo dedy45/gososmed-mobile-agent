@@ -11,6 +11,35 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-09-13
+
+### Fixed — dua cacat pada alur pairing transport ADB
+Keduanya ditemukan lewat penelusuran ulang alur pairing terhadap perilaku
+library dan batas waktu server, **sebelum** pengujian di perangkat. Keduanya
+akan membuat pairing tampak GAGAL di dasbor walaupun di HP sebenarnya berhasil.
+
+1. **Anggaran waktu perangkap (batas luar lebih pendek dari bagian dalam).**
+   `connectTls()` memakai timeout yang diberikan untuk penemuan mDNS **lalu
+   menambah** timeout socket sendiri, sehingga durasi terburuknya lebih panjang
+   daripada batas yang dipasang pemanggil. Akibatnya agen menyerah lebih dulu,
+   dan — karena socket blocking tidak bisa diinterupsi — tugas itu tetap
+   menempati satu-satunya thread ADB, sehingga perintah berikutnya ikut macet.
+   Sekarang anggaran dipisah eksplisit (penemuan 5 dtk, socket 6 dtk) dan batas
+   luar selalu ≥ durasi terburuk bagian dalam.
+
+2. **Pairing melewati batas 30 detik command server.** Versi 0.9.0 menyambung
+   secara sinkron setelah pairing, sehingga durasi terburuknya ~40 dtk —
+   melewati `agenthub.DefaultTimeout` (30 dtk). Dasbor akan melaporkan gagal
+   padahal kunci sudah tersimpan di HP. Sekarang pairing dikembalikan sebagai
+   hasil (15 dtk + kelonggaran), dan penyambungan dijalankan di belakang.
+   `capabilities` melaporkan keadaan sesi yang sebenarnya.
+
+### Notes
+- `adbPair` mengembalikan `ok = true` ketika **pairing** berhasil; sesi bisa
+  masih `adb_connected = false` sesaat karena penyambungan berjalan di belakang.
+  UI menampilkan "menyambung…" lalu diperbarui. Kontrak §3.2 sudah diperbarui.
+- Belum diuji pada perangkat nyata (rencana fase F9).
+
 ## [0.9.0] — 2026-09-13
 
 ### Changed — BREAKING: Shizuku DIHAPUS TOTAL
