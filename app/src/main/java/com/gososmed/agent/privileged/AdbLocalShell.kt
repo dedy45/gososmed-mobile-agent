@@ -136,6 +136,29 @@ internal class AdbLocalShell(
     @Volatile
     private var cachedUid = -1
 
+    /**
+     * SALINAN status koneksi milik kita sendiri.
+     *
+     * KENAPA TIDAK MEMANGGIL `isConnected()` LIBRARY (bug yang diperbaiki):
+     * `AbsAdbConnectionManager.autoConnect()` menahan `synchronized (mLock)`
+     * SELAMA SELURUH discovery + socket connect (sampai ~11 dtk), dan
+     * `isConnected()` meminta kunci yang SAMA. Jadi memanggil `isConnected()`
+     * dari main thread saat penyambungan latar berjalan akan MEMBLOKIR main
+     * thread sampai 11 dtk — ANR.
+     *
+     * Ini menjadi nyata justru karena F8 memindahkan penyambungan ke latar
+     * (`connectAsync`): sebelumnya connect selalu sinkron di dalam satu command,
+     * sehingga tidak ada `status()` yang berjalan bersamaan.
+     *
+     * `status()` dan `exec()` (keduanya bisa dipanggil dari main thread) kini
+     * HANYA membaca field volatil ini — tanpa kunci, tanpa IO. Otoritasnya
+     * dipegang thread IO: di-set true hanya setelah connect sukses, di-set
+     * false saat putus/timeout. Bila nilainya keliru positif, `openStream`
+     * gagal dan dilaporkan jujur sebagai `adb_disconnected` — bukan sukses palsu.
+     */
+    @Volatile
+    private var linkUp = false
+
     /** Stream yang sedang dibaca; ditutup paksa saat timeout agar read() lepas. */
     @Volatile
     private var activeStream: AdbStream? = null
@@ -161,7 +184,9 @@ internal class AdbLocalShell(
     // -------------------------------------------------------------- PrivilegedShell
 
     override fun status(): ShellStatus {
-        val connected = safeIsConnected()
+        // HANYA field volatil — tidak menyentuh kunci/IO library.
+        // Lihat komentar [linkUp] untuk alasan (mencegah ANR main thread).
+        val connected = linkUp
         return ShellStatus(
             available = connected,
             paired = paired,
@@ -181,7 +206,9 @@ internal class AdbLocalShell(
                 failure = "blocked: perintah '$binary' tidak ada di daftar izin agent",
             )
         }
-        if (!safeIsConnected()) {
+        // Cek cepat TANPA kunci library (lihat [linkUp]). Bila nilainya keliru
+        // positif, openStream di thread IO akan gagal dan dilaporkan jujur.
+        if (!linkUp) {
             return ShellResult(
                 ok = false, exitCode = -1, stdout = "", stderr = "",
                 failure = notConnectedReason(),
@@ -239,73 +266,88 @@ internal class AdbLocalShell(
     /**
      * Sambung ke adbd. Port ditemukan otomatis lewat mDNS (TLS connect service).
      *
+     * Blocking bagi PEMANGGIL: bodi penyambungan dijalankan di thread IO
+     * ([doConnect]) dan pemanggil menunggu paling lama [CONNECT_WORST_CASE_MS].
+     *
      * Bila penemuan otomatis gagal (sering dibatasi OEM), pemanggil bisa
      * memakai [connectTo] dengan host+port manual dari layar Debug nirkabel.
-     *
-     * Batas luar = [CONNECT_WORST_CASE_MS] (discovery + socket + grace), yang
-     * SELALU >= durasi terburuk bagian dalam. Ini disengaja: socket blocking
-     * tidak bisa diinterupsi, jadi menyerah lebih dulu akan meninggalkan tugas
-     * yang masih menempati thread IO dan memacetkan perintah berikutnya.
      */
     fun connectNow(discoveryTimeoutMs: Long = DISCOVERY_TIMEOUT_MS): Boolean {
-        if (safeIsConnected()) return true
-        val done = runBounded(CONNECT_WORST_CASE_MS) {
-            try {
-                val ok = connectTls(appContext, discoveryTimeoutMs)
-                if (ok) {
-                    paired = true
-                    lastError = ""
-                    probeUid()
-                    Log.i(TAG, "tersambung ke adbd (uid=$cachedUid)")
-                } else {
-                    lastError = "adb_disconnected: koneksi ke adbd tidak terbentuk"
-                }
-                ok
-            } catch (t: Throwable) {
-                classifyConnectFailure(t)
-                false
-            }
-        }
-        return done == true
+        if (linkUp) return true
+        return runBounded(CONNECT_WORST_CASE_MS) { doConnect(discoveryTimeoutMs) } == true
     }
 
     /**
      * Sambung di BELAKANGAN, tanpa menahan pemanggil.
      *
+     * BUG YANG DIPERBAIKI (self-deadlock): versi sebelumnya berbunyi
+     * `io.execute { connectNow() }` — dan `connectNow` sendiri memakai
+     * [runBounded] yang MENYERAHKAN tugas ke executor yang SAMA lalu menunggu.
+     * Karena executor-nya satu thread, tugas dalam tidak akan pernah berjalan
+     * selagi tugas luar menunggu: hasilnya SELALU timeout ~13 dtk dan
+     * dilaporkan gagal. Artinya sesi SETELAH pairing sukses tidak pernah bisa
+     * terbentuk. Sekarang [doConnect] dipanggil langsung di dalam tugas itu
+     * (tanpa penyerahan bersarang).
+     *
      * Dipakai setelah pairing berhasil: `pair` + `connect` secara sinkron bisa
-     * melewati batas 30 dtk command agent (`agenthub.DefaultTimeout`), sehingga
-     * server melaporkan gagal padahal pairing sudah berhasil dan tersimpan.
-     * Status terbaru dibaca lewat [status] pada polling berikutnya.
+     * melewati batas 30 dtk command agent (`agenthub.DefaultTimeout`).
      */
-    fun connectAsync() {
-        io.execute { connectNow() }
+    fun connectAsync(discoveryTimeoutMs: Long = DISCOVERY_TIMEOUT_MS) {
+        io.execute { doConnect(discoveryTimeoutMs) }
     }
 
     /** Sambung dengan host+port eksplisit (jalur cadangan bila mDNS diblokir). */
     fun connectTo(host: String, port: Int): Boolean {
-        if (safeIsConnected()) return true
+        if (linkUp) return true
         // Tanpa discovery mDNS, jadi durasi terburuk = socket + grace.
-        val done = runBounded(SOCKET_TIMEOUT_MS + GRACE_MS) {
-            try {
-                val ok = connect(host, port)
-                if (ok) {
-                    paired = true
-                    lastError = ""
-                    probeUid()
-                } else {
-                    lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
-                }
-                ok
-            } catch (t: Throwable) {
-                classifyConnectFailure(t)
-                false
-            }
+        return runBounded(SOCKET_TIMEOUT_MS + GRACE_MS) { doConnectManual(host, port) } == true
+    }
+
+    /**
+     * Bodi penyambungan OTOMATIS — WAJIB dijalankan di thread IO.
+     *
+     * Tidak memakai [runBounded] sendiri (itu tugas pemanggil): inilah yang
+     * membuat [connectAsync] tidak lagi menyerahkan tugas bersarang.
+     */
+    private fun doConnect(discoveryTimeoutMs: Long): Boolean = try {
+        val ok = connectTls(appContext, discoveryTimeoutMs)
+        if (ok) {
+            paired = true
+            lastError = ""
+            linkUp = true
+            Log.i(TAG, "tersambung ke adbd")
+        } else {
+            linkUp = false
+            lastError = "adb_disconnected: koneksi ke adbd tidak terbentuk"
         }
-        return done == true
+        ok
+    } catch (t: Throwable) {
+        linkUp = false
+        classifyConnectFailure(t)
+        false
+    }
+
+    /** Bodi penyambungan MANUAL (host+port eksplisit) — WAJIB di thread IO. */
+    private fun doConnectManual(host: String, port: Int): Boolean = try {
+        val ok = connect(host, port)
+        if (ok) {
+            paired = true
+            lastError = ""
+            linkUp = true
+        } else {
+            linkUp = false
+            lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
+        }
+        ok
+    } catch (t: Throwable) {
+        linkUp = false
+        classifyConnectFailure(t)
+        false
     }
 
     /** Putuskan sesi (kunci TETAP tersimpan, jadi pairing tidak perlu diulang). */
     fun disconnectNow() {
+        linkUp = false
         closeActiveStream()
         try {
             disconnect()
@@ -336,7 +378,7 @@ internal class AdbLocalShell(
 
     private fun execOnIo(command: String, timeoutMs: Long): ShellResult {
         var stream: AdbStream? = null
-        return try {
+        val result = try {
             stream = openStream("shell:${AdbShellOutput.wrap(command)}")
             activeStream = stream
             val raw = readAll(stream, timeoutMs)
@@ -351,6 +393,11 @@ internal class AdbLocalShell(
                 failure = null,
             )
         } catch (t: Throwable) {
+            // Kegagalan saat membuka/membaca stream hampir selalu berarti
+            // koneksi sudah tidak sehat. Turunkan [linkUp] supaya `status()`
+            // melaporkan keadaan yang benar pada polling berikutnya, tanpa
+            // perlu memanggil `isConnected()` library (yang memblokir).
+            if (t is java.io.IOException) linkUp = false
             ShellResult(
                 ok = false, exitCode = -1, stdout = "", stderr = "",
                 failure = classifyExecFailure(t),
@@ -363,6 +410,12 @@ internal class AdbLocalShell(
                 // stream sudah ditutup peer / koneksi sudah hilang — abaikan.
             }
         }
+        // Probe uid di LUAR blok finally di atas: stream perintah sudah
+        // ditutup lebih dulu, sehingga probe memiliki siklus hidupnya sendiri
+        // dan tidak bertabrakan dengan [activeStream]. Hanya dijalankan setelah
+        // perintah benar-benar sukses (sesi terbukti hidup).
+        if (result.ok && cachedUid == -1) probeUid()
+        return result
     }
 
     /**
@@ -387,13 +440,30 @@ internal class AdbLocalShell(
     }
 
     /**
-     * Probe uid efektif sekali per sesi. Dipakai `capabilities` supaya nilai
-     * `adb_uid` diukur, bukan diasumsikan.
+     * Probe uid efektif — DIPANGGIL HANYA DARI [execOnIo] (thread IO), dan
+     * hanya setelah satu perintah sukses pada sesi ini.
+     *
+     * KENAPA DIHAPUS DARI JALUR CONNECT (v0.9.2): `openStream()` pada library
+     * TIDAK menerima parameter timeout dan menahan `synchronized (mLock)`.
+     * Bila `adbd` tidak menjawab, panggilan itu bisa MENGGANTUNG dan menempati
+     * SATU-SATUNYA thread IO selamanya — seluruh perintah shell berikutnya lalu
+     * timeout tanpa henti. Dipanggil dari jalur connect, risikonya tidak
+     * sepadan: `adb_uid` hanya INFORMASI (tidak ada logika backend/frontend
+     * yang bercabang atas nilainya; sudah diperiksa).
+     *
+     * Dengan memanggilnya di sini, dua syarat terpenuhi:
+     *  1. sesi sudah terbukti hidup (satu perintah sukses sebelumnya), jadi
+     *     kemungkinan menggantung jauh lebih kecil;
+     *  2. stream-nya didaftarkan ke [activeStream] sehingga [exec] yang
+     *     timeout bisa menutupnya paksa — inilah yang tidak dimiliki versi lama.
+     *
+     * Bila tetap gagal, nilai tetap -1 ("belum diketahui") — jujur, bukan tebakan.
      */
     private fun probeUid() {
         if (cachedUid != -1) return
         cachedUid = try {
             val stream = openStream("shell:id -u")
+            activeStream = stream
             try {
                 val sb = StringBuilder()
                 val buffer = ByteArray(64)
@@ -406,22 +476,23 @@ internal class AdbLocalShell(
                 }
                 sb.toString().trim().toIntOrNull() ?: -1
             } finally {
+                activeStream = null
                 try {
                     stream.close()
                 } catch (_: Throwable) {
                 }
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "probe uid gagal", t)
+            Log.w(TAG, "probe uid gagal (dibiarkan -1 = belum diketahui)", t)
             -1
         }
     }
 
-    private fun safeIsConnected(): Boolean = try {
-        isConnected()
-    } catch (t: Throwable) {
-        false
-    }
+    // CATATAN: helper `safeIsConnected()` DIHAPUS (v0.9.2). Ia memanggil
+    // `isConnected()` library yang meminta `synchronized (mLock)` — kunci yang
+    // ditahan selama penyambungan berjalan, sehingga pemanggilan dari main
+    // thread bisa memblokir sampai ~11 dtk. Diganti field [linkUp] yang
+    // volatil dan tidak pernah menyentuh kunci/IO.
 
     private fun closeActiveStream() {
         try {

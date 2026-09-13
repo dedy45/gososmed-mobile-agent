@@ -11,6 +11,46 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-09-13
+
+### Fixed — tiga cacat pada transport ADB, ditemukan lewat penelusuran ulang
+Semuanya ditemukan dengan **membaca ulang kode library** (`AbsAdbConnectionManager`)
+dan menelusuri ulang jalur eksekusi — **sebelum** pengujian di perangkat.
+Dua di antaranya akan membuat pairing tampak gagal walaupun di HP berhasil.
+
+1. **SELF-DEADLOCK: sesi setelah pairing tidak pernah bisa terbentuk.**
+   `connectAsync()` mengirim tugas ke executor satu-thread, lalu memanggil
+   `connectNow()` yang **menyerahkan tugas LAGI ke executor yang sama** dan
+   menunggu hasilnya. Karena hanya ada satu thread dan thread itu sedang
+   menunggu, tugas di dalamnya tidak akan pernah berjalan: hasilnya **selalu**
+   timeout ~13 detik dan dilaporkan gagal.
+   Sekarang bodi penyambungan ([doConnect]) dipanggil langsung di dalam tugas
+   itu, tanpa penyerahan bersarang.
+
+2. **ANR: `status()` bisa memblokir main thread sampai ~11 detik.**
+   `isConnected()` pada library meminta `synchronized (mLock)` — kunci yang
+   ditahan `autoConnect()` **selama seluruh** discovery + socket. Sejak
+   penyambungan dipindahkan ke latar, `status()`/`capabilities` yang dipanggil
+   dari main thread bisa menunggu kunci itu sampai 11 detik.
+   Sekarang status koneksi disimpan di field `@Volatile` milik kami sendiri
+   (`linkUp`) yang di-set thread IO; `status()` dan `exec()` hanya membaca field
+   itu — tanpa kunci, tanpa IO.
+
+3. **Risiko thread IO macet permanen oleh probe uid.**
+   `openStream()` pada library tidak menerima timeout dan menahan kunci; bila
+   `adbd` tidak menjawab, panggilan itu bisa menggantung dan menempati
+   satu-satunya thread ADB selamanya. Probe dipindahkan keluar dari jalur
+   connect, hanya dijalankan **setelah satu perintah benar-benar sukses**, dan
+   stream-nya didaftarkan sebagai `activeStream` sehingga timeout perintah bisa
+   menutupnya paksa. Bila tetap gagal, `adb_uid` tetap `-1` ("belum diketahui") —
+   jujur, bukan tebakan. Field ini murni informasi; tidak ada logika backend
+   atau frontend yang bercabang atas nilainya.
+
+### Notes
+- Belum diuji pada perangkat nyata (rencana fase F9). Perbaikan 1 dan 2 hanya
+  bisa dibuktikan pada perangkat, jadi verifikasi yang tersedia saat ini adalah
+  pembacaan kode + kompilasi CI.
+
 ## [0.9.1] — 2026-09-13
 
 ### Fixed — dua cacat pada alur pairing transport ADB

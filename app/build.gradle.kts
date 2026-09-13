@@ -36,11 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 17 = v0.9.1 (perbaikan 2 cacat alur pairing pada 0.9.0).
+        // versionCode 18 = v0.9.2 (perbaikan self-deadlock connectAsync + ANR).
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 17
-        versionName = "0.9.1"
+        versionCode = 18
+        versionName = "0.9.2"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
