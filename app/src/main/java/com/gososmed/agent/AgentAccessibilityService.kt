@@ -1,7 +1,9 @@
 package com.gososmed.agent
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
@@ -11,7 +13,10 @@ import android.os.Bundle
 import android.util.Base64
 import android.util.Log
 import android.view.Display
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
@@ -85,6 +90,22 @@ class AgentAccessibilityService : AccessibilityService() {
             private set
 
         /**
+         * v0.9.7 — applicationContext. Diperlukan supaya `isEnabled()` bisa
+         * bertanya LANGSUNG ke sistem operasi (lihat [osEnabled]) tanpa harus
+         * menunggu sebuah Activity hidup. Sebelum ini, `isEnabled()` hanya
+         * mengandalkan flag dalam memori — dan flag itu hilang begitu proses
+         * agent dimatikan OEM, sehingga UI melaporkan "BELUM AKTIF" untuk
+         * layanan yang sesungguhnya masih aktif di Setelan.
+         */
+        @Volatile
+        private var appContext: Context? = null
+
+        /** v0.9.7 — daftarkan applicationContext (dipanggil dari AgentApp). */
+        fun attach(ctx: Context) {
+            appContext = ctx.applicationContext
+        }
+
+        /**
          * Status kesiapan untuk UI/KONTROL IZIN — memisahkan dua makna:
          *
          *  - "layanan sudah ter-bind"(bound) → dipakai untuk menentukan apakah
@@ -96,7 +117,87 @@ class AgentAccessibilityService : AccessibilityService() {
          * `instance != null` diperiksa sebagai pinggir-aman proses (kalau proses
          * agent mati total, `bound` juga ikut hilang).
          */
-        fun isEnabled(): Boolean = bound || instance != null
+        fun isEnabled(): Boolean {
+            // Bukti terkuat lebih dulu: layanan benar-benar ter-bind di proses
+            // ini. Tidak ada pembacaan sistem yang bisa menyangkalnya.
+            if (bound || instance != null) return true
+            // v0.9.7 — JARING PENGAMAN. Bila flag memori hilang (proses agent
+            // di-restart OEM, atau layanan di-bind di proses lain), tanyakan
+            // langsung ke sistem. Sebelum ini fungsi ini mengembalikan `false`
+            // pada keadaan tersebut — itulah yang membuat pengguna yang SUDAH
+            // mengaktifkan dipaksa mengaktifkan ulang, dan yang membuat Langkah 1
+            // tampak "mati" tepat setelah menekan Hubungkan di Langkah 3.
+            val ctx = appContext ?: return false
+            return osEnabled(ctx)
+        }
+
+        /**
+         * v0.9.7 — PEMBACAAN STATUS LANGSUNG DARI SISTEM OPERASI.
+         *
+         * Dua sumber, keduanya harus sepakat sebelum kita menyatakan "mati":
+         *
+         *  1. `AccessibilityManager.getEnabledAccessibilityServiceList()` —
+         *     API RESMI. Ia mengembalikan objek `AccessibilityServiceInfo`
+         *     beserta `ComponentName` yang sudah terurai, jadi TIDAK ada
+         *     penguraian string dan tidak ada ketergantungan pada format yang
+         *     dipakai OEM (bentuk panjang `pkg/pkg.Service` vs bentuk pendek
+         *     `pkg/.Service`).
+         *
+         *  2. `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` — cadangan.
+         *     Dipakai HANYA untuk menyelamatkan kasus API mengembalikan daftar
+         *     tanpa menyebut kita (beberapa OEM menyaring daftar itu). Tanpa
+         *     cadangan ini, kesalahan baca API justru menghidupkan kembali bug
+         *     "disuruh aktifkan ulang".
+         *
+         * Urutannya sengaja "salah satu menyebut aktif = AKTIF": menampilkan
+         * tombol "Aktifkan" untuk layanan yang sudah aktif adalah regresi UX
+         * yang jauh lebih merugikan daripada kebalikannya.
+         */
+        fun osEnabled(ctx: Context): Boolean {
+            if (apiListed(ctx)) return true
+            if (secureListed(ctx)) return true
+            return false
+        }
+
+        /** Sumber 1: API resmi AccessibilityManager. */
+        private fun apiListed(ctx: Context): Boolean {
+            return try {
+                val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+                    ?: return false
+                val list = am.getEnabledAccessibilityServiceList(
+                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+                ) ?: return false
+                val myName = AgentAccessibilityService::class.java.name
+                list.any { info ->
+                    val si = info.resolveInfo?.serviceInfo ?: return@any false
+                    si.packageName == ctx.packageName && si.name == myName
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        /** Sumber 2: Settings.Secure (bentuk panjang maupun pendek). */
+        private fun secureListed(ctx: Context): Boolean {
+            return try {
+                val enabled = android.provider.Settings.Secure.getString(
+                    ctx.contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                )
+                if (enabled.isNullOrEmpty()) {
+                    false
+                } else {
+                    val me = ctx.packageName + "/" + AgentAccessibilityService::class.java.name
+                    val meShort =
+                        ctx.packageName + "/." + AgentAccessibilityService::class.java.simpleName
+                    enabled.split(':').any {
+                        it.equals(me, ignoreCase = true) || it.equals(meShort, ignoreCase = true)
+                    }
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
 
         /**
          * v0.9.6 — dipanggil dari `Activity.onResume()` / dari tab Setup untuk
@@ -122,27 +223,17 @@ class AgentAccessibilityService : AccessibilityService() {
          * belum ter-flush (mencegah kedip "BELUM AKTIF" tepat setelah aktivasi).
          */
         fun reconcileFromSettings(ctx: android.content.Context): Boolean {
-            val enabled = try {
-                android.provider.Settings.Secure.getString(
-                    ctx.contentResolver,
-                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                ) ?: return bound
-            } catch (_: Exception) {
-                return bound
+            appContext = ctx.applicationContext
+            // v0.9.7 — instance hidup adalah bukti terkuat; tidak perlu tanya OS.
+            if (instance != null) {
+                bound = true
+                return true
             }
-            // Nama komponen lengkap: "package/fully.qualified.ServiceName".
-            val me = ctx.packageName + "/" + AgentAccessibilityService::class.java.name
-            // Sebagian OEM menuliskan bentuk singkat "package/.ServiceName".
-            val meShort = ctx.packageName + "/." + AgentAccessibilityService::class.java.simpleName
-            val listed = enabled.split(':').any {
-                it.equals(me, ignoreCase = true) || it.equals(meShort, ignoreCase = true)
-            }
-            // v0.9.6 — INSTANCE HIDUP SELALU MENANG. Bila layanan kita benar-benar
-            // sedang terhubung di proses ini, itu bukti yang lebih kuat daripada
-            // daftar Settings (yang bisa belum ter-flush tepat setelah
-            // pengguna menekan tombol aktifkan). Tanpa aturan ini, UI bisa
-            // berkedip ke "BELUM AKTIF" pada detik pertama setelah aktivasi.
-            bound = listed || instance != null
+            // v0.9.7 — sumber kebenaran dipindah ke API resmi (lihat osEnabled).
+            // v0.9.6 hanya membaca string Settings, yang rentan terhadap
+            // perbedaan format per-OEM; kini API resmi dipakai lebih dulu dan
+            // string Settings menjadi cadangan.
+            bound = osEnabled(ctx)
             return bound
         }
 
@@ -366,6 +457,63 @@ class AgentAccessibilityService : AccessibilityService() {
      * sebagai "layanan belum aktif" adalah bug regresi v0.9.5.
      */
     fun isServiceReady(): Boolean = rootInActiveWindow != null
+
+    // ---- v0.9.7: jendela overlay milik layanan aksesibilitas ----
+
+    /**
+     * WindowManager yang sah untuk memasang jendela aksesibilitas.
+     * [PairingOverlay] memerlukannya agar drag bisa memanggil
+     * `updateViewLayout`.
+     */
+    fun overlayWindowManager(): WindowManager? =
+        getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+
+    /**
+     * Pasang jendela `TYPE_ACCESSIBILITY_OVERLAY`.
+     *
+     * ================== INI KUNCI PERBAIKAN "OVERLAY TIDAK MUNCUL" ==================
+     *
+     * Jendela jenis ini HANYA boleh dipasang oleh layanan aksesibilitas, dan
+     * imbalannya: ia **TIDAK memerlukan izin `SYSTEM_ALERT_WINDOW`** sama sekali.
+     * Itu menghapus DUA penghalang sekaligus yang membuat v0.9.4–v0.9.6 gagal:
+     *
+     *  1. izin "Tampilkan di atas aplikasi lain" yang belum diberikan pengguna, dan
+     *  2. saklar OEM MIUI/HyperOS yang TERPISAH ("Tampilkan jendela sembulan
+     *     saat berjalan di latar belakang") yang tidak bisa dibaca maupun
+     *     diminta lewat API publik.
+     *
+     * Karena jendelanya milik layanan sistem — bukan "aplikasi yang menggambar
+     * di atas aplikasi lain" — penjagaan pop-up latar belakang OEM tidak
+     * berlaku padanya.
+     *
+     * WAJIB dipanggil dari main thread. Mengembalikan false bila sistem
+     * menolak, dan alasannya dicatat ke log — bukan gagal senyap.
+     */
+    fun attachAccessibilityOverlay(view: View, params: WindowManager.LayoutParams): Boolean {
+        return try {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
+            params.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            wm.addView(view, params)
+            val attached = view.isAttachedToWindow
+            if (!attached) {
+                Log.w(TAG, "accessibility overlay: addView tidak error tetapi TIDAK attached")
+            }
+            attached
+        } catch (t: Throwable) {
+            Log.w(TAG, "accessibility overlay ditolak sistem", t)
+            false
+        }
+    }
+
+    /** Lepas jendela overlay aksesibilitas. Aman dipanggil berkali-kali. */
+    fun detachAccessibilityOverlay(view: View) {
+        try {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+            wm.removeViewImmediate(view)
+        } catch (t: Throwable) {
+            Log.w(TAG, "gagal melepas accessibility overlay", t)
+        }
+    }
 
     // ---- Act: gesture tap (mirror of Go Device.tapNode) ----
 
@@ -759,7 +907,7 @@ class AgentAccessibilityService : AccessibilityService() {
             // sedang terbaca SEKARANG (dipakai untuk memutuskan apakah perintah
             // dump/tap punya peluang sukses pada detik ini). Nilai yang berbeda
             // adalah keadaan NORMAL, bukan cacat.
-            put("a11y_enabled", bound)
+            put("a11y_enabled", isEnabled())
             put("a11y_ready", isServiceReady())
             // Pengecualian Background Activity Launch — penentu bisa/tidaknya
             // membuka app target dari server.

@@ -11,6 +11,94 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.7] — 2026-09-14
+
+### Fixed — v0.9.6 masih gagal di HP: overlay & pengisian kode tidak muncul, Langkah 1 mati
+
+Laporan setelah v0.9.6 dipasang di HP: *"masih tidak bisa konek wireless debug,
+tidak menampilkan overlay atau pengisian kode untuk pairing"* dan *"ketika saya
+klik hubungkan langkah 3, langkah 1 mati / status belum aktif, padahal di
+Setelan aksesibilitas sudah ON"*.
+
+Akar masalah ditemukan dengan membandingkan kode kita terhadap **implementasi
+produksi AppManager** (`io.github.muntashirakon.AppManager.adb.AdbPairingService`)
+— aplikasi dari penulis `libadb-android`, library yang kita pakai juga.
+
+#### 1. Overlay TIDAK PERNAH BISA muncul tanpa izin SYSTEM_ALERT_WINDOW
+
+v0.9.4–v0.9.6 memasang satu-satunya overlay dengan `TYPE_APPLICATION_OVERLAY`.
+Jendela jenis itu menuntut izin "Tampilkan di atas aplikasi lain" **dan** saklar
+OEM MIUI/HyperOS yang terpisah. Bila salah satu belum aktif, kode langsung
+`return` tanpa memberi tahu pengguna — kegagalan senyap, dan pengguna melihat
+persis "tidak ada overlay apa pun".
+
+**Fix:** overlay kini dipasang lewat `TYPE_ACCESSIBILITY_OVERLAY` oleh
+`AgentAccessibilityService`. Jendela jenis ini **tidak memerlukan izin apa pun**
+dan tidak terkena penjagaan pop-up latar belakang OEM, sebab jendelanya milik
+layanan sistem, bukan "aplikasi yang menggambar di atas aplikasi lain".
+`TYPE_APPLICATION_OVERLAY` tetap tersedia sebagai jalur cadangan, dan notifikasi
+RemoteInput tetap jalur ketiga yang selalu ada.
+
+#### 2. Kode dari notifikasi tidak pernah sampai ke service
+
+v0.9.5/v0.9.6 mengirim hasil RemoteInput lewat `PendingIntent.getBroadcast()`
+dan `BroadcastReceiver` yang didaftarkan dinamis dengan `RECEIVER_EXPORTED`.
+Rantai itu punya banyak titik gagal senyap.
+
+**Fix (mengikuti AppManager):** aksi notifikasi kini memakai
+`PendingIntent.getForegroundService()` yang menunjuk ke `AdbPairingService`
+sendiri dengan flag `FLAG_MUTABLE` (wajib — SystemUI menuliskan hasil ketikan ke
+Intent itu), dan hasilnya dibaca di `onStartCommand()` lewat
+`RemoteInput.getResultsFromIntent(intent)`. `BroadcastReceiver` dinamis dihapus
+seluruhnya. `startForeground()` dipanggil lebih dulu di cabang itu, karena
+PendingIntent bertipe foreground service menuntutnya dalam 5 detik.
+
+#### 3. Klik "Hubungkan" mematikan Langkah 1 (Langkah 1 "mati")
+
+`AdbPairingService`, `AgentForegroundService`, `AgentAccessibilityService` dan
+`MainActivity` berada di **satu proses**. Satu exception yang lolos dari
+`onStartCommand()` — mis. dari `buildNotification()` atau pembuatan view, yang
+di v0.9.6 **tidak** dibungkus try/catch — mematikan seluruh proses, dan
+`AccessibilityService` ikut mati bersamanya. Itulah sebab keluhan ini muncul
+persis saat tombol Langkah 3 ditekan.
+
+**Fix berlapis:**
+- Seluruh `onCreate`/`onStartCommand` dan pembuatan notifikasi/kartu dibungkus
+  try/catch. Jalur pairing tidak boleh bisa menjatuhkan proses.
+- `AgentApp` (Application baru) memasang penangkap exception terakhir yang
+  menuliskan sebab crash ke disk; `MainActivity` menampilkannya di tab Log pada
+  peluncuran berikutnya. Kegagalan tidak lagi hilang bersama prosesnya.
+
+#### 4. Status Langkah 1 dibaca dari API resmi, bukan dari flag memori
+
+v0.9.6 menyimpulkan status dari flag `bound` + penguraian string
+`Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`. String itu berbeda format
+antar-OEM, dan flag `bound` hilang begitu OEM me-restart proses agent.
+
+**Fix:** `AgentAccessibilityService.osEnabled()` memakai API resmi
+`AccessibilityManager.getEnabledAccessibilityServiceList()` (mengembalikan
+`ComponentName` yang sudah terurai — tidak ada penguraian string), dengan
+`Settings.Secure` sebagai cadangan. Aturannya "salah satu menyebut aktif =
+AKTIF", sebab menampilkan tombol "Aktifkan" untuk layanan yang sudah aktif
+jauh lebih merugikan daripada kebalikannya. `isEnabled()` dan
+`capabilitiesJson().a11y_enabled` keduanya memakai jalur baru ini.
+
+#### 5. Kartu tidak bisa digeser (drag) — cacat yang belum pernah terlaporkan
+
+`setOnTouchListener` dipasang pada LinearLayout kartu, padahal
+`ViewGroup.dispatchTouchEvent` menyerahkan event ke anak yang menjadi sasaran
+sentuhan. Akibatnya listener induk tidak pernah dipanggil saat jari menyentuh
+EditText/tombol — praktis seluruh permukaan kartu.
+
+**Fix:** listener dipasang pada TextView judul (view daun), sehingga geser
+berfungsi dari baris judul tanpa menelan sentuhan EditText dan tombol.
+
+#### Catatan
+Kartu pairing dipindahkan ke berkas sendiri (`PairingOverlay.kt`) supaya satu
+implementasi dipakai oleh kedua jenis jendela. `AdbPairingService` juga
+mendapat batas umur sesi 10 menit (sama seperti AppManager) agar layanan tidak
+menggantung selamanya bila pengguna meninggalkannya.
+
 ## [0.9.6] — 2026-09-13
 
 ### Fixed — Pairing ADB ala Shizuku + Stabilitas Langkah 1 (regresi v0.9.4/v0.9.5)

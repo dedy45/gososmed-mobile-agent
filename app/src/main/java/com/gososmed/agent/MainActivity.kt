@@ -219,6 +219,12 @@ class MainActivity : AppCompatActivity() {
         logClearBtn.setOnClickListener { clearLog() }
         logCopyBtn.setOnClickListener { copyLog() }
         AgentLog.listener = { entry -> runOnUiThread { appendLogEntry(entry) } }
+        // v0.9.7 — tampilkan sebab crash terakhir (bila ada). Sebelum ini,
+        // exception yang menjatuhkan proses hilang bersama prosesnya, sehingga
+        // gejala "klik Hubungkan → Langkah 1 mati" tidak bisa ditelusuri.
+        AgentApp.takeLastCrash(this)?.let { crash ->
+            AgentLog.add("crash sebelumnya", false, 0L, crash.replace("\n", "  |  "))
+        }
         rerenderLog()
 
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
@@ -564,19 +570,25 @@ class MainActivity : AppCompatActivity() {
                     append("1.  Di Setelan yang terbuka, masuk ke \"Debug nirkabel\".\n\n")
                     append("2.  Ketuk \"Pasangkan perangkat dengan kode pairing\".\n")
                     append("     Layar kode 6 angka muncul — BIARKAN TERBUKA.\n\n")
-                    append("3.  Tarik panel notifikasi (dari atas layar), lalu ketik 6 angka\n")
-                    append("     itu di baris \"Ketik Kode Pairing\". Tidak perlu menutup\n")
-                    append("     layar kode — justru JANGAN ditutup, sebab kode akan\n")
-                    append("     berganti bila layar itu ditutup.\n\n")
-                    append("Port terdeteksi otomatis. Notifikasi adalah jalur utama; ")
-                    append("kotak melayang di layar hanya bonus bila izinnya tersedia.")
+                    append("3.  Ketik 6 angka itu. Ada DUA cara — pilih salah satu:\n")
+                    append("     •  Kartu melayang GoSosmed di layar (muncul karena\n")
+                    append("        Aksesibilitas aktif), atau\n")
+                    append("     •  Tarik panel notifikasi, lalu ketik di baris\n")
+                    append("        \"Ketik Kode Pairing\".\n\n")
+                    append("     Keduanya TIDAK menutup layar kode di Setelan — jadi\n")
+                    append("     kodenya tidak berganti. Justru JANGAN menutup layar itu.\n\n")
+                    append("Port terdeteksi otomatis lewat mDNS; Anda tidak perlu\n")
+                    append("mengetik IP atau port apa pun.")
                 }
             )
             .setPositiveButton("Mengerti, buka Setelan") { _, _ ->
                 // BARU setelah pengguna siap: nyalakan service...
                 AdbPairingService.start(this)
-                // ...beri waktu terpasang (notifikasi + overlay), lalu navigasi.
-                adbStatusTv.postDelayed({ openDeveloperSettingsForPairing() }, 250L)
+                // ...beri waktu terpasang (kartu melayang + notifikasi), lalu
+                // navigasi. 400 ms cukup karena onCreate/onStartCommand service
+                // berjalan di main looper yang sama dan sudah dijadwalkan lebih
+                // dulu daripada runnable ini.
+                adbStatusTv.postDelayed({ openDeveloperSettingsForPairing() }, 400L)
             }
             .setNegativeButton("Batal", null)
             .show()

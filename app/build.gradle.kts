@@ -36,12 +36,15 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 22 = v0.9.6 (Pairing ala Shizuku: FGS type fix, loopback
-        // pairing, RemoteInput receiver fix, fix stabilitas Langkah 1).
+        // versionCode 23 = v0.9.7 (Overlay pairing lewat TYPE_ACCESSIBILITY_OVERLAY
+        // tanpa izin SYSTEM_ALERT_WINDOW; RemoteInput lewat getForegroundService
+        // mengikuti pola produksi AppManager; status Langkah 1 dibaca dari API
+        // resmi AccessibilityManager; jalur pairing tidak bisa lagi menjatuhkan
+        // proses agent).
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 22
-        versionName = "0.9.6"
+        versionCode = 23
+        versionName = "0.9.7"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
