@@ -147,17 +147,22 @@ Kalau Anda mem-*fork* repo ini, ganti `--repo` dengan akun Anda.
 
 ### Cara 2 — Gradle lokal
 
-Butuh Android SDK dan JDK 17.
+Butuh JDK 17, Gradle 8.9, dan Android SDK (platform 34, build-tools 34.0.0).
 
 ```bash
 git clone https://github.com/dedy45/gososmed-mobile-agent.git
 cd gososmed-mobile-agent
 
-./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease
+gradle assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
+gradle assembleRelease
 ```
 
-Di Windows pakai `gradlew.bat`.
+> **Repo ini tidak memakai Gradle wrapper** — `gradlew` tidak di-commit, jadi
+> `./gradlew` akan gagal. Setel `JAVA_HOME` (JDK 17) dan `ANDROID_HOME` (SDK 34),
+> lalu panggil `gradle` dari instalasi lokal Anda.
+>
+> Di mesin pemilik, semua alat sudah terpasang dan tinggal dipakai — lihat
+> [`docs/TOOLCHAIN-LOKAL.md`](docs/TOOLCHAIN-LOKAL.md).
 
 > **Soal penandatanganan.** Build Anda memakai kunci debug Android atau kunci Anda sendiri —
 > bukan kunci rilis kami, dan itu memang seharusnya begitu. Konsekuensi praktisnya: APK

@@ -11,6 +11,19 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/TOOLCHAIN-LOKAL.md` — peta toolchain build APK lokal: JDK 17, Gradle 8.9,
+  dan Android SDK 34 sudah terpasang, plus cara memanggilnya. Dokumen ini
+  menuntaskan kebingungan "di mana JDK/Gradle/SDK" dan mencatat bahwa repo ini
+  **tidak** memakai Gradle wrapper (`./gradlew` tidak ada).
+
+### Fixed
+
+- README "Cara 2 — Gradle lokal" menyuruh `./gradlew`, padahal wrapper tidak
+  pernah di-commit → perintah itu selalu gagal. Sekarang memakai `gradle` dari
+  instalasi lokal dan menautkan ke `docs/TOOLCHAIN-LOKAL.md`.
+
 ## [0.9.8] — 2026-09-14
 
 ### Fixed — PAIRING AKHIRNYA BERFUNGSI: Conscrypt versi sendiri
