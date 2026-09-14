@@ -17,13 +17,14 @@ biasa dipakai layanan sejenis.
 > **Status: PENGEMBANGAN (dev).** Tervalidasi end-to-end (backend + dasbor +
 > APK) pada satu perangkat nyata (Xiaomi garnet); **belum** diuji lintas
 > merek. Rilis **stabil** diklaim mulai `v1.0.0` — versi & kanal rilis:
-> [CHANGELOG.md](CHANGELOG.md). Versi saat ini: **0.9.0**.
+> [CHANGELOG.md](CHANGELOG.md).
 >
-> **Catatan jujur untuk v0.9.0:** kode transport ADB lokal sudah lulus build CI
-> dan uji unit, tetapi **pairing pada perangkat nyata belum diverifikasi** pada
-> saat rilis ini. Bila pairing gagal di HP Anda, aplikasi tetap berfungsi dengan
-> kemampuan terbatas (aksesibilitas + overlay) dan statusnya dilaporkan apa
-> adanya di tab Setup.
+> **Versi saat ini tidak ditulis di sini** — itu penyebab utama dokumen yang basi.
+> Sumber kebenaran versi hanya dua: `app/build.gradle.kts` (`versionName`) dan
+> [daftar rilis](https://github.com/dedy45/gososmed-mobile-agent/releases).
+>
+> **Aturan kanal rilis:** rilis ber-tag `vX.Y.Z` = **stabil**; `vX.Y.Z-dev.N` = **dev**.
+> **Build yang belum diuji di HP nyata WAJIB ber-tag `-dev`.** Lihat [AGENTS.md](AGENTS.md) §2.
 
 ---
 
