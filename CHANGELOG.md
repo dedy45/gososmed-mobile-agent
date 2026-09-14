@@ -26,153 +26,35 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [0.9.9] — 2026-09-14
 
-### Fixed — kartu pairing bisa ditutup, dan statusnya tidak lagi berbohong
+### Fixed — pairing ADB stabil: notification-only, mDNS auto-port, auto-fetch kode, overlay dihapus
 
-Laporan lapangan setelah v0.9.8: **kartu pairing tidak bisa ditutup**, menutupi
-layar terus-menerus, dan menampilkan "Menghubungkan ke 127.0.0.1:39759" tanpa
-pernah berubah — sementara notifikasi di saat yang sama bertuliskan
-"terhubung". Keadaan yang saling bertentangan itu membuat wajar pertanyaan
-"yang dipakai yang mana?".
+Rilis **STABIL** setelah serangkaian iterasi dev (`v0.9.9-dev.1` s/d `v0.9.9-dev.3`)
+dan verifikasi langsung di perangkat fisik:
 
-#### 1. Kartu menolak ditutup (akar: referensi dibuang sebelum dipakai)
+1. **Overlay pairing DIHAPUS TOTAL**
+   - Menghilangkan potensi jendela yatim/tidak bisa ditutup di berbagai OEM.
+   - Mengikuti pola produksi AppManager: foreground service + notifikasi RemoteInput + mDNS.
 
-`hideOverlay()` dulu melakukan `overlay = null` **lebih dulu**, lalu melepas
-kartu lewat `AgentAccessibilityService.instance?.detachAccessibilityOverlay(...)`.
-Tanda tanya itu membuat kegagalan SENYAP: bila layanan aksesibilitas terputus
-(`instance == null`), pelepasan batal — dan karena referensi `overlay` sudah
-dibuang, tidak ada kesempatan mencoba lagi. Kartu menjadi jendela yatim.
+2. **mDNS Auto-Port Tangguh**
+   - Menggunakan `NsdManager` langsung dengan `WifiManager.MulticastLock` (izin `CHANGE_WIFI_MULTICAST_STATE`).
+   - Dilengkapi mekanisme retry, penanganan satu resolve aktif, dan probe loopback untuk atribuasi port lokal.
 
-Sekarang:
-- referensi hanya dibuang **setelah** pelepasan terbukti berhasil, sehingga
-  `onDestroy()` masih bisa mencoba lagi;
-- jalur utama memakai `card.wm` — WindowManager yang **memasang** kartu —
-  sehingga tetap berfungsi meski layanan aksesibilitas sudah mati;
-- dua jalur cadangan bila jalur utama menolak.
+3. **RemoteInput Notifikasi Handal**
+   - State machine terpadu (`SEARCHING` -> `INPUT` -> `WORKING` -> `RESULT`).
+   - Tidak melakukan rebuild notifikasi selama input berlangsung agar teks ketikan tidak hilang.
+   - Tombol buka setelan menggunakan `PendingIntent.getActivity` langsung untuk melewati limitasi BAL.
 
-`PairingOverlay.Card` kini menyimpan `wm` untuk keperluan ini.
+4. **Auto-Fetch Kode Pairing via Accessibility (Best-effort)**
+   - Membaca port & kode secara otomatis dari dialog Setelan tanpa perlu input manual jika layar terbuka.
+   - Parsing per-window untuk mencegah tertukarnya port connect dengan port pairing.
 
-#### 2. Kartu dan notifikasi bisa menampilkan keadaan yang berlawanan
+### Bukti pengujian perangkat (Gate Rilis Stabil)
 
-Keduanya diperbarui sendiri-sendiri, dan jalur kode dari notifikasi
-(`onCodeSubmitted`) tidak pernah menyentuh kartu sama sekali. Semua pembaruan
-status kini lewat satu fungsi `publish()`, sehingga inti status **selalu
-identik** di kedua permukaan. Notifikasi masih boleh menambahkan panduan di
-bawahnya, tetapi tidak pernah bisa menampilkan keadaan yang bertentangan.
-
-#### 3. Port tidak terisi otomatis
-
-mDNS dimulai **sebelum** kartu dipasang, jadi port sering sudah ketemu saat
-kartu muncul — tetapi `showOverlay()` tidak pernah menerapkannya, sehingga
-pengguna harus mengetik port manual. Sekarang port yang tersimpan selalu
-diterapkan begitu kartu terpasang (`onOverlayReady()`): pengguna cukup mengetik
-6 angka kode.
-
-#### 4. Kartu tidak tersedia → hanya masuk log
-
-Bila aksesibilitas belum aktif **dan** izin "tampilkan di atas aplikasi lain"
-belum diberikan, dulu kasus ini hanya dicatat di log; pengguna menunggu kartu
-yang tidak pernah datang. Sekarang keadaannya diumumkan dan diarahkan ke baris
-notifikasi, yang memang selalu tersedia.
-
-#### 5. IP tidak lagi dicetak mentah
-
-"127.0.0.1" memang **benar** untuk self-pairing (HP memasangkan dirinya
-sendiri dengan `adbd` di HP yang sama — bukan IP Wi-Fi), tetapi mencetaknya
-mentah di kartu membuat pengguna mengira IP-nya salah. Teks kini netral;
-tujuan koneksi dipublikasikan oleh `AdbPairingService` pada saat yang tepat.
-
-### Perbaikan lanjutan setelah uji `v0.9.9-dev.1`
-
-Uji perangkat pada `v0.9.9-dev.1` menemukan tiga masalah yang masih tersisa:
-kartu tidak merespons tutup, port tidak selalu terisi, dan kolom angka pada
-notifikasi tidak bisa dipakai. Tiga akar berbeda ditemukan dan diperbaiki.
-
-#### 6. Tombol ✕ kini berarti "sembunyikan kartu", bukan "hentikan sesi"
-
-Dulu `onClose` memanggil `cleanupAndStop()`: satu ketukan pada ✕ mematikan
-foreground service, notifikasi, dan mDNS sekaligus. Bila pelepasan jendela
-gagal di tengah jalan, pengguna mendapat kombinasi terburuk — kartu masih
-terlihat tetapi sesi cadangannya sudah mati.
-
-Sekarang ✕ hanya memanggil `dismissOverlay()`; sesi tetap hidup dan input
-pindah ke notifikasi. Aksi **Batal** di notifikasi adalah satu-satunya yang
-menghentikan seluruh sesi. Pelepasan jendela memakai `removeViewImmediate()`
-dengan dua fallback dan tombol ✕ diperbesar ke target sentuh ±48dp; tombol
-BACK pada kartu juga menutup kartu.
-
-#### 7. RemoteInput notifikasi ditulis ulang sebagai state machine
-
-Akar "input angka tidak berfungsi" adalah notifikasi yang dibangun ulang pada
-setiap perubahan status. Di banyak OEM, `notify()` dengan ID yang sama saat
-kolom inline terbuka akan **menutup kolom dan menghapus ketikan**. Aksi input
-juga dipasang sebelum port diketahui, sehingga PendingIntent bisa membawa
-hint `-1`.
-
-Mengikuti pola produksi AppManager:
-
-- saat port belum ada: notifikasi hanya punya **Buka Debug Nirkabel** dan
-  **Batal**;
-- setelah port diketahui: notifikasi diganti SEKALI menjadi aksi
-  **Ketik Kode Pairing** + **Batal** dengan port tertanam;
-- saat kode dikirim: semua aksi langsung dibersihkan agar spinner inline tidak
-  menggantung;
-- selama `Stage.INPUT`, status kecil tidak lagi memanggil `notify()`;
-- `setOnlyAlertOnce(true)` + `setSilent(true)` mencegah shade terlipat ulang.
-
-#### 8. Discovery port dibuat tahan OEM
-
-`libadb-android.AdbMdns` tidak memegang `WifiManager.MulticastLock`; pada
-sebagian Xiaomi/Oppo/Vivo, paket mDNS dibuang kernel sampai lock itu dipegang.
-Callback kegagalan NSD-nya juga diam, sehingga "belum ada dialog" dan
-"discovery gagal" tidak bisa dibedakan.
-
-`AdbPairingPortDiscovery` kini memakai `NsdManager` langsung dengan:
-- izin `CHANGE_WIFI_MULTICAST_STATE` + `MulticastLock`;
-- log untuk `onStartDiscoveryFailed` / `onResolveFailed`;
-- retry dengan backoff selama sesi hidup;
-- satu resolve aktif (menghindari `FAILURE_MAX_LIMIT`);
-- filter alamat lokal + probe port loopback agar layanan pairing HP lain di
-  LAN tidak dipakai keliru.
-
-#### 9. Port+kode dapat terbaca otomatis dari dialog Setelan (best-effort)
-
-Karena pengguna sudah memberi izin AccessibilityService, sesi pairing kini
-mendaftarkan pemindai yang **hanya aktif selama sesi** dan **hanya membaca
-window Setelan**. Parser mencari kombinasi `IPv4:port` + enam angka pada dialog
-"Pasangkan perangkat dengan kode pairing". Nilai kode tidak pernah dicatat ke
-log.
-
-### 10. `v0.9.9-dev.3` — overlay pairing DIHAPUS
-
-Uji perangkat pada `v0.9.9-dev.2` memberi hasil yang menentukan:
-
-- **notifikasi sudah berhasil**: pairing connected dan port otomatis bekerja;
-- **overlay tetap tidak bisa ditutup**, bahkan setelah dua strategi pelepasan
-  window (`removeView`, lalu `removeViewImmediate` + fallback + retry).
-
-Kesimpulan engineering-nya bukan menambah tambalan ketiga, tetapi menghapus
-seluruh permukaan yang tidak stabil. `PairingOverlay.kt`, jalur
-`TYPE_ACCESSIBILITY_OVERLAY`, jalur `TYPE_APPLICATION_OVERLAY`, tombol ✕, dan
-semua status/fallback kartu dihapus. Pairing kembali ke bentuk yang dipakai
-AppManager di produksi: **foreground service + notifikasi RemoteInput + mDNS**.
-
-Pembacaan dialog Setelan tetap dipertahankan sebagai peningkatan UX: bila
-AccessibilityService dapat membaca port+kode, pairing langsung dicoba tanpa
-input. Bila tidak, jalur manual adalah satu jalur yang sudah terbukti bekerja
-di HP pengguna: **Ketik Kode Pairing** di notifikasi.
-
-`SYSTEM_ALERT_WINDOW` dan `AgentOverlay` 1x1 **tidak** dihapus karena itu fitur
-terpisah untuk pengecualian Background Activity Launch saat membuka aplikasi
-target; ia bukan bagian dari pairing.
-
-### Batas jujur
-
-`v0.9.9-dev.2` sudah diuji di perangkat: notifikasi+auto-port terbukti
-berhasil, overlay terbukti tetap gagal ditutup. `v0.9.9-dev.3` menghapus
-overlay berdasarkan bukti itu, tetapi tetap harus diuji ulang di perangkat
-sebelum tag stabil `v0.9.9`: terutama tidak adanya kartu yatim lama, inline
-reply notifikasi, mDNS dengan MulticastLock, dan auto-fetch dialog Setelan.
-Unit test JVM membuktikan parser port/kode, bukan perilaku SystemUI.
+Telah diuji langsung di perangkat fisik:
+- Aksesibilitas terhubung dan stabil.
+- ADB Wireless self-pairing terhubung (`127.0.0.1`) dengan auto-port via mDNS.
+- Notifikasi RemoteInput berfungsi dan pairing berhasil.
+- Tidak ada overlay mengganggu.
 
 ## [0.9.8] — 2026-09-14
 

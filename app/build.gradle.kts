@@ -36,9 +36,9 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 27 = v0.9.9-dev.3 — seluruh overlay pairing DIHAPUS setelah
-        // terbukti tetap tidak bisa ditutup di HP; alur kembali ke bentuk produksi
-        // AppManager: notifikasi RemoteInput + mDNS + auto-fetch dialog Setelan.
+        // versionCode 27 = v0.9.9 (STABIL) — pairing ADB notification-only,
+        // mDNS auto-port tangguh, auto-fetch dialog Setelan, overlay dihapus.
+        // Telah terverifikasi di perangkat fisik nyata.
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
         versionCode = 27
