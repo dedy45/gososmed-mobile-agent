@@ -36,15 +36,14 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 23 = v0.9.7 (Overlay pairing lewat TYPE_ACCESSIBILITY_OVERLAY
-        // tanpa izin SYSTEM_ALERT_WINDOW; RemoteInput lewat getForegroundService
-        // mengikuti pola produksi AppManager; status Langkah 1 dibaca dari API
-        // resmi AccessibilityManager; jalur pairing tidak bisa lagi menjatuhkan
-        // proses agent).
+        // versionCode 24 = v0.9.8 (PAIRING AKHIRNYA BERFUNGSI: Conscrypt versi
+        // sendiri ditambahkan — akar kegagalan "adb_pair_failed:
+        // NoSuchMethodException com.android.org.conscrypt.Conscrypt
+        // .exportKeyingMaterial" yang membuat pairing selalu gagal di HP).
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 23
-        versionName = "0.9.7"
+        versionCode = 24
+        versionName = "0.9.8"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
@@ -93,7 +92,43 @@ dependencies {
     //   -> com.github.MuntashirAkon:libadb-android:3.1.1 (packaging aar)
     // Library ini Apache-2.0 (dari dual GPL-3.0-or-later OR Apache-2.0).
     // Ia SUDAH membawa bcprov-jdk15to18:1.81 dan spake2-android:2.2.1 sebagai
-    // dependensi runtime, jadi TLS/pairing tidak perlu ditambah manual.
+    // dependensi runtime.
+    //
+    // KOREKSI v0.9.8 — kalimat lama di sini berbunyi "jadi TLS/pairing tidak
+    // perlu ditambah manual". ITU SALAH, dan kesalahan itulah yang membuat
+    // pairing selalu gagal di HP pengguna dengan:
+    //
+    //   adb_pair_failed: java.lang.NoSuchMethodException:
+    //     com.android.org.conscrypt.Conscrypt.exportKeyingMaterial
+    //     [class javax.net.ssl.SSLSocket, class java.lang.String, class [B, int]
+    //
+    // Penelusuran ke sumber library (PairingConnectionCtx.java:157-179):
+    //   if (SslUtils.isCustomConscrypt()) conscryptClass = Class.forName("org.conscrypt.Conscrypt");
+    //   else                              conscryptClass = Class.forName("com.android.org.conscrypt.Conscrypt");
+    //   conscryptClass.getMethod("exportKeyingMaterial", SSLSocket.class, String.class, byte[].class, int.class);
+    //
+    // `com.android.org.conscrypt.Conscrypt.exportKeyingMaterial` adalah API
+    // TERSEMBUNYI (@UnsupportedAppUsage) yang TIDAK bisa direfleksikan oleh app
+    // dengan targetSdk 34 — karena itu NoSuchMethodException, dan pairing mati
+    // SEBELUM sempat mengirim kode. Bukan soal kode pairing yang salah.
+    //
+    // README libadb-android ("Adding Dependencies") mensyaratkan SALAH SATU dari
+    // dua hal untuk pairing TLS di Android 9+, dan aplikasi ini tidak punya
+    // keduanya:
+    //   a) bypass API tersembunyi (org.lsposed.hiddenapibypass) — trik rapuh, atau
+    //   b) Conscrypt versi sendiri — "the recommended choice" menurut README.
+    // Kami memilih (b): tanpa trik tersembunyi, dan tidak akan patah saat Google
+    // memperketat kebijakan API lagi.
+    //
+    // Efeknya: SslUtils.getSslContext() berhasil memuat "org.conscrypt.OpenSSLProvider",
+    // menandai customConscrypt = true, sehingga PairingConnectionCtx memakai
+    // `org.conscrypt.Conscrypt` (API PUBLIK milik library yang kita bawa) alih-alih
+    // Conscrypt platform yang tersembunyi.
+    //
+    // Catatan ukuran: artefak ini membawa .so native untuk tiap ABI sehingga APK
+    // bertambah besar. Itu konsekuensi yang diterima — pairing yang berfungsi jauh
+    // lebih penting daripada APK yang ramping.
+    implementation("org.conscrypt:conscrypt-android:2.5.3")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     //
     // bcpkix dipakai HANYA untuk membuat sertifikat X.509 self-signed

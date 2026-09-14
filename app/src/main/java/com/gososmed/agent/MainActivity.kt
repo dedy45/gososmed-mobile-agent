@@ -500,6 +500,15 @@ class MainActivity : AppCompatActivity() {
      */
     private fun adbReasonText(code: String): String {
         val bare = code.substringBefore(':').trim()
+        // v0.9.8 — KEGAGALAN TEKNIS BUKAN "KODE SALAH". Tanpa cabang ini, kartu
+        // status menyuruh pengguna membuat kode baru untuk kegagalan yang tidak
+        // ada hubungannya dengan kode — persis kebingungan yang terjadi pada
+        // v0.9.7 (NoSuchMethodException Conscrypt disajikan sebagai "buat kode
+        // baru"). Pesannya sengaja menyebutkan bahwa kode pengguna benar.
+        if (AdbPairingController.isTechnicalFailure(code)) {
+            return "Pairing gagal karena masalah TEKNIS di APK ini — kode pairing Anda " +
+                "TIDAK salah, jadi membuat kode baru tidak akan menolong.\n$code"
+        }
         return when (bare) {
             "adb_not_paired" ->
                 "Belum dihubungkan. Ketuk Hubungkan, lalu masukkan kode 6 angka dari Pengaturan > Opsi Pengembang > Debug nirkabel > Pairing baru."

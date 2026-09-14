@@ -197,6 +197,44 @@ object AdbPairingController {
         return prefs(ctx).getBoolean(KEY_PAIRED_ONCE, false)
     }
 
+    /**
+     * v0.9.8 — PISAHKAN KEGAGALAN TEKNIS DARI KEGAGALAN KODE.
+     *
+     * ================== MENGAPA INI PENTING ==================
+     *
+     * Sebelum v0.9.8, setiap kegagalan pairing disajikan ke pengguna dengan
+     * kalimat "kode salah atau kedaluwarsa — buat kode baru lalu coba lagi".
+     * Untuk kegagalan yang sebenarnya bersifat TEKNIS (mis. kelas library tidak
+     * ada, metode tersembunyi tidak bisa direfleksikan), kalimat itu MENYESATKAN
+     * TOTAL: pengguna lalu berulang kali membuat kode baru dan mengetiknya,
+     * padahal kodenya tidak pernah salah.
+     *
+     * Itu persis yang terjadi pada v0.9.7: kegagalan
+     * `NoSuchMethodException: com.android.org.conscrypt.Conscrypt
+     * .exportKeyingMaterial` ditampilkan sebagai "buat kode baru", sehingga
+     * akar masalahnya (Conscrypt tidak dibundel) tidak pernah terlihat.
+     *
+     * Penanda di bawah menandai kegagalan yang TIDAK mungkin diperbaiki dengan
+     * kode baru. Dipakai oleh UI aplikasi (tab Setup) MAUPUN oleh notifikasi dan
+     * kartu melayang, supaya pesannya konsisten di semua permukaan.
+     */
+    fun isTechnicalFailure(reason: String): Boolean {
+        if (reason.isEmpty()) return false
+        val markers = listOf(
+            // Kelas/metode library tidak ada atau tidak bisa diakses.
+            "NoSuchMethodException",
+            "NoSuchFieldException",
+            "ClassNotFoundException",
+            "NoClassDefFoundError",
+            // Pustaka native gagal dimuat.
+            "UnsatisfiedLinkError",
+            "ExceptionInInitializerError",
+            // Transport belum siap — bukan salah kode pengguna.
+            "adb_init_failed",
+        )
+        return markers.any { reason.contains(it, ignoreCase = true) }
+    }
+
     // ------------------------------------------------------------------ internal
 
     /**

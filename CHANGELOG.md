@@ -11,6 +11,78 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.8] — 2026-09-14
+
+### Fixed — PAIRING AKHIRNYA BERFUNGSI: Conscrypt versi sendiri
+
+Laporan lapangan setelah v0.9.7: overlay dan notifikasi **sudah muncul** (kedua
+perbaikan UI bekerja), tetapi saat kode 6 angka dimasukkan:
+
+```
+✗ Gagal: adb_pair_failed: java.lang.NoSuchMethodException:
+  com.android.org.conscrypt.Conscrypt.exportKeyingMaterial
+  [class javax.net.ssl.SSLSocket, class java.lang.String, class [B, int]
+```
+
+#### Akar masalah
+
+Penelusuran ke sumber `libadb-android`
+(`libadb/src/main/java/io/github/muntashirakon/adb/PairingConnectionCtx.java:157-179`):
+
+```java
+if (SslUtils.isCustomConscrypt()) {
+    conscryptClass = Class.forName("org.conscrypt.Conscrypt");
+} else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+    throw new SSLException("TLSv1.3 isn't supported on your platform. ...");
+} else {
+    conscryptClass = Class.forName("com.android.org.conscrypt.Conscrypt");
+}
+Method exportKeyingMaterial = conscryptClass.getMethod(
+        "exportKeyingMaterial", SSLSocket.class, String.class, byte[].class, int.class);
+```
+
+`com.android.org.conscrypt.Conscrypt.exportKeyingMaterial` adalah **API
+tersembunyi** (`@UnsupportedAppUsage`) yang tidak dapat direfleksikan oleh
+aplikasi dengan `targetSdk 34`. Karena itu `getMethod(...)` melempar
+`NoSuchMethodException` — dan pairing mati **sebelum** sempat mengirim kode apa
+pun ke `adbd`. Pesan "kode salah" tidak pernah benar di sini.
+
+`SslUtils.getSslContext()` memilih jalur Conscrypt platform karena
+`Class.forName("org.conscrypt.OpenSSLProvider")` gagal — kita memang tidak
+membawa Conscrypt sendiri.
+
+#### Akar kesalahannya: satu kalimat di komentar kita
+
+`app/build.gradle.kts` sebelumnya berbunyi *"libadb sudah membawa
+bcprov-jdk15to18 dan spake2-android sebagai dependensi runtime, **jadi
+TLS/pairing tidak perlu ditambah manual**"*. Itu asumsi yang salah. README
+`libadb-android` bagian *Adding Dependencies* mensyaratkan **salah satu** dari:
+
+- `org.lsposed.hiddenapibypass:hiddenapibypass:6.1` — menembus API tersembunyi
+  (trik rapuh, bisa patah di Android berikutnya), **atau**
+- `org.conscrypt:conscrypt-android:2.5.3` — *"the recommended choice"* menurut
+  README.
+
+Kita tidak punya keduanya.
+
+#### Perbaikan
+
+Ditambahkan `org.conscrypt:conscrypt-android:2.5.3` (versi terbaru di Maven
+Central, sama dengan yang direkomendasikan README). Dipilih jalur Conscrypt
+sendiri, bukan bypass API tersembunyi — tanpa trik rapuh, dan tidak akan patah
+saat Google memperketat kebijakan API lagi.
+
+Efeknya: `SslUtils.getSslContext()` berhasil memuat
+`org.conscrypt.OpenSSLProvider`, menandai `customConscrypt = true`, sehingga
+`PairingConnectionCtx` memakai `org.conscrypt.Conscrypt` — API **publik** milik
+library yang kita bawa — alih-alih Conscrypt platform yang tersembunyi.
+
+#### Catatan
+
+APK bertambah besar karena artefak ini membawa `.so` native untuk setiap ABI.
+Itu konsekuensi yang diterima: pairing yang berfungsi jauh lebih penting
+daripada APK yang ramping.
+
 ## [0.9.7] — 2026-09-14
 
 ### Fixed — v0.9.6 masih gagal di HP: overlay & pengisian kode tidak muncul, Langkah 1 mati

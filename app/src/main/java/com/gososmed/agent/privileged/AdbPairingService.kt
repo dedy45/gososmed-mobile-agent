@@ -480,15 +480,32 @@ class AdbPairingService : Service() {
                     AgentLog.event("pairing ADB berhasil ($host:$port)")
                     main.postDelayed({ cleanupAndStop() }, 2_500)
                 } else {
-                    PairingOverlay.status(
-                        overlay,
-                        "✗ Gagal: ${reason.take(70)} — buat kode baru lalu coba lagi",
-                        Color.parseColor("#F87171")
-                    )
-                    refreshNotification(
-                        "✗ Gagal: $reason\n\nBuka ulang dialog pairing untuk kode BARU, " +
-                            "lalu ketik di sini tanpa menutup layar kode."
-                    )
+                    // v0.9.8 — JANGAN sarankan "kode baru" untuk kegagalan
+                    // TEKNIS. Kalimat itu menyesatkan dan membuat pengguna
+                    // berputar-putar membuat kode baru padahal kodenya benar
+                    // (persis yang terjadi pada v0.9.7 dengan NoSuchMethodException
+                    // Conscrypt). Lihat AdbPairingController.isTechnicalFailure.
+                    if (AdbPairingController.isTechnicalFailure(reason)) {
+                        PairingOverlay.status(
+                            overlay,
+                            "✗ Gagal TEKNIS — kode Anda TIDAK salah: ${reason.take(70)}",
+                            Color.parseColor("#F87171")
+                        )
+                        refreshNotification(
+                            "✗ Gagal karena masalah TEKNIS di APK ini — kode pairing Anda " +
+                                "TIDAK salah, jadi membuat kode baru tidak akan menolong.\n\n$reason"
+                        )
+                    } else {
+                        PairingOverlay.status(
+                            overlay,
+                            "✗ Gagal: ${reason.take(70)} — buat kode baru lalu coba lagi",
+                            Color.parseColor("#F87171")
+                        )
+                        refreshNotification(
+                            "✗ Gagal: $reason\n\nBuka ulang dialog pairing untuk kode BARU, " +
+                                "lalu ketik di sini tanpa menutup layar kode."
+                        )
+                    }
                     toast("✗ Pairing gagal: $reason")
                     AgentLog.event("pairing ADB gagal: $reason")
                 }
