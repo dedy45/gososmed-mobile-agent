@@ -111,19 +111,12 @@
                 android:value="device_automation_agent_byod" />
         </service>
 
-        <!-- v0.9.6: Service pendukung untuk Floating Overlay Window & Notifikasi
-             Pairing ADB agar overlay tidak ditelan atau dimatikan OS saat pindah ke Pengaturan.
-
-             CACAT v0.9.5 yang DIPERBAIKI DI SINI: service ini dideklarasikan
-             TANPA `android:foregroundServiceType`. Dengan targetSdk 34,
-             memanggil `startForeground()` dari service tanpa tipe yang
-             dideklarasikan melempar MissingForegroundServiceTypeException —
-             service MATI SEBELUM overlay atau notifikasi sempat dibuat. Itulah
-             akar teknis keluhan "klik Hubungkan ADB → overlay tidak muncul":
-             bukan overlay-nya ditolak, service-nya crash lebih dulu.
-
-             Tipe `specialUse` + properti subtype dipakai agar konsisten dengan
-             AgentForegroundService dan lolos pemeriksaan Play/Android 14. -->
+        <!-- v0.9.9-dev.3: foreground service khusus pairing ADB. Seluruh
+             Floating Overlay Window pairing sudah DIHAPUS setelah terbukti
+             tetap tidak bisa ditutup di perangkat; bentuk stabilnya adalah
+             NOTIFIKASI RemoteInput + mDNS seperti AppManager. Service tetap
+             memerlukan foregroundServiceType=specialUse agar startForeground()
+             tidak melempar MissingForegroundServiceTypeException di targetSdk 34. -->
         <service
             android:name=".privileged.AdbPairingService"
             android:exported="false"

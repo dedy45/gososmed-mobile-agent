@@ -55,9 +55,9 @@ Ini berbeda dari kode 8 karakter untuk menghubungkan HP ke server. Pairing ADB
 lokal memberi agent hak setara `adb shell` di HP itu sendiri:
 
 1. Pengguna menekan **Hubungkan** pada kartu "Otomasi Lanjutan (ADB)".
-2. Agent menjalankan foreground service, memasang notifikasi, mulai discovery
-   `_adb-tls-pairing._tcp`, dan — bila Aksesibilitas aktif — memasang kartu
-   melayang.
+2. Agent menjalankan foreground service, memasang notifikasi, dan mulai
+   discovery `_adb-tls-pairing._tcp`. **Tidak ada kartu overlay pairing** —
+   jalur itu dihapus di v0.9.9-dev.3 setelah terbukti tidak stabil di perangkat.
 3. Pengguna membuka **Setelan → Opsi Pengembang → Debug nirkabel → Pasangkan
    perangkat dengan kode pairing**. Dialog kode dibiarkan terbuka.
 4. Port pairing dicari lewat mDNS dengan `MulticastLock` + retry. Sebagai
@@ -65,13 +65,12 @@ lokal memberi agent hak setara `adb shell` di HP itu sendiri:
    sedang terlihat untuk menemukan pasangan `IPv4:port` + kode enam angka.
    Pembacaan ini hanya aktif selama sesi pairing, hanya pada window Setelan,
    dan nilai kode tidak pernah ditulis ke log.
-5. Jika port+kode terbaca otomatis, kartu terisi sendiri dan pengguna cukup
-   menekan **Hubungkan Sekarang**. Jika kartu tidak tersedia, hasil pembacaan
-   boleh langsung dipakai sekali karena sesi sudah dimulai oleh pengguna.
-6. Jika pembacaan otomatis tidak tersedia di OEM tertentu, pengguna memasukkan
-   kode lewat kartu atau aksi inline **Ketik Kode Pairing** di notifikasi.
-7. Tombol ✕ pada kartu hanya **menyembunyikan kartu**; sesi tetap hidup di
-   notifikasi. Aksi **Batal** di notifikasi yang menghentikan sesi.
+5. Jika port+kode terbaca otomatis, pairing langsung dicoba karena sesi sudah
+   dimulai oleh pengguna.
+6. Jika pembacaan otomatis tidak tersedia di OEM tertentu, pengguna mengetik
+   kode lewat aksi inline **Ketik Kode Pairing** di notifikasi — jalur manual
+   yang sudah terbukti bekerja di perangkat.
+7. Aksi **Batal** di notifikasi menghentikan sesi.
 
 Host pairing selalu `127.0.0.1` karena ini self-pairing ke `adbd` pada HP yang
 sama. Port di dialog pairing berbeda dari port connect pada layar utama Debug

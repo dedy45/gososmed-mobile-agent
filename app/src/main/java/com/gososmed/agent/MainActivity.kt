@@ -533,11 +533,9 @@ class MainActivity : AppCompatActivity() {
      *
      *  1. `AdbPairingService.start(this)` lalu `startActivity(Settings)` pada
      *     BARIS BERIKUTNYA — keduanya dalam satu frame. Service memerlukan
-     *     waktu untuk `startForeground()` dan memasang overlay; sementara
-     *     Setelan sudah merebut fokus lebih dulu. Akibatnya `addView` ditolak
-     *     dan notifikasi pun bisa belum terpasang saat pengguna sudah berada
-     *     di layar Setelan. Di sini kami memberi jeda pendek yang terukur
-     *     (250 ms) supaya notifikasi + overlay sempat terpasang.
+     *     waktu untuk `startForeground()` dan memasang notifikasi; sementara
+     *     Setelan sudah merebut fokus lebih dulu. Di sini kami memberi jeda
+     *     pendek yang terukur supaya notifikasi benar-benar terpasang.
      *
      *  2. TIDAK ADA penjelasan apa pun kepada pengguna tentang APA yang harus
      *     dilakukan di layar Setelan, dan tentang KENAPA kode bisa berganti.
@@ -580,15 +578,11 @@ class MainActivity : AppCompatActivity() {
                     append("2.  Ketuk \"Pasangkan perangkat dengan kode pairing\".\n")
                     append("     Layar kode 6 angka muncul — BIARKAN TERBUKA.\n\n")
                     append("3.  Begitu dialog kode terbuka, agent mencoba membaca\n")
-                    append("     port+kode otomatis lewat Aksesibilitas. Jika berhasil,\n")
-                    append("     kartu akan terisi sendiri dan Anda cukup menekan\n")
-                    append("     \"Hubungkan Sekarang\".\n\n")
-                    append("     Jika pembacaan otomatis tidak tersedia di OEM ini, ada\n")
-                    append("     DUA cara manual — pilih salah satu:\n")
-                    append("     •  Kartu melayang GoSosmed di layar, atau\n")
-                    append("     •  Tarik panel notifikasi, lalu ketik di baris\n")
-                    append("        \"Ketik Kode Pairing\".\n\n")
-                    append("     Keduanya TIDAK menutup layar kode di Setelan — jadi\n")
+                    append("     port+kode otomatis lewat Aksesibilitas dan langsung\n")
+                    append("     memasangkan. Jika pembacaan otomatis tidak tersedia\n")
+                    append("     di OEM ini, tarik panel notifikasi lalu ketik 6 angka\n")
+                    append("     di baris \"Ketik Kode Pairing\".\n\n")
+                    append("     Cara itu TIDAK menutup layar kode di Setelan — jadi\n")
                     append("     kodenya tidak berganti. Justru JANGAN menutup layar itu.\n\n")
                     append("Port juga terdeteksi otomatis lewat mDNS; Anda tidak perlu\n")
                     append("mengetik IP atau port apa pun.")
@@ -597,8 +591,8 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Mengerti, buka Setelan") { _, _ ->
                 // BARU setelah pengguna siap: nyalakan service...
                 AdbPairingService.start(this)
-                // ...beri waktu terpasang (kartu melayang + notifikasi), lalu
-                // navigasi. 400 ms cukup karena onCreate/onStartCommand service
+                // ...beri waktu notifikasi terpasang, lalu navigasi.
+                // 400 ms cukup karena onCreate/onStartCommand service
                 // berjalan di main looper yang sama dan sudah dijadwalkan lebih
                 // dulu daripada runnable ini.
                 adbStatusTv.postDelayed({ openDeveloperSettingsForPairing() }, 400L)

@@ -142,20 +142,37 @@ window Setelan**. Parser mencari kombinasi `IPv4:port` + enam angka pada dialog
 "Pasangkan perangkat dengan kode pairing". Nilai kode tidak pernah dicatat ke
 log.
 
-Jika berhasil, kartu terisi otomatis dan pengguna cukup menekan **Hubungkan
-Sekarang**. Jika kartu memang tidak tersedia, pasangan yang terbaca langsung
-dicoba sekali karena pengguna sudah memulai sesi pairing. Jika OEM menutup
-isi dialog dari AccessibilityService, jalur manual overlay/notifikasi tetap
-tersedia. Ini bukan bypass izin; pembacaan sepenuhnya bergantung pada layanan
-aksesibilitas yang diaktifkan pengguna.
+### 10. `v0.9.9-dev.3` — overlay pairing DIHAPUS
+
+Uji perangkat pada `v0.9.9-dev.2` memberi hasil yang menentukan:
+
+- **notifikasi sudah berhasil**: pairing connected dan port otomatis bekerja;
+- **overlay tetap tidak bisa ditutup**, bahkan setelah dua strategi pelepasan
+  window (`removeView`, lalu `removeViewImmediate` + fallback + retry).
+
+Kesimpulan engineering-nya bukan menambah tambalan ketiga, tetapi menghapus
+seluruh permukaan yang tidak stabil. `PairingOverlay.kt`, jalur
+`TYPE_ACCESSIBILITY_OVERLAY`, jalur `TYPE_APPLICATION_OVERLAY`, tombol ✕, dan
+semua status/fallback kartu dihapus. Pairing kembali ke bentuk yang dipakai
+AppManager di produksi: **foreground service + notifikasi RemoteInput + mDNS**.
+
+Pembacaan dialog Setelan tetap dipertahankan sebagai peningkatan UX: bila
+AccessibilityService dapat membaca port+kode, pairing langsung dicoba tanpa
+input. Bila tidak, jalur manual adalah satu jalur yang sudah terbukti bekerja
+di HP pengguna: **Ketik Kode Pairing** di notifikasi.
+
+`SYSTEM_ALERT_WINDOW` dan `AgentOverlay` 1x1 **tidak** dihapus karena itu fitur
+terpisah untuk pengecualian Background Activity Launch saat membuka aplikasi
+target; ia bukan bagian dari pairing.
 
 ### Batas jujur
 
-`v0.9.9-dev.1` sudah diuji di perangkat dan tiga gejala di atas direproduksi.
-Perbaikan lanjutan pada build berikutnya **tetap harus diuji ulang di
-perangkat** sebelum tag stabil `v0.9.9`: terutama tombol ✕/BACK, inline reply
-notifikasi, mDNS dengan MulticastLock, dan pembacaan dialog Setelan. Unit test
-JVM membuktikan parser port/kode, bukan perilaku WindowManager/SystemUI.
+`v0.9.9-dev.2` sudah diuji di perangkat: notifikasi+auto-port terbukti
+berhasil, overlay terbukti tetap gagal ditutup. `v0.9.9-dev.3` menghapus
+overlay berdasarkan bukti itu, tetapi tetap harus diuji ulang di perangkat
+sebelum tag stabil `v0.9.9`: terutama tidak adanya kartu yatim lama, inline
+reply notifikasi, mDNS dengan MulticastLock, dan auto-fetch dialog Setelan.
+Unit test JVM membuktikan parser port/kode, bukan perilaku SystemUI.
 
 ## [0.9.8] — 2026-09-14
 

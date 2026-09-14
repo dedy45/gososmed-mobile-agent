@@ -14,8 +14,6 @@ import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.view.Display
-import android.view.View
-import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -135,7 +133,7 @@ class AgentAccessibilityService : AccessibilityService() {
             lastPairingDialogScanAt = 0L
         }
 
-        /** Scan manual sekali (dipakai saat overlay baru dipasang/ditampilkan). */
+        /** Scan manual sekali (dipakai tepat setelah sesi pairing dimulai). */
         fun scanPairingDialogNow(): PairingDialogParser.Snapshot? {
             return instance?.capturePairingDialogSnapshot()
         }
@@ -569,63 +567,6 @@ class AgentAccessibilityService : AccessibilityService() {
      * sebagai "layanan belum aktif" adalah bug regresi v0.9.5.
      */
     fun isServiceReady(): Boolean = rootInActiveWindow != null
-
-    // ---- v0.9.7: jendela overlay milik layanan aksesibilitas ----
-
-    /**
-     * WindowManager yang sah untuk memasang jendela aksesibilitas.
-     * [PairingOverlay] memerlukannya agar drag bisa memanggil
-     * `updateViewLayout`.
-     */
-    fun overlayWindowManager(): WindowManager? =
-        getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-
-    /**
-     * Pasang jendela `TYPE_ACCESSIBILITY_OVERLAY`.
-     *
-     * ================== INI KUNCI PERBAIKAN "OVERLAY TIDAK MUNCUL" ==================
-     *
-     * Jendela jenis ini HANYA boleh dipasang oleh layanan aksesibilitas, dan
-     * imbalannya: ia **TIDAK memerlukan izin `SYSTEM_ALERT_WINDOW`** sama sekali.
-     * Itu menghapus DUA penghalang sekaligus yang membuat v0.9.4–v0.9.6 gagal:
-     *
-     *  1. izin "Tampilkan di atas aplikasi lain" yang belum diberikan pengguna, dan
-     *  2. saklar OEM MIUI/HyperOS yang TERPISAH ("Tampilkan jendela sembulan
-     *     saat berjalan di latar belakang") yang tidak bisa dibaca maupun
-     *     diminta lewat API publik.
-     *
-     * Karena jendelanya milik layanan sistem — bukan "aplikasi yang menggambar
-     * di atas aplikasi lain" — penjagaan pop-up latar belakang OEM tidak
-     * berlaku padanya.
-     *
-     * WAJIB dipanggil dari main thread. Mengembalikan false bila sistem
-     * menolak, dan alasannya dicatat ke log — bukan gagal senyap.
-     */
-    fun attachAccessibilityOverlay(view: View, params: WindowManager.LayoutParams): Boolean {
-        return try {
-            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
-            params.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-            wm.addView(view, params)
-            val attached = view.isAttachedToWindow
-            if (!attached) {
-                Log.w(TAG, "accessibility overlay: addView tidak error tetapi TIDAK attached")
-            }
-            attached
-        } catch (t: Throwable) {
-            Log.w(TAG, "accessibility overlay ditolak sistem", t)
-            false
-        }
-    }
-
-    /** Lepas jendela overlay aksesibilitas. Aman dipanggil berkali-kali. */
-    fun detachAccessibilityOverlay(view: View) {
-        try {
-            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-            wm.removeViewImmediate(view)
-        } catch (t: Throwable) {
-            Log.w(TAG, "gagal melepas accessibility overlay", t)
-        }
-    }
 
     // ---- Act: gesture tap (mirror of Go Device.tapNode) ----
 

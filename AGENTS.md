@@ -102,15 +102,15 @@ These were each discovered the hard way. Do not re-learn them.
 
 **Rule:** every entry point — notification building, view construction, service startup — must be wrapped in try/catch, and the crash must be recorded to disk and shown in the Log tab.
 
-### 5.2 Overlay: use `TYPE_ACCESSIBILITY_OVERLAY`
+### 5.2 Pairing ADB: NO overlay — notification only
 
-`TYPE_APPLICATION_OVERLAY` requires the `SYSTEM_ALERT_WINDOW` permission **plus** a separate OEM toggle (MIUI/HyperOS gate it independently), and code that silently returns when the permission is absent produces an invisible failure.
+The pairing overlay (`PairingOverlay.kt`, both `TYPE_ACCESSIBILITY_OVERLAY` and `TYPE_APPLICATION_OVERLAY`) was **removed** in v0.9.9-dev.3 after real-device tests showed the card could still not be dismissed even after two removal-strategy fixes, while the notification path paired successfully with auto-port.
 
-**`TYPE_ACCESSIBILITY_OVERLAY` needs no permission at all** and is not subject to OEM background-launch restrictions, because the window belongs to a system service. Obtain the `WindowManager` from the **AccessibilityService context** (not the Application context) and call `addView` on the main thread.
+**Do not reintroduce a pairing card.** Pairing must follow the production AppManager shape: foreground service + notification `RemoteInput` + mDNS, with Accessibility screen reading only as an optional auto-fetch helper. `SYSTEM_ALERT_WINDOW`/`AgentOverlay` remains for the separate 1x1 Background Activity Launch exemption; it is not part of pairing.
 
-### 5.3 Touch listeners must be on leaf views
+### 5.3 Notification RemoteInput is a state machine
 
-`ViewGroup.dispatchTouchEvent` delivers events to the **child** under the finger. A listener attached to a parent `LinearLayout` never fires when the finger lands on an `EditText` or `Button` — i.e. almost the entire card. Attach drag listeners to a **leaf view** (e.g. the title `TextView`).
+Do not attach a `RemoteInput` action before the pairing port is known, and do not call `notify()` for minor status changes while the inline field may be open — OEMs collapse the field and discard typed digits. States: `SEARCHING` → `INPUT` → `WORKING` → `RESULT`. Opening Settings must use a direct `PendingIntent.getActivity`, not a service hop.
 
 ### 5.4 Read accessibility state from the API, not from Settings strings
 

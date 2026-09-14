@@ -215,8 +215,8 @@ object AdbPairingController {
      * akar masalahnya (Conscrypt tidak dibundel) tidak pernah terlihat.
      *
      * Penanda di bawah menandai kegagalan yang TIDAK mungkin diperbaiki dengan
-     * kode baru. Dipakai oleh UI aplikasi (tab Setup) MAUPUN oleh notifikasi dan
-     * kartu melayang, supaya pesannya konsisten di semua permukaan.
+     * kode baru. Dipakai oleh UI aplikasi (tab Setup) MAUPUN oleh notifikasi,
+     * supaya pesannya konsisten di semua permukaan.
      */
     fun isTechnicalFailure(reason: String): Boolean {
         if (reason.isEmpty()) return false

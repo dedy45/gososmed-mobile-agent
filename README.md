@@ -197,9 +197,9 @@ Membuat pembukaan aplikasi lebih andal (terutama TikTok). **Tidak perlu aplikasi
 fitur ini ada di dalam APK ini. Cara: aktifkan **Opsi Pengembang** (Setelan → Tentang HP →
 ketuk *Nomor build* 7×), lalu dari tab Setup agent tekan **Hubungkan**. Buka
 **Setelan → Sistem → Opsi Pengembang → Debug nirkabel → Pasangkan perangkat dengan kode
-pairing** dan biarkan dialognya terbuka. Agent mencoba mengisi port+kode otomatis; bila
-OEM tidak mengizinkan pembacaan itu, kode bisa diketik lewat kartu melayang atau aksi
-inline **Ketik Kode Pairing** di notifikasi.
+pairing** dan biarkan dialognya terbuka. Agent mencoba membaca port+kode otomatis; bila
+OEM tidak mengizinkan pembacaan itu, kode diketik lewat aksi inline **Ketik Kode Pairing**
+di notifikasi. Mulai v0.9.9-dev.3 tidak ada lagi kartu overlay pairing.
 > Kode berlaku **10 menit**, dan langkah ini **harus diulang setiap HP selesai di-restart**
 > karena Android mematikan Debug nirkabel otomatis. Pairing terjadi antara HP dan dirinya
 > sendiri lewat `127.0.0.1` — koneksi lokal, tidak menyentuh server kami.
