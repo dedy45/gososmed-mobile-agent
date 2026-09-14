@@ -195,8 +195,11 @@ Kedua langkah di atas **sudah cukup** untuk mulai memakai aplikasi.
 **Langkah 3 — Otomasi Lanjutan / ADB (OPSIONAL).**
 Membuat pembukaan aplikasi lebih andal (terutama TikTok). **Tidak perlu aplikasi tambahan** —
 fitur ini ada di dalam APK ini. Cara: aktifkan **Opsi Pengembang** (Setelan → Tentang HP →
-ketuk *Nomor build* 7×), lalu **Setelan → Sistem → Opsi Pengembang → Debug nirkabel** →
-*Pairing baru* → masukkan kode 6 angka di **tab Setup** aplikasi agent.
+ketuk *Nomor build* 7×), lalu dari tab Setup agent tekan **Hubungkan**. Buka
+**Setelan → Sistem → Opsi Pengembang → Debug nirkabel → Pasangkan perangkat dengan kode
+pairing** dan biarkan dialognya terbuka. Agent mencoba mengisi port+kode otomatis; bila
+OEM tidak mengizinkan pembacaan itu, kode bisa diketik lewat kartu melayang atau aksi
+inline **Ketik Kode Pairing** di notifikasi.
 > Kode berlaku **10 menit**, dan langkah ini **harus diulang setiap HP selesai di-restart**
 > karena Android mematikan Debug nirkabel otomatis. Pairing terjadi antara HP dan dirinya
 > sendiri lewat `127.0.0.1` — koneksi lokal, tidak menyentuh server kami.

@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -67,6 +68,7 @@ object PairingOverlay {
     const val TAG_STATUS = "gososmed_status"
     const val TAG_PAIR_BTN = "gososmed_pair_btn"
     const val TAG_TITLE = "gososmed_title"
+    const val TAG_CLOSE = "gososmed_close"
 
     private const val CARD_WIDTH_DP = 304
 
@@ -125,10 +127,16 @@ object PairingOverlay {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val closeBtn = TextView(ctx).apply {
-            text = " ✕ "
-            setTextColor(Color.parseColor("#94A3B8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setPadding((8 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
+            tag = TAG_CLOSE
+            text = "✕"
+            contentDescription = "Tutup kartu pairing"
+            gravity = Gravity.CENTER
+            minWidth = (48 * dp).toInt()
+            minHeight = (48 * dp).toInt()
+            setTextColor(Color.parseColor("#E2E8F0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
             setOnClickListener { onClose() }
         }
         val header = LinearLayout(ctx).apply {
@@ -218,8 +226,8 @@ object PairingOverlay {
         }
 
         val hintTv = TextView(ctx).apply {
-            text = "Tip: kode juga bisa diketik dari baris notifikasi — layar kode di " +
-                "Setelan tidak perlu (dan jangan) ditutup."
+            text = "Tip: bila kode terbaca otomatis cukup tekan Hubungkan. " +
+                "Jika tidak, ketik manual di sini atau dari notifikasi — jangan tutup layar kode."
             setTextColor(Color.parseColor("#94A3B8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
             setPadding(0, (8 * dp).toInt(), 0, 0)
@@ -234,6 +242,19 @@ object PairingOverlay {
 
         val params = layoutParams(ctx, android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
         val holder = Card(card, params, wm)
+
+        // BACK harus menutup kartu, bukan tampak "tidak merespons" karena
+        // jendela overlay yang fokus menelan tombol tanpa handler.
+        card.isFocusable = true
+        card.isFocusableInTouchMode = true
+        card.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                onClose()
+                true
+            } else {
+                false
+            }
+        }
 
         // Drag dari baris judul. Dipasang pada TextView daun (lihat KDoc kelas).
         titleTv.setOnTouchListener(object : View.OnTouchListener {
@@ -284,18 +305,31 @@ object PairingOverlay {
         }
     }
 
-    /** Isi kolom port bila masih kosong (mDNS menemukan port lebih dulu). */
+    /** Terapkan port hasil discovery; discovery lebih otoritatif daripada isian lama. */
     fun setPort(card: Card?, port: Int) {
         if (card == null || port <= 0) return
         val et = card.view.findViewWithTag<EditText>(TAG_PORT) ?: return
-        if (et.text.isNullOrEmpty()) et.setText(port.toString())
+        val value = port.toString()
+        if (et.text.toString() != value) et.setText(value)
     }
 
-    /** Perbarui baris status + aktifkan kembali tombol Hubungkan. */
-    fun status(card: Card?, msg: String, color: Int) {
+    /** Isi kode hasil pembacaan dialog sistem (tetap lokal; jangan log nilainya). */
+    fun setCode(card: Card?, code: String) {
+        if (card == null) return
+        val normalized = code.filter { it.isDigit() }.take(6)
+        if (normalized.length != 6) return
+        val et = card.view.findViewWithTag<EditText>(TAG_CODE) ?: return
+        if (et.text.toString() != normalized) {
+            et.setText(normalized)
+            et.setSelection(normalized.length)
+        }
+    }
+
+    /** Perbarui baris status; tombol hanya diaktifkan lagi bila sesi tidak sedang berjalan. */
+    fun status(card: Card?, msg: String, color: Int, enablePairButton: Boolean = true) {
         if (card == null) return
         status(card.view.findViewWithTag(TAG_STATUS), msg, color)
-        card.view.findViewWithTag<Button>(TAG_PAIR_BTN)?.isEnabled = true
+        card.view.findViewWithTag<Button>(TAG_PAIR_BTN)?.isEnabled = enablePairButton
     }
 
     private fun status(tv: TextView?, msg: String, color: Int) {

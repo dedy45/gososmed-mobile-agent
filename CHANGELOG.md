@@ -81,13 +81,81 @@ sendiri dengan `adbd` di HP yang sama — bukan IP Wi-Fi), tetapi mencetaknya
 mentah di kartu membuat pengguna mengira IP-nya salah. Teks kini netral;
 tujuan koneksi dipublikasikan oleh `AdbPairingService` pada saat yang tepat.
 
+### Perbaikan lanjutan setelah uji `v0.9.9-dev.1`
+
+Uji perangkat pada `v0.9.9-dev.1` menemukan tiga masalah yang masih tersisa:
+kartu tidak merespons tutup, port tidak selalu terisi, dan kolom angka pada
+notifikasi tidak bisa dipakai. Tiga akar berbeda ditemukan dan diperbaiki.
+
+#### 6. Tombol ✕ kini berarti "sembunyikan kartu", bukan "hentikan sesi"
+
+Dulu `onClose` memanggil `cleanupAndStop()`: satu ketukan pada ✕ mematikan
+foreground service, notifikasi, dan mDNS sekaligus. Bila pelepasan jendela
+gagal di tengah jalan, pengguna mendapat kombinasi terburuk — kartu masih
+terlihat tetapi sesi cadangannya sudah mati.
+
+Sekarang ✕ hanya memanggil `dismissOverlay()`; sesi tetap hidup dan input
+pindah ke notifikasi. Aksi **Batal** di notifikasi adalah satu-satunya yang
+menghentikan seluruh sesi. Pelepasan jendela memakai `removeViewImmediate()`
+dengan dua fallback dan tombol ✕ diperbesar ke target sentuh ±48dp; tombol
+BACK pada kartu juga menutup kartu.
+
+#### 7. RemoteInput notifikasi ditulis ulang sebagai state machine
+
+Akar "input angka tidak berfungsi" adalah notifikasi yang dibangun ulang pada
+setiap perubahan status. Di banyak OEM, `notify()` dengan ID yang sama saat
+kolom inline terbuka akan **menutup kolom dan menghapus ketikan**. Aksi input
+juga dipasang sebelum port diketahui, sehingga PendingIntent bisa membawa
+hint `-1`.
+
+Mengikuti pola produksi AppManager:
+
+- saat port belum ada: notifikasi hanya punya **Buka Debug Nirkabel** dan
+  **Batal**;
+- setelah port diketahui: notifikasi diganti SEKALI menjadi aksi
+  **Ketik Kode Pairing** + **Batal** dengan port tertanam;
+- saat kode dikirim: semua aksi langsung dibersihkan agar spinner inline tidak
+  menggantung;
+- selama `Stage.INPUT`, status kecil tidak lagi memanggil `notify()`;
+- `setOnlyAlertOnce(true)` + `setSilent(true)` mencegah shade terlipat ulang.
+
+#### 8. Discovery port dibuat tahan OEM
+
+`libadb-android.AdbMdns` tidak memegang `WifiManager.MulticastLock`; pada
+sebagian Xiaomi/Oppo/Vivo, paket mDNS dibuang kernel sampai lock itu dipegang.
+Callback kegagalan NSD-nya juga diam, sehingga "belum ada dialog" dan
+"discovery gagal" tidak bisa dibedakan.
+
+`AdbPairingPortDiscovery` kini memakai `NsdManager` langsung dengan:
+- izin `CHANGE_WIFI_MULTICAST_STATE` + `MulticastLock`;
+- log untuk `onStartDiscoveryFailed` / `onResolveFailed`;
+- retry dengan backoff selama sesi hidup;
+- satu resolve aktif (menghindari `FAILURE_MAX_LIMIT`);
+- filter alamat lokal + probe port loopback agar layanan pairing HP lain di
+  LAN tidak dipakai keliru.
+
+#### 9. Port+kode dapat terbaca otomatis dari dialog Setelan (best-effort)
+
+Karena pengguna sudah memberi izin AccessibilityService, sesi pairing kini
+mendaftarkan pemindai yang **hanya aktif selama sesi** dan **hanya membaca
+window Setelan**. Parser mencari kombinasi `IPv4:port` + enam angka pada dialog
+"Pasangkan perangkat dengan kode pairing". Nilai kode tidak pernah dicatat ke
+log.
+
+Jika berhasil, kartu terisi otomatis dan pengguna cukup menekan **Hubungkan
+Sekarang**. Jika kartu memang tidak tersedia, pasangan yang terbaca langsung
+dicoba sekali karena pengguna sudah memulai sesi pairing. Jika OEM menutup
+isi dialog dari AccessibilityService, jalur manual overlay/notifikasi tetap
+tersedia. Ini bukan bypass izin; pembacaan sepenuhnya bergantung pada layanan
+aksesibilitas yang diaktifkan pengguna.
+
 ### Batas jujur
 
-Perbaikan ini **belum diuji di perangkat nyata**. Yang terverifikasi: kompilasi
-Kotlin bersih dan unit test JVM lulus. Bahwa kartu kini benar-benar bisa
-ditutup di HP hanya dapat dibuktikan dengan mencabut layanan aksesibilitas di
-tengah sesi pairing — pengujian itu belum dilakukan. Karena itu rilis versi ini
-memakai kanal `-dev`.
+`v0.9.9-dev.1` sudah diuji di perangkat dan tiga gejala di atas direproduksi.
+Perbaikan lanjutan pada build berikutnya **tetap harus diuji ulang di
+perangkat** sebelum tag stabil `v0.9.9`: terutama tombol ✕/BACK, inline reply
+notifikasi, mDNS dengan MulticastLock, dan pembacaan dialog Setelan. Unit test
+JVM membuktikan parser port/kode, bukan perilaku WindowManager/SystemUI.
 
 ## [0.9.8] — 2026-09-14
 

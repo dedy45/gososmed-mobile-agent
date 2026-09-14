@@ -73,7 +73,7 @@ gradle assembleRelease
 > matching CI exactly. This repo has **no** Gradle wrapper — never call `./gradlew`.
 > See [`docs/TOOLCHAIN-LOKAL.md`](docs/TOOLCHAIN-LOKAL.md) for the environment setup.
 
-**Test files live in `app/src/test/java/com/gososmed/agent/`** (`AgentCommandTest`, `HierarchySerializerTest`, `privileged/AdbShellOutputTest`, `privileged/AdbTlsProviderTest`). Add a regression test for every behavioural fix. Unit tests run on the JVM — they **cannot** prove device behaviour; say so explicitly in your report.
+**Test files live in `app/src/test/java/com/gososmed/agent/`** (`AgentCommandTest`, `HierarchySerializerTest`, `privileged/AdbShellOutputTest`, `privileged/AdbTlsProviderTest`, `privileged/PairingDialogParserTest`). Add a regression test for every behavioural fix. Unit tests run on the JVM — they **cannot** prove device behaviour; say so explicitly in your report.
 
 **Keystore:** never commit it. It is decoded at release time from GitHub Secrets (`GOSOSMED_KEYSTORE_B64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`) into `RUNNER_TEMP`. The workflow fails hard if the secrets are missing, so an unsigned APK can never be published silently. Do not weaken that check.
 

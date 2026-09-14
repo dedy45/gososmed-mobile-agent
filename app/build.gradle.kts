@@ -36,12 +36,13 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 25 = v0.9.9 — kartu pairing bisa ditutup, status kartu dan
-        // notifikasi sinkron, port terisi otomatis. Perilaku berubah, bukan
-        // sekadar perubahan bergantian: lihat CHANGELOG [0.9.9].
+        // versionCode 26 = v0.9.9-dev.2 — kartu ✕ hanya menyembunyikan kartu,
+        // RemoteInput mengikuti state ala AppManager, port mDNS memakai
+        // MulticastLock + retry, dan dialog Setelan dibaca best-effort untuk
+        // mengisi port+kode otomatis. Lihat CHANGELOG [0.9.9].
         // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
         // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 25
+        versionCode = 26
         versionName = "0.9.9"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link

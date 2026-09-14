@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.view.Display
@@ -18,6 +19,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
+import com.gososmed.agent.privileged.PairingDialogParser
 import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
 import org.json.JSONObject
@@ -104,6 +106,42 @@ class AgentAccessibilityService : AccessibilityService() {
         fun attach(ctx: Context) {
             appContext = ctx.applicationContext
         }
+
+        // ---- Pemindai dialog pairing Debug nirkabel (aktif hanya selama sesi pairing) ----
+
+        private val SETTINGS_PACKAGES = setOf(
+            "com.android.settings",
+            "com.google.android.settings",
+            "com.samsung.android.settings",
+            "com.miui.settings",
+            "com.coloros.settings",
+            "com.oplus.settings",
+            "com.vivo.settings",
+            "com.hihonor.settings",
+        )
+
+        @Volatile
+        private var pairingDialogListener: ((PairingDialogParser.Snapshot) -> Unit)? = null
+
+        @Volatile
+        private var lastPairingDialogScanAt = 0L
+
+        /**
+         * Daftarkan pendengar dialog pairing. Listener wajib dibersihkan saat
+         * sesi selesai supaya layanan tidak membaca layar di luar kebutuhan.
+         */
+        fun setPairingDialogListener(listener: ((PairingDialogParser.Snapshot) -> Unit)?) {
+            pairingDialogListener = listener
+            lastPairingDialogScanAt = 0L
+        }
+
+        /** Scan manual sekali (dipakai saat overlay baru dipasang/ditampilkan). */
+        fun scanPairingDialogNow(): PairingDialogParser.Snapshot? {
+            return instance?.capturePairingDialogSnapshot()
+        }
+
+        /** Paket layar event ini memang milik Setelan yang berpeluang memuat dialog pairing. */
+        private fun isSettingsPackage(pkg: String): Boolean = pkg in SETTINGS_PACKAGES
 
         /**
          * Status kesiapan untuk UI/KONTROL IZIN — memisahkan dua makna:
@@ -269,7 +307,31 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // P0: no per-event reaction needed; hierarchy is pulled on demand.
+        // Hierarki aplikasi target tetap dibaca on-demand. Satu-satunya reaksi
+        // per-event adalah pemindai dialog pairing ADB, dan ia aktif hanya saat
+        // AdbPairingService mendaftarkan listener.
+        val listener = pairingDialogListener ?: return
+        val type = event?.eventType ?: return
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        ) {
+            return
+        }
+        val pkg = event.packageName?.toString().orEmpty()
+        if (!isSettingsPackage(pkg)) return
+
+        val now = SystemClock.uptimeMillis()
+        if (now - lastPairingDialogScanAt < 250L) return
+        lastPairingDialogScanAt = now
+
+        val snapshot = capturePairingDialogSnapshot()
+        if (snapshot.hasPort || snapshot.code != null) {
+            try {
+                listener(snapshot)
+            } catch (t: Throwable) {
+                Log.w(TAG, "pendengar dialog pairing gagal", t)
+            }
+        }
     }
 
     override fun onInterrupt() {
@@ -289,6 +351,56 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     // ---- Read ----
+
+    /**
+     * Baca teks dialog pairing Debug nirkabel yang sedang terlihat.
+     *
+     * Fungsi ini hanya dipanggil selama sesi pairing dan hanya memindai window
+     * yang package-nya Setelan. Hasil parse TIDAK dilog; kode pairing adalah
+     * rahasia lokal yang langsung diteruskan ke libadb.
+     */
+    fun capturePairingDialogSnapshot(): PairingDialogParser.Snapshot {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+
+        try {
+            val windowList = getWindows() ?: emptyList()
+            for (window in windowList) {
+                val root = window.root ?: continue
+                val pkg = root.packageName?.toString().orEmpty()
+                if (isSettingsPackage(pkg)) roots.add(root)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "getWindows gagal saat scan dialog pairing", t)
+        }
+
+        if (roots.isEmpty()) {
+            rootInActiveWindow?.let { root ->
+                val pkg = root.packageName?.toString().orEmpty()
+                if (isSettingsPackage(pkg)) roots.add(root)
+            }
+        }
+
+        // Parse PER WINDOW. Layar utama Debug nirkabel memiliki IP:port CONNECT;
+        // menggabungkannya dengan kode dari window pairing akan memasangkan
+        // kode yang benar dengan port yang salah.
+        val windowsTexts = roots.map { root ->
+            mutableListOf<String>().also { collectVisibleText(root, it, depth = 0) }
+        }
+        return PairingDialogParser.parseWindows(windowsTexts)
+    }
+
+    private fun collectVisibleText(
+        node: AccessibilityNodeInfo,
+        out: MutableList<String>,
+        depth: Int,
+    ) {
+        if (depth > 40 || out.size >= 300) return
+        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let(out::add)
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectVisibleText(child, out, depth + 1)
+        }
+    }
 
     /** Dumps the current active window as uiautomator-compatible XML. */
     fun dumpXml(): String = HierarchySerializer.dump(rootInActiveWindow)

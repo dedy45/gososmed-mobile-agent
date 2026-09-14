@@ -49,6 +49,34 @@ Aplikasi agent memandu 3 langkah berurutan:
 Mode teknis (log, uji lokal, override URL server) tersembunyi dan hanya untuk
 pengembang: buka dengan tap 7× pada nomor versi di halaman utama.
 
+## Pairing ADB lokal (Otomasi Lanjutan)
+
+Ini berbeda dari kode 8 karakter untuk menghubungkan HP ke server. Pairing ADB
+lokal memberi agent hak setara `adb shell` di HP itu sendiri:
+
+1. Pengguna menekan **Hubungkan** pada kartu "Otomasi Lanjutan (ADB)".
+2. Agent menjalankan foreground service, memasang notifikasi, mulai discovery
+   `_adb-tls-pairing._tcp`, dan — bila Aksesibilitas aktif — memasang kartu
+   melayang.
+3. Pengguna membuka **Setelan → Opsi Pengembang → Debug nirkabel → Pasangkan
+   perangkat dengan kode pairing**. Dialog kode dibiarkan terbuka.
+4. Port pairing dicari lewat mDNS dengan `MulticastLock` + retry. Sebagai
+   jalur best-effort, AccessibilityService juga membaca dialog Setelan yang
+   sedang terlihat untuk menemukan pasangan `IPv4:port` + kode enam angka.
+   Pembacaan ini hanya aktif selama sesi pairing, hanya pada window Setelan,
+   dan nilai kode tidak pernah ditulis ke log.
+5. Jika port+kode terbaca otomatis, kartu terisi sendiri dan pengguna cukup
+   menekan **Hubungkan Sekarang**. Jika kartu tidak tersedia, hasil pembacaan
+   boleh langsung dipakai sekali karena sesi sudah dimulai oleh pengguna.
+6. Jika pembacaan otomatis tidak tersedia di OEM tertentu, pengguna memasukkan
+   kode lewat kartu atau aksi inline **Ketik Kode Pairing** di notifikasi.
+7. Tombol ✕ pada kartu hanya **menyembunyikan kartu**; sesi tetap hidup di
+   notifikasi. Aksi **Batal** di notifikasi yang menghentikan sesi.
+
+Host pairing selalu `127.0.0.1` karena ini self-pairing ke `adbd` pada HP yang
+sama. Port di dialog pairing berbeda dari port connect pada layar utama Debug
+nirkabel; agent tidak mencampur keduanya.
+
 ## Alur lama (sebelum v0.4.0, referensi)
 
 ```

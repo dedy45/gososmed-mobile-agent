@@ -25,94 +25,28 @@ import com.gososmed.agent.AgentAccessibilityService
 import com.gososmed.agent.AgentLog
 import com.gososmed.agent.PairingOverlay
 import com.gososmed.agent.R
-import io.github.muntashirakon.adb.android.AdbMdns
-import java.net.InetAddress
 
 /**
- * v0.9.7 — PAIRING ENGINE. Pola yang dipakai adalah pola produksi AppManager
- * (aplikasi yang menulis `libadb-android`, library yang kita pakai juga).
+ * Pairing engine ADB lokal.
  *
- * ================== MENGAPA DITULIS ULANG (v0.9.4–v0.9.6 gagal) ==================
+ * Host pairing SELALU `127.0.0.1`: ini self-pairing — HP memasangkan dirinya
+ * dengan `adbd` di HP yang sama. Nilai dinamis yang dibutuhkan hanyalah PORT
+ * pairing dan kode 6 angka dari dialog Debug nirkabel.
  *
- * Laporan lapangan setelah v0.9.6 dipasang:
+ * Tiga permukaan UI dikelola sebagai SATU state:
  *
- *   1. "Masih tidak bisa konek wireless debug — tidak menampilkan overlay
- *       atau pengisian kode untuk pairing."
- *   2. "Klik Hubungkan di Langkah 3 → Langkah 1 mati / status belum aktif,
- *       padahal di Setelan aksesibilitas sudah ON."
+ *  1. **Kartu overlay** — nyaman, tetapi bisa ditutup kapan saja. Menutup kartu
+ *     HANYA menyembunyikan kartu; sesi dan notifikasi tetap hidup.
+ *  2. **Notifikasi RemoteInput** — fallback yang selalu tersedia. Aksi input
+ *     hanya dipasang setelah port diketahui, mengikuti pola produksi AppManager;
+ *     notifikasi tidak dibangun ulang selama pengguna mungkin sedang mengetik.
+ *  3. **Pembaca dialog Setelan via AccessibilityService** — best-effort dan
+ *     opt-in oleh sesi ini. Bila kode+port terbaca, kartu diisi otomatis dan
+ *     pengguna cukup menekan satu tombol. Bila kartu tidak tersedia, pasangan
+ *     itu boleh langsung dipakai karena pengguna sudah memulai sesi pairing.
  *
- * ---------------------------------------------------------------------------
- * SEBAB 1 — TIDAK ADA UI SAMA SEKALI
- * ---------------------------------------------------------------------------
- * v0.9.4–v0.9.6 memasang SATU-SATUNYA overlay dengan
- * `TYPE_APPLICATION_OVERLAY`, yang menuntut izin `SYSTEM_ALERT_WINDOW` DAN
- * saklar OEM MIUI/HyperOS yang terpisah. Bila salah satu belum aktif,
- * `showFloatingOverlay()` langsung `return` TANPA memberi tahu pengguna —
- * kegagalan senyap. Pengguna melihat persis: "tidak ada overlay apa pun".
- *
- * PERBAIKAN: overlay sekarang dipasang lewat
- * `TYPE_ACCESSIBILITY_OVERLAY` oleh [AgentAccessibilityService] — jenis jendela
- * yang **tidak memerlukan izin apa pun** dan tidak terkena penjagaan pop-up
- * latar belakang OEM. `TYPE_APPLICATION_OVERLAY` tetap ada sebagai cadangan.
- * Notifikasi RemoteInput tetap jalur yang selalu tersedia.
- *
- * ---------------------------------------------------------------------------
- * SEBAB 2 — KODE DARI NOTIFIKASI TIDAK PERNAH SAMPAI
- * ---------------------------------------------------------------------------
- * v0.9.5/v0.9.6 mengirim hasil RemoteInput lewat
- * `PendingIntent.getBroadcast(...)` + `BroadcastReceiver` yang didaftarkan
- * dinamis dengan `RECEIVER_EXPORTED`. Rantai itu punya banyak titik gagal
- * (flag ekspor, receiver yang sudah dilepas saat service dibuat ulang, paket
- * yang dibatasi) dan kegagalannya SENYAP: notifikasi tampak "tidak berfungsi".
- *
- * AppManager — referensi produksi — TIDAK memakai broadcast sama sekali:
- *   • aksinya `PendingIntent.getForegroundService(...)` yang menunjuk ke
- *     SERVICE INI SENDIRI, dengan flag MUTABLE (wajib: SystemUI menuliskan
- *     hasil RemoteInput ke Intent itu);
- *   • hasilnya dibaca di `onStartCommand()` lewat
- *     `RemoteInput.getResultsFromIntent(intent)`.
- * Rantai itu lebih pendek, tidak bergantung pada flag ekspor, dan sudah
- * terbukti di produksi. Itulah yang sekarang kami pakai.
- *
- * ---------------------------------------------------------------------------
- * SEBAB 3 — LANGKAH 1 "MATI" SAAT LANGKAH 3 DIKLIK
- * ---------------------------------------------------------------------------
- * `AdbPairingService`, `AgentForegroundService`, `AgentAccessibilityService`
- * dan `MainActivity` berada di PROSES YANG SAMA. Satu exception yang lolos dari
- * `onStartCommand()` (mis. dari `buildNotification()` atau pembuatan view, yang
- * di v0.9.6 TIDAK dibungkus try/catch) mematikan SELURUH proses — dan
- * `AccessibilityService` ikut mati bersama prosesnya. Itulah sebab keluhan
- * "klik Hubungkan → Langkah 1 mati", dan sebab tidak ada overlay maupun
- * notifikasi yang muncul.
- *
- * PERBAIKAN BERLAPIS:
- *   • SELURUH `onCreate`/`onStartCommand` dibungkus try/catch — jalur pairing
- *     tidak boleh bisa menjatuhkan proses.
- *   • [com.gososmed.agent.AgentApp] memasang penangkap exception terakhir yang
- *     MENULIS sebab crash ke disk, sehingga bila tetap terjadi kita tidak buta.
- *   • Pembacaan status Langkah 1 dipindah ke API resmi
- *     `AccessibilityManager.getEnabledAccessibilityServiceList()` (lihat
- *     [AgentAccessibilityService.osEnabled]) — bukan lagi mengandalkan
- *     `rootInActiveWindow` yang berkedip null.
- *
- * ================== JAWABAN SOAL IP (sering disalahpahami) ==================
- * Pairing di sini SELF-PAIRING: HP memasangkan dirinya sendiri dengan `adbd`
- * di HP yang sama. Karena itu host pairing SELALU `127.0.0.1` (loopback), tidak
- * pernah IP Wi-Fi. Yang benar-benar dibutuhkan pengguna adalah PORT, dan itu
- * ditemukan otomatis lewat mDNS `_adb-tls-pairing._tcp`. IP Wi-Fi hanya dipakai
- * pada jalur cadangan manual `AdbPairingController.connectTo(host, port)`.
- *
- * ================== ALUR YANG BENAR ==================
- *  1. Pengguna menekan "Hubungkan" (Langkah 3).
- *  2. Service `startForeground()` → notifikasi interaktif muncul SEKETIKA, dan
- *     mDNS mulai menyimak port pairing di latar.
- *  3. Kartu melayang dipasang lewat aksesibilitas (tanpa izin apa pun).
- *  4. Pengguna membuka Setelan → Debug nirkabel → "Pasangkan perangkat dengan
- *     kode pairing". Layar kode tampil — BIARKAN TERBUKA.
- *  5. Pengguna mengetik 6 angka: di kartu melayang, ATAU di baris notifikasi
- *     (RemoteInput). Layar kode tidak pernah ditutup → kode tidak berganti.
- *  6. Port diambil dari mDNS; pairing dijalankan; notifikasi jadi "✓ Berhasil".
- *  7. Penyambungan berjalan di belakang lewat `AdbPairingController.pair()`.
+ * Semua entry point dibungkus try/catch: service ini se-proses dengan
+ * AccessibilityService, sehingga exception yang lolos akan mematikan keduanya.
  */
 class AdbPairingService : Service() {
 
@@ -120,20 +54,17 @@ class AdbPairingService : Service() {
         private const val TAG = "GoAgentPairSvc"
         private const val CHANNEL_ID = "adb_pairing_channel"
         private const val NOTIF_ID = 4919
-
-        /** Batas umur sesi pairing (sama seperti AppManager). */
         private const val PAIRING_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val PORT_WAIT_MS = 8_000L
 
-        /** Berapa lama menunggu port mDNS setelah kode dikirim. */
-        private const val PORT_WAIT_MS = 8_000
-
-        /** Host pairing = loopback. SELALU. Lihat KDoc kelas. */
         const val LOOPBACK_HOST = "127.0.0.1"
 
         const val ACTION_START = "com.gososmed.agent.START_PAIRING"
         const val ACTION_STOP = "com.gososmed.agent.STOP_PAIRING"
         const val ACTION_INPUT_CODE = "com.gososmed.agent.INPUT_PAIR_CODE"
         const val ACTION_OPEN_ADB_SETTINGS = "com.gososmed.agent.OPEN_ADB_SETTINGS"
+        const val ACTION_SHOW_OVERLAY = "com.gososmed.agent.SHOW_PAIRING_OVERLAY"
+        const val ACTION_RETRY = "com.gososmed.agent.RETRY_PAIRING"
         const val EXTRA_CODE = "key_pairing_code"
         const val EXTRA_PORT = "key_pairing_port"
 
@@ -151,8 +82,6 @@ class AdbPairingService : Service() {
                     context.startService(intent)
                 }
             } catch (t: Throwable) {
-                // startForegroundService dari latar bisa ditolak (Android 12+).
-                // Jangan biarkan itu menjatuhkan proses pemanggil.
                 Log.e(TAG, "tidak bisa memulai AdbPairingService", t)
             }
         }
@@ -167,21 +96,37 @@ class AdbPairingService : Service() {
             }
         }
 
-        /** v0.9.7 — dipakai MainActivity untuk menampilkan kartu sebelum navigasi. */
         fun isRunning(): Boolean = running
 
         @Volatile
         private var running = false
     }
 
+    /** State notifikasi. INPUT sengaja tidak di-refresh untuk status kecil. */
+    private enum class Stage {
+        SEARCHING,   // port belum ada; tampilkan aksi buka Setelan + batal
+        INPUT,       // port ada; tampilkan RemoteInput dan jangan ganggu pengetikan
+        WORKING,     // pairing sedang berjalan; bersihkan aksi segera
+        RESULT       // hasil akhir; tawarkan retry hanya untuk kegagalan non-teknis
+    }
+
     private val main = Handler(Looper.getMainLooper())
-    private var adbMdns: AdbMdns? = null
+    private var portDiscovery: AdbPairingPortDiscovery? = null
     private var overlay: PairingOverlay.Card? = null
-    private var mdnsRunning = false
+    private var discoveryRunning = false
 
     @Volatile private var currentHost: String = LOOPBACK_HOST
     @Volatile private var discoveredPort: Int = -1
+    @Volatile private var detectedCode: String? = null
+    @Volatile private var stage: Stage = Stage.SEARCHING
+    @Volatile private var pairingInFlight = false
     @Volatile private var stopping = false
+    @Volatile private var sessionGeneration = 0
+    @Volatile private var overlayUnavailable = false
+    @Volatile private var userDismissedOverlay = false
+
+    private var notificationAllowsRetry = false
+    private var lastAutoAttempt = ""
 
     private val timeoutRunnable = Runnable {
         AgentLog.event("pairing: batas waktu 10 menit tercapai, sesi ditutup")
@@ -195,8 +140,6 @@ class AdbPairingService : Service() {
     override fun onCreate() {
         super.onCreate()
         running = true
-        // v0.9.7 — dibungkus: kegagalan di sini dulu menjatuhkan seluruh proses
-        // (dan ikut mematikan AccessibilityService).
         try {
             createNotificationChannel()
         } catch (t: Throwable) {
@@ -205,9 +148,6 @@ class AdbPairingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // v0.9.7 — PAGAR UTAMA. Jalur pairing TIDAK BOLEH bisa menjatuhkan
-        // proses: proses ini juga menjalankan AccessibilityService, jadi crash
-        // di sini tampak oleh pengguna sebagai "Langkah 1 mati".
         return try {
             handle(intent)
             START_NOT_STICKY
@@ -226,124 +166,212 @@ class AdbPairingService : Service() {
     private fun handle(intent: Intent?) {
         when (intent?.action) {
             ACTION_STOP -> cleanupAndStop()
-
+            ACTION_RETRY -> startSession(reset = true)
             ACTION_OPEN_ADB_SETTINGS -> {
-                // PendingIntent ini dibuat dengan getForegroundService(), jadi
-                // startForeground() wajib dipanggil lebih dulu.
-                promoteToForeground("Membuka pengaturan Debug nirkabel…")
+                promoteToForeground("Membuka pengaturan Debug nirkabel…", preserveInputNotification = true)
                 openWirelessDebugging()
             }
-
+            ACTION_SHOW_OVERLAY -> {
+                // Jangan rebuild notifikasi saat kolom inline mungkin sedang
+                // terbuka; service sudah foreground pada Stage.INPUT.
+                promoteToForeground("Menampilkan kartu pairing…", preserveInputNotification = true)
+                showOverlay()
+            }
             ACTION_INPUT_CODE -> onCodeSubmitted(intent)
-
-            else -> startSession()
+            ACTION_START -> startSession(reset = true)
+            else -> startSession(reset = false)
         }
     }
 
-    private fun startSession() {
-        if (!promoteToForeground("Menyimak port pairing (mDNS)…")) {
+    private fun startSession(reset: Boolean) {
+        // Generasi baru membuat hasil thread lama dibuang; pairing bisa lambat
+        // dan tidak boleh menimpa state sesi yang sudah dimulai ulang.
+        sessionGeneration++
+        if (reset) resetSessionState()
+        stage = Stage.SEARCHING
+        overlayUnavailable = false
+        userDismissedOverlay = false
+        notificationAllowsRetry = false
+        if (!promoteToForeground("Menyimak port pairing (mDNS + dialog Setelan)…")) {
             toast("Tidak bisa memulai pairing: izinkan Notifikasi untuk app ini, lalu coba lagi.")
             AgentLog.event("pairing gagal start: foreground service ditolak")
             cleanupAndStop()
             return
         }
+
         currentHost = LOOPBACK_HOST
-        startMdns()
+        registerDialogScanner()
+        startPortDiscovery()
         showOverlay()
+
         main.removeCallbacks(timeoutRunnable)
         main.postDelayed(timeoutRunnable, PAIRING_TIMEOUT_MS)
     }
 
+    private fun resetSessionState() {
+        stopPortDiscovery()
+        AgentAccessibilityService.setPairingDialogListener(null)
+        discoveredPort = -1
+        detectedCode = null
+        lastAutoAttempt = ""
+        pairingInFlight = false
+        stage = Stage.SEARCHING
+    }
+
+    // ------------------------------------------------------------- remote input
+
     /**
-     * v0.9.7 — kode dikirim dari notifikasi (RemoteInput) atau dari kartu.
-     *
-     * WAJIB memanggil `startForeground()` lebih dulu: PendingIntent aksi
-     * notifikasi dibuat dengan `getForegroundService()`, sehingga sistem
-     * menuntut `startForeground()` dalam 5 detik — jika tidak, service dibunuh
-     * dengan `ForegroundServiceDidNotStartInTimeException`. AppManager
-     * melakukan hal yang sama (lihat `startPairing()` di AdbPairingService-nya).
+     * RemoteInput dibaca dari Intent foreground-service, pola yang sama dengan
+     * AppManager. `stage` dipindah ke WORKING SEBELUM `startForeground()` supaya
+     * aksi inline langsung hilang; kalau tidak, SystemUI bisa membiarkan spinner
+     * input berputar dan pengguna mengira angkanya tidak terkirim.
      */
     private fun onCodeSubmitted(intent: Intent) {
-        promoteToForeground("Memasangkan…")
+        stage = Stage.WORKING
+        notificationAllowsRetry = false
+        promoteToForeground("Kode diterima — memeriksa port…")
 
-        val code = try {
+        val remoteBundle = try {
             RemoteInput.getResultsFromIntent(intent)
-                ?.getCharSequence(EXTRA_CODE)
-                ?.toString()
-                ?.trim()
-                .orEmpty()
         } catch (t: Throwable) {
             Log.w(TAG, "tidak bisa membaca hasil RemoteInput", t)
-            ""
+            null
         }
+        val fromRemote = remoteBundle
+            ?.getCharSequence(EXTRA_CODE)
+            ?.toString()
+            ?.trim()
+            .orEmpty()
+        val fromExtra = intent.getStringExtra(EXTRA_CODE)?.trim().orEmpty()
+        val code = fromRemote.ifEmpty { fromExtra }
+
+        AgentLog.event(
+            "pairing: aksi notifikasi diterima " +
+                "(remoteInput=${remoteBundle != null}, portHint=${intent.getIntExtra(EXTRA_PORT, -1)})"
+        )
 
         if (code.isEmpty()) {
+            restoreInputStage()
             publish(
                 "Kode kosong — ketuk \"Ketik Kode Pairing\" lalu isi 6 angka",
-                Color.parseColor("#FBBF24")
+                Color.parseColor("#FBBF24"),
+                "Jika kolom inline di HP ini tidak mau terbuka, gunakan kartu melayang: " +
+                    "ketuk isi notifikasi ini untuk menampilkannya kembali.",
+                forceNotification = true
             )
             return
         }
 
-        val hint = intent.getIntExtra(EXTRA_PORT, -1)
-        if (!mdnsRunning) startMdns()
-
-        Thread({
-            val port = resolvePort(hint)
-            main.post {
-                if (port <= 0) {
-                    reportNoPort()
-                } else {
-                    handlePairSubmission(currentHost, port, code)
-                }
-            }
-        }, "gososmed-adb-pair-notif").start()
+        submitPairingCode(code, intent.getIntExtra(EXTRA_PORT, -1), source = "notifikasi")
     }
 
-    // ------------------------------------------------------------------- mDNS
+    private fun restoreInputStage() {
+        stage = if (discoveredPort > 0) Stage.INPUT else Stage.SEARCHING
+        notificationAllowsRetry = false
+    }
 
-    private fun startMdns() {
-        if (mdnsRunning) return
-        mdnsRunning = true
-        try {
-            adbMdns = AdbMdns(this, AdbMdns.SERVICE_TYPE_TLS_PAIRING) { _: InetAddress?, port: Int ->
-                if (port > 0) {
-                    // mDNS pada self-pairing bisa melaporkan alamat Wi-Fi
-                    // perangkat sendiri; nilai itu TIDAK dipakai sebagai host
-                    // (host tetap loopback). Yang kita ambil hanya PORT-nya.
-                    discoveredPort = port
-                    main.post {
-                        PairingOverlay.setPort(overlay, port)
-                        publish(
-                            "✓ Port $port terdeteksi — ketik 6 angka kode pairing",
-                            Color.parseColor("#4ADE80")
-                        )
-                    }
-                    AgentLog.event("pairing: port $port terdeteksi via mDNS")
-                }
+    // ---------------------------------------------------------------- discovery
+
+    private fun startPortDiscovery() {
+        if (discoveryRunning) return
+        discoveryRunning = true
+        portDiscovery = AdbPairingPortDiscovery(
+            this,
+            onPort = { port ->
+                main.post { onPortDiscovered(port, "mDNS") }
+            },
+            onDiagnostic = { message ->
+                main.post { AgentLog.event("pairing: $message") }
             }
-            adbMdns?.start()
+        )
+        try {
+            portDiscovery?.start()
         } catch (t: Throwable) {
-            mdnsRunning = false
-            Log.w(TAG, "mDNS discovery gagal", t)
+            discoveryRunning = false
+            Log.w(TAG, "discovery port pairing gagal", t)
             AgentLog.event("pairing: mDNS gagal — ${t.javaClass.simpleName}")
         }
     }
 
-    private fun stopMdns() {
-        mdnsRunning = false
+    private fun stopPortDiscovery() {
+        discoveryRunning = false
         try {
-            adbMdns?.stop()
+            portDiscovery?.stop()
         } catch (_: Throwable) {
         }
-        adbMdns = null
+        portDiscovery = null
     }
 
-    /** Tunggu port bila kode diketik sebelum mDNS menemukannya. */
+    private fun onPortDiscovered(port: Int, source: String) {
+        if (stopping || port !in 1..65535) return
+        val changed = discoveredPort != port
+        discoveredPort = port
+        PairingOverlay.setPort(overlay, port)
+
+        if (stage != Stage.WORKING && stage != Stage.RESULT) {
+            stage = Stage.INPUT
+            publish(
+                "✓ Port $port terdeteksi — ketik 6 angka kode pairing",
+                Color.parseColor("#4ADE80"),
+                forceNotification = changed
+            )
+        }
+        if (changed) AgentLog.event("pairing: port $port terdeteksi via $source")
+    }
+
+    private fun registerDialogScanner() {
+        AgentAccessibilityService.setPairingDialogListener { snapshot ->
+            main.post { onPairingDialogSnapshot(snapshot) }
+        }
+        // Dialog mungkin sudah terbuka sebelum service sempat mendaftar.
+        main.postDelayed({
+            AgentAccessibilityService.scanPairingDialogNow()?.let(::onPairingDialogSnapshot)
+        }, 500L)
+    }
+
+    /**
+     * Kode dari layar Setelan TIDAK PERNAH dicatat. Parser hanya menerima
+     * kombinasi port+kode pada window Setelan, jadi layar utama Debug nirkabel
+     * (yang memuat port CONNECT, bukan port pairing) tidak disalahartikan.
+     */
+    private fun onPairingDialogSnapshot(snapshot: PairingDialogParser.Snapshot) {
+        if (stopping || stage == Stage.WORKING || !snapshot.isComplete) return
+        val code = snapshot.code ?: return
+
+        onPortDiscovered(snapshot.port, "dialog Setelan")
+        detectedCode = code
+
+        val card = overlay
+        if (card != null) {
+            PairingOverlay.setCode(card, code)
+            publish(
+                "✓ Port & kode terbaca otomatis — ketuk Hubungkan Sekarang",
+                Color.parseColor("#4ADE80")
+            )
+            AgentLog.event("pairing: port+kode terbaca otomatis dari dialog Setelan (nilai kode tidak dilog)")
+        } else if (overlayUnavailable && !userDismissedOverlay) {
+            // Auto-submit HANYA bila sistem memang tidak bisa memasang kartu.
+            // Bila pengguna sendiri menekan ✕, pilihan itu dihormati: sesi
+            // menunggu input sadar lewat notifikasi, bukan pairing diam-diam.
+            val signature = "${snapshot.port}:$code"
+            if (signature != lastAutoAttempt) {
+                lastAutoAttempt = signature
+                publish(
+                    "✓ Port & kode terbaca otomatis — memasangkan…",
+                    Color.parseColor("#4ADE80"),
+                    forceNotification = true
+                )
+                AgentLog.event("pairing: auto-submit dari dialog Setelan (kode tidak dilog)")
+                submitPairingCode(code, snapshot.port, source = "dialog sistem")
+            }
+        }
+    }
+
+    /** Tunggu port bila pengguna mengirim kode tepat sebelum discovery selesai. */
     private fun resolvePort(hint: Int): Int {
         if (hint > 0) return hint
-        var waited = 0
-        while (discoveredPort <= 0 && waited < PORT_WAIT_MS) {
+        var waited = 0L
+        while (discoveredPort <= 0 && waited < PORT_WAIT_MS && !stopping) {
             try {
                 Thread.sleep(200)
             } catch (_: InterruptedException) {
@@ -357,26 +385,16 @@ class AdbPairingService : Service() {
 
     // --------------------------------------------------------------- overlay
 
-    /**
-     * v0.9.7 — DUA jalur overlay, dicoba berurutan.
-     *
-     * 1. `TYPE_ACCESSIBILITY_OVERLAY` lewat [AgentAccessibilityService] —
-     *    TIDAK butuh izin apa pun dan tidak terkena penjagaan OEM. Ini jalur
-     *    utama, dan sebabnya overlay akhirnya muncul.
-     * 2. `TYPE_APPLICATION_OVERLAY` langsung dari service ini — butuh
-     *    `SYSTEM_ALERT_WINDOW`. Cadangan bila aksesibilitas belum ter-bind.
-     *
-     * Bila keduanya gagal, notifikasi RemoteInput tetap bekerja; pengguna
-     * diberi tahu lewat log, bukan dibiarkan menebak.
-     */
     private fun showOverlay() {
         hideOverlay()
+        overlayUnavailable = false
+        userDismissedOverlay = false
 
         val svc = AgentAccessibilityService.instance
         val svcWm = svc?.overlayWindowManager()
         if (svc != null && svcWm != null) {
             try {
-                val card = PairingOverlay.build(svc, svcWm, ::onOverlayPair, ::cleanupAndStop)
+                val card = PairingOverlay.build(svc, svcWm, ::onOverlayPair, ::dismissOverlay)
                 card.params.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
                 if (svc.attachAccessibilityOverlay(card.view, card.params)) {
                     overlay = card
@@ -391,26 +409,25 @@ class AdbPairingService : Service() {
         }
 
         if (!Settings.canDrawOverlays(this)) {
+            overlayUnavailable = true
             AgentLog.event(
                 "overlay tidak dipasang: aksesibilitas belum aktif DAN izin " +
                     "\"Tampilkan di atas aplikasi lain\" belum ada — pakai baris notifikasi"
             )
-            // v0.9.9 — JANGAN diam. Dulu kasus ini hanya masuk log, sehingga
-            // pengguna menunggu kartu yang tidak pernah datang. Sekarang
-            // keadaannya diumumkan, dan diarahkan ke notifikasi.
             publish(
                 "Kartu tidak tersedia — ketik kode di baris notifikasi",
                 Color.parseColor("#FBBF24"),
                 "Kartu melayang tidak bisa dipasang: layanan aksesibilitas belum aktif dan " +
                     "izin \"tampilkan di atas aplikasi lain\" belum diberikan. " +
-                    "Ketik 6 angka kode pairing lewat tombol \"Ketik Kode Pairing\" " +
-                    "di notifikasi ini — jalur itu selalu tersedia."
+                    "Jika kode sudah terbaca otomatis, pairing akan langsung dicoba.",
+                forceNotification = true
             )
             return
         }
+
         try {
             val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-            val card = PairingOverlay.build(this, wm, ::onOverlayPair, ::cleanupAndStop)
+            val card = PairingOverlay.build(this, wm, ::onOverlayPair, ::dismissOverlay)
             card.params.type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
@@ -422,163 +439,214 @@ class AdbPairingService : Service() {
             AgentLog.event("overlay pairing dipasang lewat izin 'tampilkan di atas app lain'")
             onOverlayReady()
         } catch (t: Throwable) {
+            overlayUnavailable = true
             Log.w(TAG, "overlay TYPE_APPLICATION_OVERLAY gagal", t)
             AgentLog.event("overlay ditolak sistem (${t.javaClass.simpleName}) — pakai baris notifikasi")
         }
     }
 
-    /**
-     * v0.9.9 — lepas kartu, dan JANGAN buang referensinya sebelum benar-benar
-     * terlepas.
-     *
-     * ================== MENGAPA DITULIS ULANG ==================
-     * Versi lama melakukan `overlay = null` lebih dulu, lalu melepas lewat
-     * `AgentAccessibilityService.instance?.detachAccessibilityOverlay(...)`.
-     * Tanda tanya itu membuat kegagalan SENYAP: bila layanan aksesibilitas
-     * terputus (`instance == null`), pelepasan batal — dan karena referensi
-     * `overlay` sudah dibuang, tidak ada kesempatan mencoba lagi. Hasilnya
-     * persis keluhan lapangan: **kartu pairing tidak bisa ditutup**, menutupi
-     * layar terus-menerus walau sesi pairing sudah selesai dan notifikasinya
-     * sudah bertuliskan "terhubung".
-     *
-     * Sekarang:
-     *  • referensi hanya dibuang SETELAH pelepasan terbukti berhasil, sehingga
-     *    `onDestroy()` masih bisa mencoba lagi;
-     *  • jalur utama memakai `card.wm` — WindowManager yang memasang kartu —
-     *    sehingga tetap berfungsi meski `instance` sudah null;
-     *  • dua jalur cadangan bila jalur utama menolak.
-     */
-    private fun hideOverlay() {
+    private fun onOverlayReady() {
         val card = overlay ?: return
-        if (tryRemove(card)) {
-            overlay = null
-        } else {
-            Log.w(TAG, "kartu pairing belum bisa dilepas — dicoba lagi saat service dihancurkan")
+        val port = discoveredPort
+        val code = detectedCode
+        if (port > 0) PairingOverlay.setPort(card, port)
+        if (!code.isNullOrEmpty()) PairingOverlay.setCode(card, code)
+
+        when {
+            port > 0 && !code.isNullOrEmpty() -> publish(
+                "✓ Port & kode terbaca otomatis — ketuk Hubungkan Sekarang",
+                Color.parseColor("#4ADE80")
+            )
+            port > 0 -> publish(
+                "✓ Port $port terdeteksi — tinggal ketik 6 angka kode pairing",
+                Color.parseColor("#4ADE80")
+            )
+            else -> publish("Menyimak port pairing (mDNS + dialog Setelan)…", Color.parseColor("#38BDF8"))
         }
     }
 
-    /** Coba lepas [card] lewat semua jalur yang mungkin. true bila berhasil. */
-    private fun tryRemove(card: PairingOverlay.Card): Boolean {
-        // 1) Jalur utama: WindowManager yang MEMASANG kartu ini.
-        try {
-            card.wm.removeView(card.view)
-            return true
-        } catch (t: Throwable) {
-            Log.w(TAG, "removeView lewat wm pemasang gagal", t)
+    private fun onOverlayPair(port: Int, code: String) {
+        submitPairingCode(code, port, source = "kartu")
+    }
+
+    /**
+     * Tombol ✕ = sembunyikan kartu, BUKAN batalkan sesi. Notifikasi tetap
+     * menjadi jalur input yang aman; aksi "Batal" di notifikasi yang menghentikan
+     * seluruh sesi. Pemisahan ini penting agar "close" tidak terasa merusak alur.
+     */
+    private fun dismissOverlay() {
+        userDismissedOverlay = true
+        if (hideOverlay()) {
+            publish(
+                "Kartu disembunyikan — lanjutkan dari notifikasi",
+                Color.parseColor("#38BDF8")
+            )
+            AgentLog.event("overlay pairing disembunyikan; sesi tetap aktif lewat notifikasi")
+        } else {
+            publish(
+                "Kartu belum bisa dilepas — coba lagi, atau Batal dari notifikasi",
+                Color.parseColor("#F87171"),
+                forceNotification = true
+            )
+            AgentLog.event("overlay pairing gagal dilepas saat tombol tutup ditekan")
         }
-        // 2) Cadangan: lewat layanan aksesibilitas (jendela aksesibilitas).
+    }
+
+    /** Mengembalikan true bila tidak ada kartu lagi yang terpasang. */
+    private fun hideOverlay(): Boolean {
+        val card = overlay ?: return true
+        return if (tryRemove(card)) {
+            overlay = null
+            true
+        } else {
+            Log.w(TAG, "kartu pairing belum bisa dilepas — menjadwalkan percobaan ulang")
+            scheduleOverlayRemovalRetries()
+            false
+        }
+    }
+
+    private fun scheduleOverlayRemovalRetries() {
+        for ((index, delay) in listOf(250L, 1_000L).withIndex()) {
+            main.postDelayed({
+                val stale = overlay ?: return@postDelayed
+                if (tryRemove(stale)) {
+                    overlay = null
+                    AgentLog.event("overlay pairing akhirnya berhasil dilepas (retry ${index + 1})")
+                }
+            }, delay)
+        }
+    }
+
+    /** Coba lepas [card] lewat semua jalur yang mungkin, sinkron di main thread. */
+    private fun tryRemove(card: PairingOverlay.Card): Boolean {
+        if (!card.view.isAttachedToWindow) return true
+
+        try {
+            card.wm.removeViewImmediate(card.view)
+        } catch (t: Throwable) {
+            Log.w(TAG, "removeViewImmediate lewat wm pemasang gagal", t)
+        }
+        if (!card.view.isAttachedToWindow) return true
+
         if (card.params.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) {
             val svc = AgentAccessibilityService.instance
             if (svc != null) {
                 try {
                     svc.detachAccessibilityOverlay(card.view)
-                    return true
                 } catch (t: Throwable) {
                     Log.w(TAG, "detach lewat aksesibilitas gagal", t)
                 }
             }
         }
-        // 3) Cadangan terakhir: WindowManager aplikasi.
+        if (!card.view.isAttachedToWindow) return true
+
         return try {
             val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-            if (wm != null) wm.removeView(card.view)
-            wm != null
+            wm?.removeViewImmediate(card.view)
+            !card.view.isAttachedToWindow
         } catch (t: Throwable) {
-            Log.w(TAG, "removeView lewat wm aplikasi gagal", t)
-            false
+            Log.w(TAG, "removeViewImmediate lewat wm aplikasi gagal", t)
+            !card.view.isAttachedToWindow
         }
-    }
-
-    /**
-     * v0.9.9 — terapkan keadaan yang sudah diketahui ke kartu yang BARU dipasang.
-     *
-     * mDNS dimulai SEBELUM kartu dipasang ([startSession] memanggil
-     * `startMdns()` lalu `showOverlay()`), jadi port sering sudah ketemu saat
-     * kartu muncul. Dulu port hanya diisi bila kebetulan kartu sudah ada saat
-     * callback mDNS berjalan; bila belum, `setPort` tidak melakukan apa-apa dan
-     * pengguna harus mengetik port secara manual. Sekarang port yang tersimpan
-     * selalu diterapkan begitu kartu terpasang — pengguna cukup mengetik kode.
-     */
-    private fun onOverlayReady() {
-        val card = overlay ?: return
-        val port = discoveredPort
-        if (port > 0) {
-            PairingOverlay.setPort(card, port)
-            publish(
-                "✓ Port $port terdeteksi — tinggal ketik 6 angka kode pairing",
-                Color.parseColor("#4ADE80")
-            )
-        } else {
-            publish("Menyimak port pairing (mDNS)…", Color.parseColor("#38BDF8"))
-        }
-    }
-
-    private fun onOverlayPair(port: Int, code: String) {
-        publish("Menghubungkan…", Color.parseColor("#FBBF24"))
-        Thread({
-            val p = if (port > 0) port else resolvePort(-1)
-            main.post {
-                if (p <= 0) reportNoPort() else handlePairSubmission(currentHost, p, code)
-            }
-        }, "gososmed-adb-pair-overlay").start()
     }
 
     // ------------------------------------------------------------- pairing
 
+    private fun submitPairingCode(code: String, portHint: Int, source: String) {
+        val normalized = code.filter { it.isDigit() }
+        if (normalized.length < 6) {
+            restoreInputStage()
+            publish(
+                "Kode harus 6 digit angka",
+                Color.parseColor("#FBBF24"),
+                forceNotification = true
+            )
+            return
+        }
+        if (portHint > 0) onPortDiscovered(portHint, source)
+        if (!discoveryRunning) startPortDiscovery()
+
+        val generation = sessionGeneration
+        Thread({
+            val port = resolvePort(portHint)
+            main.post {
+                if (generation != sessionGeneration || stopping) return@post
+                if (port <= 0) {
+                    reportNoPort()
+                } else {
+                    startPairExecution(currentHost, port, normalized.take(6))
+                }
+            }
+        }, "gososmed-adb-pair-submit").start()
+    }
+
     private fun reportNoPort() {
+        restoreInputStage()
         publish(
             "Port belum terdeteksi — nyalakan \"Debug nirkabel\", lalu coba lagi",
             Color.parseColor("#FBBF24"),
-            "Nyalakan \"Debug nirkabel\" di Opsi Pengembang, lalu ketik kode lagi di sini."
+            "Nyalakan \"Debug nirkabel\" di Opsi Pengembang, buka dialog " +
+                "\"Pasangkan perangkat dengan kode pairing\", lalu coba lagi. " +
+                "Jika mDNS dibatasi router/OEM, port akan dibaca dari dialog itu.",
+            forceNotification = true
         )
         toast("Port pairing belum terdeteksi. Aktifkan 'Debug nirkabel' lalu coba lagi.")
     }
 
-    private fun handlePairSubmission(host: String, port: Int, code: String) {
-        if (port <= 0) {
-            reportNoPort()
-            return
-        }
-        val normalized = code.filter { it.isDigit() }
-        if (normalized.length < 6) {
-            PairingOverlay.status(overlay, "Kode harus 6 digit angka", Color.parseColor("#FBBF24"))
-            return
-        }
+    private fun startPairExecution(host: String, port: Int, code: String) {
+        if (pairingInFlight) return
+        pairingInFlight = true
+        stage = Stage.WORKING
+        notificationAllowsRetry = false
+        val generation = sessionGeneration
 
-        publish("Memasangkan ke $host:$port…", Color.parseColor("#FBBF24"))
+        publish(
+            "Memasangkan perangkat…",
+            Color.parseColor("#FBBF24"),
+            forceNotification = true,
+            enablePairButton = false
+        )
 
         Thread({
             val (ok, reason) = try {
-                AdbPairingController.pair(host, port, normalized)
+                AdbPairingController.pair(host, port, code)
             } catch (t: Throwable) {
                 Log.e(TAG, "pair() melempar", t)
                 false to "adb_pair_failed: ${t.message ?: t.javaClass.simpleName}"
             }
             main.post {
+                if (generation != sessionGeneration || stopping) return@post
+                pairingInFlight = false
                 if (ok) {
-                    publish("✓ Berhasil — menyambung…", Color.parseColor("#4ADE80"))
+                    stage = Stage.RESULT
+                    notificationAllowsRetry = false
+                    publish(
+                        "✓ Berhasil — menyambung…",
+                        Color.parseColor("#4ADE80"),
+                        forceNotification = true
+                    )
                     toast("✓ ADB berhasil dipasangkan!")
                     AgentLog.event("pairing ADB berhasil ($host:$port)")
                     main.postDelayed({ cleanupAndStop() }, 2_500)
                 } else {
-                    // v0.9.8 — JANGAN sarankan "kode baru" untuk kegagalan
-                    // TEKNIS. Kalimat itu menyesatkan dan membuat pengguna
-                    // berputar-putar membuat kode baru padahal kodenya benar
-                    // (persis yang terjadi pada v0.9.7 dengan NoSuchMethodException
-                    // Conscrypt). Lihat AdbPairingController.isTechnicalFailure.
-                    if (AdbPairingController.isTechnicalFailure(reason)) {
+                    stage = Stage.RESULT
+                    val technical = AdbPairingController.isTechnicalFailure(reason)
+                    notificationAllowsRetry = !technical
+                    if (technical) {
                         publish(
                             "✗ Gagal TEKNIS — kode Anda TIDAK salah: ${reason.take(70)}",
                             Color.parseColor("#F87171"),
                             "Masalah TEKNIS di APK ini — membuat kode baru tidak akan menolong. " +
-                                "Detail: $reason"
+                                "Detail: $reason",
+                            forceNotification = true
                         )
                     } else {
                         publish(
                             "✗ Gagal: ${reason.take(70)} — buat kode baru lalu coba lagi",
                             Color.parseColor("#F87171"),
-                            "$reason\n\nBuka ulang dialog pairing untuk kode BARU, lalu ketik " +
-                                "di sini tanpa menutup layar kode."
+                            "$reason\n\nBuka ulang dialog pairing untuk kode BARU. " +
+                                "Jika kode terbaca otomatis, cukup ketuk Hubungkan Sekarang.",
+                            forceNotification = true
                         )
                     }
                     toast("✗ Pairing gagal: $reason")
@@ -590,111 +658,140 @@ class AdbPairingService : Service() {
 
     // --------------------------------------------------------- notification
 
-    /**
-     * v0.9.7 — notifikasi = jalur yang selalu tersedia.
-     *
-     * Aksi RemoteInput dibuat dengan `PendingIntent.getForegroundService()` ke
-     * service INI (bukan broadcast), persis pola AppManager. Flag MUTABLE wajib:
-     * SystemUI menuliskan hasil ketikan ke dalam Intent tersebut.
-     */
     private fun buildNotification(statusText: String): Notification {
-        val codeIntent = Intent(this, AdbPairingService::class.java).apply {
-            action = ACTION_INPUT_CODE
-            putExtra(EXTRA_PORT, discoveredPort)
-        }
-        val pCode = PendingIntent.getForegroundService(
-            this, 2, codeIntent, mutableFlags()
+        val contentIntent = PendingIntent.getForegroundService(
+            this, 5,
+            Intent(this, AdbPairingService::class.java).apply { action = ACTION_SHOW_OVERLAY },
+            immutableFlags()
         )
 
-        val remoteInput = RemoteInput.Builder(EXTRA_CODE)
-            .setLabel("Ketik 6 angka kode pairing")
-            .setAllowFreeFormInput(true)
-            .build()
-
-        val codeAction = NotificationCompat.Action.Builder(
-            null, "Ketik Kode Pairing", pCode
-        ).addRemoteInput(remoteInput).build()
-
-        val openAction = NotificationCompat.Action.Builder(
-            null, "Buka Debug Nirkabel", PendingIntent.getForegroundService(
-                this, 3,
-                Intent(this, AdbPairingService::class.java).apply { action = ACTION_OPEN_ADB_SETTINGS },
-                immutableFlags()
-            )
-        ).build()
-
-        val stopAction = NotificationCompat.Action.Builder(
-            null, "Batal", PendingIntent.getForegroundService(
-                this, 1,
-                Intent(this, AdbPairingService::class.java).apply { action = ACTION_STOP },
-                immutableFlags()
-            )
-        ).build()
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("⚡ Pairing ADB GoSosmed")
             .setContentText(statusText)
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "$statusText\n\nSetelan → Opsi Pengembang → Debug nirkabel → " +
-                        "\"Pasangkan perangkat dengan kode pairing\". BIARKAN layar kode terbuka, " +
-                        "lalu tarik panel notifikasi ini dan ketik 6 angka di baris " +
-                        "\"Ketik Kode Pairing\". Kode berganti bila layar itu ditutup."
-                )
-            )
+            .setStyle(NotificationCompat.BigTextStyle().bigText(statusText + notificationGuidance()))
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .setAutoCancel(false)
-            .setOnlyAlertOnce(false)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .addAction(codeAction)
-            .addAction(openAction)
-            .addAction(stopAction)
-            .build()
+            .setContentIntent(contentIntent)
+
+        when (stage) {
+            Stage.SEARCHING -> {
+                builder.addAction(
+                    NotificationCompat.Action.Builder(
+                        null, "Buka Debug Nirkabel", settingsPendingIntent()
+                    ).build()
+                )
+                builder.addAction(stopAction())
+            }
+
+            Stage.INPUT -> {
+                val codeIntent = Intent(this, AdbPairingService::class.java).apply {
+                    action = ACTION_INPUT_CODE
+                    putExtra(EXTRA_PORT, discoveredPort)
+                }
+                val pCode = PendingIntent.getForegroundService(this, 2, codeIntent, mutableFlags())
+                val remoteInput = RemoteInput.Builder(EXTRA_CODE)
+                    .setLabel("Ketik 6 angka kode pairing")
+                    .setAllowFreeFormInput(true)
+                    .build()
+                builder.addAction(
+                    NotificationCompat.Action.Builder(null, "Ketik Kode Pairing", pCode)
+                        .addRemoteInput(remoteInput)
+                        .build()
+                )
+                builder.addAction(stopAction())
+            }
+
+            Stage.WORKING -> Unit
+
+            Stage.RESULT -> {
+                if (notificationAllowsRetry) {
+                    builder.addAction(
+                        NotificationCompat.Action.Builder(
+                            null, "Coba Lagi", servicePendingIntent(4, ACTION_RETRY, false)
+                        ).build()
+                    )
+                }
+                builder.addAction(stopAction())
+            }
+        }
+
+        return builder.build()
     }
 
-    private fun refreshNotification(statusText: String) {
+    private fun notificationGuidance(): String {
+        return when (stage) {
+            Stage.SEARCHING ->
+                "\n\nBuka Setelan → Opsi Pengembang → Debug nirkabel → " +
+                    "\"Pasangkan perangkat dengan kode pairing\". Biarkan layar kode terbuka."
+            Stage.INPUT ->
+                "\n\nPort sudah terdeteksi. Ketik 6 angka dari layar Setelan di baris notifikasi, " +
+                    "atau ketuk notifikasi ini untuk memakai kartu melayang."
+            Stage.WORKING ->
+                "\n\nKode sedang diperiksa. Jangan tutup layar kode sampai hasil muncul."
+            Stage.RESULT ->
+                "\n\nKetuk notifikasi untuk menampilkan kartu, atau gunakan aksi yang tersedia."
+        }
+    }
+
+    private fun stopAction(): NotificationCompat.Action {
+        return NotificationCompat.Action.Builder(
+            null, "Batal", servicePendingIntent(1, ACTION_STOP, false)
+        ).build()
+    }
+
+    private fun servicePendingIntent(requestCode: Int, action: String, mutable: Boolean): PendingIntent {
+        return PendingIntent.getForegroundService(
+            this,
+            requestCode,
+            Intent(this, AdbPairingService::class.java).apply { this.action = action },
+            if (mutable) mutableFlags() else immutableFlags()
+        )
+    }
+
+    private fun refreshNotification(statusText: String, notifExtra: String = "") {
         try {
-            NotificationManagerCompat.from(this).notify(NOTIF_ID, buildNotification(statusText))
+            val fullText = if (notifExtra.isEmpty()) statusText else "$statusText\n\n$notifExtra"
+            NotificationManagerCompat.from(this).notify(NOTIF_ID, buildNotification(fullText))
         } catch (t: Throwable) {
             Log.w(TAG, "gagal memperbarui notifikasi", t)
         }
     }
 
     /**
-     * v0.9.9 — SATU sumber kebenaran untuk status pairing.
+     * Satu sumber kebenaran untuk kartu + notifikasi.
      *
-     * ================== MENGAPA ADA FUNGSI INI ==================
-     * Sebelum ini kartu melayang dan notifikasi diperbarui sendiri-sendiri, dan
-     * beberapa jalur hanya memperbarui salah satunya — terutama jalur kode dari
-     * notifikasi (`onCodeSubmitted`), yang tidak pernah menyentuh kartu sama
-     * sekali. Akibatnya kedua permukaan bisa menampilkan hal yang berlawanan:
-     * notifikasi "terhubung" sementara kartu masih "Menghubungkan…". Pengguna
-     * lalu bertanya "yang dipakai yang mana?" — kebingungan yang sepenuhnya
-     * diciptakan aplikasi, bukan oleh keadaan pairing yang sebenarnya.
-     *
-     * Semua pembaruan status kini wajib lewat sini, sehingga kartu dan
-     * notifikasi SELALU menampilkan teks yang sama.
+     * Pengecualian penting: saat Stage.INPUT, status kecil hanya mengubah kartu.
+     * Memanggil notify() saat kolom inline terbuka akan menutup kolom dan
+     * menghapus ketikan pengguna di banyak OEM — akar lapangan "input notifikasi
+     * tidak berfungsi". Perubahan state besar tetap memakai forceNotification.
      */
-    private fun publish(statusText: String, color: Int, notifExtra: String = "") {
-        PairingOverlay.status(overlay, statusText, color)
-        // Inti status SELALU identik di kedua permukaan. `notifExtra` hanya
-        // menambahkan panduan di bawahnya, jadi tidak pernah bisa menghasilkan
-        // dua keadaan yang saling bertentangan.
-        refreshNotification(
-            if (notifExtra.isEmpty()) statusText else "$statusText\n\n$notifExtra"
-        )
+    private fun publish(
+        statusText: String,
+        color: Int,
+        notifExtra: String = "",
+        forceNotification: Boolean = false,
+        enablePairButton: Boolean = true,
+    ) {
+        PairingOverlay.status(overlay, statusText, color, enablePairButton)
+        if (forceNotification || stage != Stage.INPUT) {
+            refreshNotification(statusText, notifExtra)
+        }
     }
 
-    /**
-     * Promosikan ke foreground. Tidak pernah melempar.
-     *
-     * `ServiceCompat.startForeground` dipakai agar tipe layanan diteruskan
-     * dengan benar di Android 14 (targetSdk 34) — tanpa tipe yang cocok dengan
-     * manifest, sistem melempar MissingForegroundServiceTypeException.
-     */
-    private fun promoteToForeground(statusText: String): Boolean {
+    private fun promoteToForeground(
+        statusText: String,
+        preserveInputNotification: Boolean = false,
+    ): Boolean {
+        if (preserveInputNotification && stage == Stage.INPUT) {
+            // Sudah foreground; membangun ulang notifikasi di state ini bisa
+            // menutup kolom inline yang sedang dipakai pengguna.
+            return true
+        }
         val notif = try {
             buildNotification(statusText)
         } catch (t: Throwable) {
@@ -727,9 +824,9 @@ class AdbPairingService : Service() {
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Notifikasi interaktif untuk memasukkan kode pairing ADB"
-            enableLights(true)
-            lightColor = Color.CYAN
+            enableLights(false)
             enableVibration(false)
+            setSound(null, null)
             setShowBadge(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
@@ -739,18 +836,33 @@ class AdbPairingService : Service() {
     // -------------------------------------------------------------- helpers
 
     private fun openWirelessDebugging() {
-        for (action in listOf(ACTION_OPEN_WIRELESS, ACTION_DEV_SETTINGS)) {
-            try {
-                startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return
-            } catch (_: Throwable) {
-            }
-        }
         try {
-            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            startActivity(resolveSettingsIntent())
         } catch (_: Throwable) {
             toast("Buka Setelan → Opsi Pengembang → Debug nirkabel")
         }
+    }
+
+    /**
+     * Aksi notifikasi yang membuka Activity harus memakai PendingIntent
+     * getActivity langsung. Bila ia membuka service dulu lalu service memanggil
+     * startActivity, pengecualian Background Activity Launch dari tap notifikasi
+     * tidak ikut berpindah — di Android 10+ tap tampak "tidak berfungsi".
+     */
+    private fun settingsPendingIntent(): PendingIntent {
+        return PendingIntent.getActivity(this, 3, resolveSettingsIntent(), immutableFlags())
+    }
+
+    private fun resolveSettingsIntent(): Intent {
+        for (action in listOf(ACTION_OPEN_WIRELESS, ACTION_DEV_SETTINGS)) {
+            val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                @Suppress("DEPRECATION")
+                if (packageManager.resolveActivity(intent, 0) != null) return intent
+            } catch (_: Throwable) {
+            }
+        }
+        return Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     private fun mutableFlags(): Int =
@@ -775,17 +887,19 @@ class AdbPairingService : Service() {
     }
 
     private fun cleanupAndStop() {
-        // Operasi jendela WAJIB di main thread.
         if (Looper.myLooper() != Looper.getMainLooper()) {
             main.post { cleanupAndStop() }
             return
         }
         if (stopping) return
         stopping = true
+        sessionGeneration++
 
         main.removeCallbacks(timeoutRunnable)
-        stopMdns()
+        AgentAccessibilityService.setPairingDialogListener(null)
+        stopPortDiscovery()
         discoveredPort = -1
+        detectedCode = null
         hideOverlay()
         try {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -797,7 +911,8 @@ class AdbPairingService : Service() {
     override fun onDestroy() {
         running = false
         main.removeCallbacks(timeoutRunnable)
-        stopMdns()
+        AgentAccessibilityService.setPairingDialogListener(null)
+        stopPortDiscovery()
         hideOverlay()
         super.onDestroy()
     }
