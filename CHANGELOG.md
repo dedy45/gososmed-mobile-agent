@@ -24,6 +24,71 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   pernah di-commit → perintah itu selalu gagal. Sekarang memakai `gradle` dari
   instalasi lokal dan menautkan ke `docs/TOOLCHAIN-LOKAL.md`.
 
+## [0.9.9] — 2026-09-14
+
+### Fixed — kartu pairing bisa ditutup, dan statusnya tidak lagi berbohong
+
+Laporan lapangan setelah v0.9.8: **kartu pairing tidak bisa ditutup**, menutupi
+layar terus-menerus, dan menampilkan "Menghubungkan ke 127.0.0.1:39759" tanpa
+pernah berubah — sementara notifikasi di saat yang sama bertuliskan
+"terhubung". Keadaan yang saling bertentangan itu membuat wajar pertanyaan
+"yang dipakai yang mana?".
+
+#### 1. Kartu menolak ditutup (akar: referensi dibuang sebelum dipakai)
+
+`hideOverlay()` dulu melakukan `overlay = null` **lebih dulu**, lalu melepas
+kartu lewat `AgentAccessibilityService.instance?.detachAccessibilityOverlay(...)`.
+Tanda tanya itu membuat kegagalan SENYAP: bila layanan aksesibilitas terputus
+(`instance == null`), pelepasan batal — dan karena referensi `overlay` sudah
+dibuang, tidak ada kesempatan mencoba lagi. Kartu menjadi jendela yatim.
+
+Sekarang:
+- referensi hanya dibuang **setelah** pelepasan terbukti berhasil, sehingga
+  `onDestroy()` masih bisa mencoba lagi;
+- jalur utama memakai `card.wm` — WindowManager yang **memasang** kartu —
+  sehingga tetap berfungsi meski layanan aksesibilitas sudah mati;
+- dua jalur cadangan bila jalur utama menolak.
+
+`PairingOverlay.Card` kini menyimpan `wm` untuk keperluan ini.
+
+#### 2. Kartu dan notifikasi bisa menampilkan keadaan yang berlawanan
+
+Keduanya diperbarui sendiri-sendiri, dan jalur kode dari notifikasi
+(`onCodeSubmitted`) tidak pernah menyentuh kartu sama sekali. Semua pembaruan
+status kini lewat satu fungsi `publish()`, sehingga inti status **selalu
+identik** di kedua permukaan. Notifikasi masih boleh menambahkan panduan di
+bawahnya, tetapi tidak pernah bisa menampilkan keadaan yang bertentangan.
+
+#### 3. Port tidak terisi otomatis
+
+mDNS dimulai **sebelum** kartu dipasang, jadi port sering sudah ketemu saat
+kartu muncul — tetapi `showOverlay()` tidak pernah menerapkannya, sehingga
+pengguna harus mengetik port manual. Sekarang port yang tersimpan selalu
+diterapkan begitu kartu terpasang (`onOverlayReady()`): pengguna cukup mengetik
+6 angka kode.
+
+#### 4. Kartu tidak tersedia → hanya masuk log
+
+Bila aksesibilitas belum aktif **dan** izin "tampilkan di atas aplikasi lain"
+belum diberikan, dulu kasus ini hanya dicatat di log; pengguna menunggu kartu
+yang tidak pernah datang. Sekarang keadaannya diumumkan dan diarahkan ke baris
+notifikasi, yang memang selalu tersedia.
+
+#### 5. IP tidak lagi dicetak mentah
+
+"127.0.0.1" memang **benar** untuk self-pairing (HP memasangkan dirinya
+sendiri dengan `adbd` di HP yang sama — bukan IP Wi-Fi), tetapi mencetaknya
+mentah di kartu membuat pengguna mengira IP-nya salah. Teks kini netral;
+tujuan koneksi dipublikasikan oleh `AdbPairingService` pada saat yang tepat.
+
+### Batas jujur
+
+Perbaikan ini **belum diuji di perangkat nyata**. Yang terverifikasi: kompilasi
+Kotlin bersih dan unit test JVM lulus. Bahwa kartu kini benar-benar bisa
+ditutup di HP hanya dapat dibuktikan dengan mencabut layanan aksesibilitas di
+tengah sesi pairing — pengujian itu belum dilakukan. Karena itu rilis versi ini
+memakai kanal `-dev`.
+
 ## [0.9.8] — 2026-09-14
 
 ### Fixed — PAIRING AKHIRNYA BERFUNGSI: Conscrypt versi sendiri

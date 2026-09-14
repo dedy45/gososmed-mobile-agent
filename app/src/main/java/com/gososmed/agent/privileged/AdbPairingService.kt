@@ -278,7 +278,10 @@ class AdbPairingService : Service() {
         }
 
         if (code.isEmpty()) {
-            refreshNotification("Kode kosong — ketuk \"Ketik Kode Pairing\" di notifikasi ini lalu isi 6 angka.")
+            publish(
+                "Kode kosong — ketuk \"Ketik Kode Pairing\" lalu isi 6 angka",
+                Color.parseColor("#FBBF24")
+            )
             return
         }
 
@@ -311,12 +314,10 @@ class AdbPairingService : Service() {
                     discoveredPort = port
                     main.post {
                         PairingOverlay.setPort(overlay, port)
-                        PairingOverlay.status(
-                            overlay,
+                        publish(
                             "✓ Port $port terdeteksi — ketik 6 angka kode pairing",
                             Color.parseColor("#4ADE80")
                         )
-                        refreshNotification("✓ Port $port terdeteksi. Ketik 6 angka kode pairing:")
                     }
                     AgentLog.event("pairing: port $port terdeteksi via mDNS")
                 }
@@ -380,6 +381,7 @@ class AdbPairingService : Service() {
                 if (svc.attachAccessibilityOverlay(card.view, card.params)) {
                     overlay = card
                     AgentLog.event("overlay pairing dipasang lewat aksesibilitas (tanpa izin tambahan)")
+                    onOverlayReady()
                     return
                 }
                 AgentLog.event("overlay aksesibilitas ditolak — mencoba jalur izin overlay biasa")
@@ -392,6 +394,17 @@ class AdbPairingService : Service() {
             AgentLog.event(
                 "overlay tidak dipasang: aksesibilitas belum aktif DAN izin " +
                     "\"Tampilkan di atas aplikasi lain\" belum ada — pakai baris notifikasi"
+            )
+            // v0.9.9 — JANGAN diam. Dulu kasus ini hanya masuk log, sehingga
+            // pengguna menunggu kartu yang tidak pernah datang. Sekarang
+            // keadaannya diumumkan, dan diarahkan ke notifikasi.
+            publish(
+                "Kartu tidak tersedia — ketik kode di baris notifikasi",
+                Color.parseColor("#FBBF24"),
+                "Kartu melayang tidak bisa dipasang: layanan aksesibilitas belum aktif dan " +
+                    "izin \"tampilkan di atas aplikasi lain\" belum diberikan. " +
+                    "Ketik 6 angka kode pairing lewat tombol \"Ketik Kode Pairing\" " +
+                    "di notifikasi ini — jalur itu selalu tersedia."
             )
             return
         }
@@ -407,27 +420,101 @@ class AdbPairingService : Service() {
             wm.addView(card.view, card.params)
             overlay = card
             AgentLog.event("overlay pairing dipasang lewat izin 'tampilkan di atas app lain'")
+            onOverlayReady()
         } catch (t: Throwable) {
             Log.w(TAG, "overlay TYPE_APPLICATION_OVERLAY gagal", t)
             AgentLog.event("overlay ditolak sistem (${t.javaClass.simpleName}) — pakai baris notifikasi")
         }
     }
 
+    /**
+     * v0.9.9 — lepas kartu, dan JANGAN buang referensinya sebelum benar-benar
+     * terlepas.
+     *
+     * ================== MENGAPA DITULIS ULANG ==================
+     * Versi lama melakukan `overlay = null` lebih dulu, lalu melepas lewat
+     * `AgentAccessibilityService.instance?.detachAccessibilityOverlay(...)`.
+     * Tanda tanya itu membuat kegagalan SENYAP: bila layanan aksesibilitas
+     * terputus (`instance == null`), pelepasan batal — dan karena referensi
+     * `overlay` sudah dibuang, tidak ada kesempatan mencoba lagi. Hasilnya
+     * persis keluhan lapangan: **kartu pairing tidak bisa ditutup**, menutupi
+     * layar terus-menerus walau sesi pairing sudah selesai dan notifikasinya
+     * sudah bertuliskan "terhubung".
+     *
+     * Sekarang:
+     *  • referensi hanya dibuang SETELAH pelepasan terbukti berhasil, sehingga
+     *    `onDestroy()` masih bisa mencoba lagi;
+     *  • jalur utama memakai `card.wm` — WindowManager yang memasang kartu —
+     *    sehingga tetap berfungsi meski `instance` sudah null;
+     *  • dua jalur cadangan bila jalur utama menolak.
+     */
     private fun hideOverlay() {
         val card = overlay ?: return
-        overlay = null
+        if (tryRemove(card)) {
+            overlay = null
+        } else {
+            Log.w(TAG, "kartu pairing belum bisa dilepas — dicoba lagi saat service dihancurkan")
+        }
+    }
+
+    /** Coba lepas [card] lewat semua jalur yang mungkin. true bila berhasil. */
+    private fun tryRemove(card: PairingOverlay.Card): Boolean {
+        // 1) Jalur utama: WindowManager yang MEMASANG kartu ini.
         try {
-            if (card.params.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) {
-                AgentAccessibilityService.instance?.detachAccessibilityOverlay(card.view)
-            } else {
-                (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.removeView(card.view)
+            card.wm.removeView(card.view)
+            return true
+        } catch (t: Throwable) {
+            Log.w(TAG, "removeView lewat wm pemasang gagal", t)
+        }
+        // 2) Cadangan: lewat layanan aksesibilitas (jendela aksesibilitas).
+        if (card.params.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) {
+            val svc = AgentAccessibilityService.instance
+            if (svc != null) {
+                try {
+                    svc.detachAccessibilityOverlay(card.view)
+                    return true
+                } catch (t: Throwable) {
+                    Log.w(TAG, "detach lewat aksesibilitas gagal", t)
+                }
             }
-        } catch (_: Throwable) {
+        }
+        // 3) Cadangan terakhir: WindowManager aplikasi.
+        return try {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (wm != null) wm.removeView(card.view)
+            wm != null
+        } catch (t: Throwable) {
+            Log.w(TAG, "removeView lewat wm aplikasi gagal", t)
+            false
+        }
+    }
+
+    /**
+     * v0.9.9 — terapkan keadaan yang sudah diketahui ke kartu yang BARU dipasang.
+     *
+     * mDNS dimulai SEBELUM kartu dipasang ([startSession] memanggil
+     * `startMdns()` lalu `showOverlay()`), jadi port sering sudah ketemu saat
+     * kartu muncul. Dulu port hanya diisi bila kebetulan kartu sudah ada saat
+     * callback mDNS berjalan; bila belum, `setPort` tidak melakukan apa-apa dan
+     * pengguna harus mengetik port secara manual. Sekarang port yang tersimpan
+     * selalu diterapkan begitu kartu terpasang — pengguna cukup mengetik kode.
+     */
+    private fun onOverlayReady() {
+        val card = overlay ?: return
+        val port = discoveredPort
+        if (port > 0) {
+            PairingOverlay.setPort(card, port)
+            publish(
+                "✓ Port $port terdeteksi — tinggal ketik 6 angka kode pairing",
+                Color.parseColor("#4ADE80")
+            )
+        } else {
+            publish("Menyimak port pairing (mDNS)…", Color.parseColor("#38BDF8"))
         }
     }
 
     private fun onOverlayPair(port: Int, code: String) {
-        PairingOverlay.status(overlay, "Menghubungkan ke $LOOPBACK_HOST:$port…", Color.parseColor("#FBBF24"))
+        publish("Menghubungkan…", Color.parseColor("#FBBF24"))
         Thread({
             val p = if (port > 0) port else resolvePort(-1)
             main.post {
@@ -439,14 +526,10 @@ class AdbPairingService : Service() {
     // ------------------------------------------------------------- pairing
 
     private fun reportNoPort() {
-        PairingOverlay.status(
-            overlay,
-            "Port belum terdeteksi — pastikan \"Debug nirkabel\" ON, lalu coba lagi",
-            Color.parseColor("#FBBF24")
-        )
-        refreshNotification(
-            "Port pairing belum terdeteksi. Nyalakan \"Debug nirkabel\" di Opsi Pengembang, " +
-                "lalu ketik kode lagi di sini."
+        publish(
+            "Port belum terdeteksi — nyalakan \"Debug nirkabel\", lalu coba lagi",
+            Color.parseColor("#FBBF24"),
+            "Nyalakan \"Debug nirkabel\" di Opsi Pengembang, lalu ketik kode lagi di sini."
         )
         toast("Port pairing belum terdeteksi. Aktifkan 'Debug nirkabel' lalu coba lagi.")
     }
@@ -462,8 +545,7 @@ class AdbPairingService : Service() {
             return
         }
 
-        PairingOverlay.status(overlay, "Memasangkan ke $host:$port…", Color.parseColor("#FBBF24"))
-        refreshNotification("Memasangkan ke $host:$port…")
+        publish("Memasangkan ke $host:$port…", Color.parseColor("#FBBF24"))
 
         Thread({
             val (ok, reason) = try {
@@ -474,8 +556,7 @@ class AdbPairingService : Service() {
             }
             main.post {
                 if (ok) {
-                    PairingOverlay.status(overlay, "✓ Berhasil — menyambung…", Color.parseColor("#4ADE80"))
-                    refreshNotification("✓ Selesai: otomasi lanjutan (ADB) terhubung. Menyambung…")
+                    publish("✓ Berhasil — menyambung…", Color.parseColor("#4ADE80"))
                     toast("✓ ADB berhasil dipasangkan!")
                     AgentLog.event("pairing ADB berhasil ($host:$port)")
                     main.postDelayed({ cleanupAndStop() }, 2_500)
@@ -486,24 +567,18 @@ class AdbPairingService : Service() {
                     // (persis yang terjadi pada v0.9.7 dengan NoSuchMethodException
                     // Conscrypt). Lihat AdbPairingController.isTechnicalFailure.
                     if (AdbPairingController.isTechnicalFailure(reason)) {
-                        PairingOverlay.status(
-                            overlay,
+                        publish(
                             "✗ Gagal TEKNIS — kode Anda TIDAK salah: ${reason.take(70)}",
-                            Color.parseColor("#F87171")
-                        )
-                        refreshNotification(
-                            "✗ Gagal karena masalah TEKNIS di APK ini — kode pairing Anda " +
-                                "TIDAK salah, jadi membuat kode baru tidak akan menolong.\n\n$reason"
+                            Color.parseColor("#F87171"),
+                            "Masalah TEKNIS di APK ini — membuat kode baru tidak akan menolong. " +
+                                "Detail: $reason"
                         )
                     } else {
-                        PairingOverlay.status(
-                            overlay,
+                        publish(
                             "✗ Gagal: ${reason.take(70)} — buat kode baru lalu coba lagi",
-                            Color.parseColor("#F87171")
-                        )
-                        refreshNotification(
-                            "✗ Gagal: $reason\n\nBuka ulang dialog pairing untuk kode BARU, " +
-                                "lalu ketik di sini tanpa menutup layar kode."
+                            Color.parseColor("#F87171"),
+                            "$reason\n\nBuka ulang dialog pairing untuk kode BARU, lalu ketik " +
+                                "di sini tanpa menutup layar kode."
                         )
                     }
                     toast("✗ Pairing gagal: $reason")
@@ -585,6 +660,31 @@ class AdbPairingService : Service() {
         } catch (t: Throwable) {
             Log.w(TAG, "gagal memperbarui notifikasi", t)
         }
+    }
+
+    /**
+     * v0.9.9 — SATU sumber kebenaran untuk status pairing.
+     *
+     * ================== MENGAPA ADA FUNGSI INI ==================
+     * Sebelum ini kartu melayang dan notifikasi diperbarui sendiri-sendiri, dan
+     * beberapa jalur hanya memperbarui salah satunya — terutama jalur kode dari
+     * notifikasi (`onCodeSubmitted`), yang tidak pernah menyentuh kartu sama
+     * sekali. Akibatnya kedua permukaan bisa menampilkan hal yang berlawanan:
+     * notifikasi "terhubung" sementara kartu masih "Menghubungkan…". Pengguna
+     * lalu bertanya "yang dipakai yang mana?" — kebingungan yang sepenuhnya
+     * diciptakan aplikasi, bukan oleh keadaan pairing yang sebenarnya.
+     *
+     * Semua pembaruan status kini wajib lewat sini, sehingga kartu dan
+     * notifikasi SELALU menampilkan teks yang sama.
+     */
+    private fun publish(statusText: String, color: Int, notifExtra: String = "") {
+        PairingOverlay.status(overlay, statusText, color)
+        // Inti status SELALU identik di kedua permukaan. `notifExtra` hanya
+        // menambahkan panduan di bawahnya, jadi tidak pernah bisa menghasilkan
+        // dua keadaan yang saling bertentangan.
+        refreshNotification(
+            if (notifExtra.isEmpty()) statusText else "$statusText\n\n$notifExtra"
+        )
     }
 
     /**

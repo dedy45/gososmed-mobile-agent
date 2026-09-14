@@ -70,8 +70,17 @@ object PairingOverlay {
 
     private const val CARD_WIDTH_DP = 304
 
-    /** Kartu beserta LayoutParams-nya. `params` wajib dipakai ulang saat drag. */
-    class Card(val view: View, val params: WindowManager.LayoutParams)
+    /**
+     * Kartu beserta LayoutParams-nya. `params` wajib dipakai ulang saat drag.
+     *
+     * v0.9.9 — `wm` adalah WindowManager yang MEMASANG kartu ini, dan kini
+     * disimpan di sini. Tanpa referensi ini, kartu hanya bisa dilepas lewat
+     * `AgentAccessibilityService.instance`; begitu layanan aksesibilitas
+     * terputus (`instance == null`) pelepasan batal dan jendela jadi yatim —
+     * persis keluhan "overlay tidak bisa ditutup". Menyimpan `wm` membuat
+     * pelepasan tetap mungkin tanpa bergantung pada service itu hidup.
+     */
+    class Card(val view: View, val params: WindowManager.LayoutParams, val wm: WindowManager)
 
     /**
      * Bangun kartu. [onPair] dipanggil dengan (port, kode) saat tombol ditekan;
@@ -198,7 +207,12 @@ object PairingOverlay {
                     return@setOnClickListener
                 }
                 isEnabled = false
-                status(statusTv, "Menghubungkan ke 127.0.0.1:$p…", Color.parseColor("#FBBF24"))
+                // v0.9.9 — jangan menuliskan IP di sini. Self-pairing memang
+                // selalu lewat loopback, tetapi mencetak "127.0.0.1" mentah
+                // membuat pengguna mengira IP-nya salah (dan teks ini dulu
+                // tidak pernah diperbarui ke hasil nyata). Tujuan koneksi
+                // yang sebenarnya dipublikasikan AdbPairingService.
+                status(statusTv, "Menghubungkan…", Color.parseColor("#FBBF24"))
                 onPair(p, c)
             }
         }
@@ -219,7 +233,7 @@ object PairingOverlay {
         card.addView(hintTv)
 
         val params = layoutParams(ctx, android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
-        val holder = Card(card, params)
+        val holder = Card(card, params, wm)
 
         // Drag dari baris judul. Dipasang pada TextView daun (lihat KDoc kelas).
         titleTv.setOnTouchListener(object : View.OnTouchListener {
