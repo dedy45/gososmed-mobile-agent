@@ -127,6 +127,68 @@ class AgentAccessibilityService : AccessibilityService() {
          */
         fun getAppContext(): Context? = appContext
 
+        /**
+         * v0.9.11 — STATUS LIVE sejati: apakah service BENAR-BENAR HIDUP
+         * di proses ini dan bisa menerima command.
+         *
+         * BERBEDA dari [isEnabled] yang hanya memeriksa apakah OS mendata
+         * layanan ini sebagai "diaktifkan" (Settings/AccessibilityManager).
+         * OS bisa mendata layanan sebagai aktif PADAHAL prosesnya sudah mati
+         * (killed oleh OEM battery saver / ANR).
+         *
+         * isServiceAlive() = true HANYA jika:
+         *   - instance != null (onServiceConnected telah dipanggil di proses ini)
+         *   - bound == true (onDestroy/onUnbind belum dipanggil)
+         *
+         * Inilah yang HARUS diperiksa sebelum mengeksekusi command yang butuh
+         * Accessibility tree (dump, tap, startApp, dll.) — bukan isEnabled().
+         */
+        fun isServiceAlive(): Boolean = instance != null && bound
+
+        /**
+         * v0.9.11 — STATUS READY: apakah service hidup DAN layar bisa dibaca.
+         *
+         * Ini level kesiapan tertinggi: selain service ter-bind, root window
+         * accessibility juga harus tersedia (layar nyala, tidak terkunci oleh
+         * FLAG_SECURE, dan OS tidak sedang menjeda layanan).
+         *
+         * Dipakai oleh readiness gate di heartbeat untuk melaporkan status
+         * akurat ke server. TIDAK dipakai untuk menentukan tampilan UI izin
+         * (itu tetap pakai isEnabled).
+         */
+        fun isReady(): Boolean {
+            val svc = instance ?: return false
+            return bound && svc.rootInActiveWindow != null
+        }
+
+        /**
+         * v0.9.11 — Snapshot kesehatan semua subsistem, dikirim ke server di
+         * setiap heartbeat agar dasbor menampilkan status real-time.
+         *
+         * Tiga subsistem diperiksa:
+         *  1. Accessibility Service: alive (instance+bound) dan ready (root window)
+         *  2. ADB Shell Transport: available (koneksi ke adbd hidup)
+         *  3. WebSocket: connected (diasumsikan true karena heartbeat dikirim lewat WS)
+         *
+         * Server memakai informasi ini untuk:
+         *  - Menampilkan badge kesehatan per-subsistem di kartu device
+         *  - Memutuskan apakah job harvest/verify bisa dijalankan
+         *  - Menyarankan tindakan spesifik (bukan generik "coba lagi")
+         */
+        fun healthSnapshot(): JSONObject {
+            val shell = PrivilegedShellHolder.get()
+            val shellStatus = shell.status()
+            return JSONObject().apply {
+                put("a11y_alive", isServiceAlive())
+                put("a11y_ready", isReady())
+                put("a11y_os_enabled", appContext?.let { osEnabled(it) } ?: false)
+                put("adb_available", shellStatus.available)
+                put("adb_connected", shellStatus.connected)
+                put("adb_paired", shellStatus.paired)
+                put("adb_error", shellStatus.error)
+            }
+        }
+
         // ---- Pemindai dialog pairing Debug nirkabel (aktif hanya selama sesi pairing) ----
 
         private val SETTINGS_PACKAGES = setOf(

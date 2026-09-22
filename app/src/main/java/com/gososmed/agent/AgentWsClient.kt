@@ -332,9 +332,47 @@ class AgentWsClient(
         heartbeatJob = scope.launch {
             while (!closed && !rejected) {
                 delay(HEARTBEAT_MS)
+
+                // v0.9.11 — ADB KEEP-ALIVE PROBE: jalankan `echo ok` via
+                // transport ADB SETIAP heartbeat (15 dtk). Jika koneksi ADB
+                // sudah mati (misalnya karena Doze mode mematikan wireless
+                // debugging, atau adbd restart), probe ini MENDETEKSINYA 15
+                // detik setelah putus — bukan saat command harvest pertama
+                // gagal (yang bisa 5-10 menit kemudian).
+                //
+                // Efek samping POSITIF: OkHttp WebSocket ping (20 dtk) +
+                // probe ADB (15 dtk) bersama-sama menjaga KEDUA transport
+                // tetap hidup di sebagian besar Android Doze implementation
+                // (yang mengizinkan foreground service traffic).
+                //
+                // Jika probe gagal, AdbLocalShell.autoConnect() akan mencoba
+                // reconnect otomatis pada EXEC berikutnya. Kita tidak reconnect
+                // di sini karena autoConnect sudah menangani itu, dan probe
+                // di heartbeat loop hanya untuk DETEKSI DINI + keep-alive.
+                val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                val shellStatus = shell.status()
+                if (shellStatus.connected) {
+                    // Probe ringan: hanya untuk menjaga koneksi TCP tetap hidup.
+                    // Memakai `settings get global device_name` — ada di whitelist,
+                    // ringan (<10ms), dan tidak mengubah state apapun.
+                    // Timeout pendek (3 dtk) karena command ini seharusnya < 100ms.
+                    shell.exec("settings get global device_name", 3_000L)
+                }
+
                 val id = nextId()
                 pending[id] = { }
-                send(JSONObject().put("id", id).put("cmd", AgentCommand.CMD_PING))
+                // v0.9.11 — heartbeat yang INFORMATIF: sertakan snapshot
+                // kesehatan semua subsistem (accessibility, ADB, WS) agar
+                // server tahu keadaan nyata perangkat SETIAP 15 detik, bukan
+                // hanya saat command gagal. Dasbor bisa menampilkan status
+                // real-time per-subsistem dan menolak job yang pasti gagal
+                // SEBELUM mengirimnya ke device — menghilangkan error
+                // "accessibility service not connected/ready" yang terlambat.
+                val heartbeat = JSONObject()
+                    .put("id", id)
+                    .put("cmd", AgentCommand.CMD_PING)
+                    .put("health", AgentAccessibilityService.healthSnapshot())
+                send(heartbeat)
             }
         }
     }

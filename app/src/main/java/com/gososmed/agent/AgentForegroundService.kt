@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import com.gososmed.agent.privileged.AdbPairingController
 import org.json.JSONObject
@@ -63,6 +65,20 @@ class AgentForegroundService : Service() {
 
     private var ws: AgentWsClient? = null
 
+    // v0.9.11 — ANTI-DOZE: CPU dan Wi-Fi lock untuk menjaga koneksi WS + ADB
+    // saat HP idle. Tanpa ini, Android Doze mode mematikan Wi-Fi radio dan
+    // menjeda CPU setelah ~15 menit layar mati — memutus KEDUA transport:
+    //   - WebSocket ke server → device terlihat "offline" di dasbor
+    //   - ADB lokal (wireless debugging) → command harvest gagal
+    //
+    // PARTIAL_WAKE_LOCK = CPU tetap nyala, layar tetap mati (hemat baterai).
+    // WifiLock MODE_FULL_HIGH_PERF = Wi-Fi radio tetap aktif pada frekuensi
+    // penuh (tidak downgrade ke low-power scanning).
+    //
+    // Keduanya di-release di onDestroy() — tidak bocor.
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -73,6 +89,10 @@ class AgentForegroundService : Service() {
         // thread IO sendiri, jadi aman dipanggil dari onCreate; generate kunci
         // RSA 2048 tidak boleh menghambat main thread.
         AdbPairingController.bootstrap(this)
+
+        // v0.9.11 — acquire CPU + Wi-Fi locks SEBELUM startForeground.
+        acquireWakeLocks()
+
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "GoSosmed Agent", NotificationManager.IMPORTANCE_LOW)
@@ -196,6 +216,55 @@ class AgentForegroundService : Service() {
         Log.i(TAG, "ForegroundService destroyed")
         ws?.destroy()
         ws = null
+        // v0.9.11 — release locks. Tanpa ini, CPU dan Wi-Fi tetap nyala
+        // setelah service mati → baterai boros.
+        releaseWakeLocks()
         super.onDestroy()
+    }
+
+    /**
+     * v0.9.11 — Acquire PARTIAL_WAKE_LOCK + WifiLock agar Doze mode
+     * tidak memutus koneksi WS dan ADB saat HP idle.
+     *
+     * PARTIAL_WAKE_LOCK: CPU tetap jalan, layar boleh mati.
+     * WifiLock HIGH_PERF: Wi-Fi radio tetap full-power.
+     *
+     * Kedua lock memakai tag "gososmed:agent" agar mudah diidentifikasi
+     * di `dumpsys power` dan `dumpsys wifi` saat debugging baterai.
+     */
+    private fun acquireWakeLocks() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = pm?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "gososmed:agent"
+            )?.apply {
+                acquire()
+            }
+
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            @Suppress("DEPRECATION") // WifiLock HIGH_PERF deprecated API 34+ tapi masih berfungsi
+            wifiLock = wm?.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "gososmed:agent"
+            )?.apply {
+                acquire()
+            }
+            Log.i(TAG, "Wake locks acquired (CPU + Wi-Fi)")
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal acquire wake lock: ${e.message}")
+        }
+    }
+
+    private fun releaseWakeLocks() {
+        try {
+            wakeLock?.let { if (it.isHeld) it.release() }
+            wakeLock = null
+            wifiLock?.let { if (it.isHeld) it.release() }
+            wifiLock = null
+            Log.i(TAG, "Wake locks released")
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal release wake lock: ${e.message}")
+        }
     }
 }

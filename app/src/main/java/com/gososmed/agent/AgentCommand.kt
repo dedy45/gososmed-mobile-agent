@@ -58,6 +58,10 @@ object AgentCommand {
     // v0.9.0: mulai alur pairing transport ADB dari sisi server (kontrak §3.2).
     // Menggantikan `shizukuRequest` v0.8.0 yang sudah DIHAPUS.
     const val CMD_ADB_PAIR = "adbPair"
+    // v0.9.11: query kesehatan lengkap semua subsistem (accessibility, ADB, WS).
+    // Dipakai server untuk preflight sebelum harvest dan oleh dasbor untuk badge
+    // status real-time di kartu device.
+    const val CMD_HEALTH = "health"
 
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
@@ -75,8 +79,16 @@ object AgentCommand {
      * command ini tetap HARUS berfungsi — backend memeriksa package terpasang
      * di setiap awal harvest (ResolvePackage). Kegagalannya menyebabkan 3 dari
      * 5 akun gagal verifikasi total pada insiden produksi 22-Sep-2026.
+     *
+     * v0.9.11: `ping` dan `health` ditambahkan. Ping HARUS selalu bisa dijawab
+     * (itulah fungsinya) — sebelumnya gagal dengan "accessibility service not
+     * connected" jika service mati, membuat server salah mengira HP offline.
+     * Health mengembalikan snapshot diagnostik lengkap semua subsistem.
      */
-    val SERVICE_FREE_COMMANDS = setOf(CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES)
+    val SERVICE_FREE_COMMANDS = setOf(
+        CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
+        CMD_PING, CMD_HEALTH
+    )
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -108,8 +120,32 @@ object AgentCommand {
         val svc = AgentAccessibilityService.instance
 
         if (svc == null) {
-            resp.put("ok", false).put("error", "accessibility service not connected/ready")
-            AgentLog.add(cmd, false, 0, "aksesibilitas belum aktif")
+            // v0.9.11 — READINESS GATE: diagnostik terstruktur, bukan pesan
+            // generik. Server (dan dasbor) bisa membedakan tiga keadaan:
+            //  1. OS reports enabled tapi proses service mati → user harus
+            //     toggle Off/On di Accessibility Settings
+            //  2. OS reports disabled → user harus mengaktifkan service
+            //  3. Kondisi sementara (OEM restart, layanan sedang bind)
+            //
+            // Sebelum v0.9.11: semua keadaan menghasilkan pesan yang sama
+            // ("accessibility service not connected/ready"), server tidak
+            // bisa membedakan, dan user tidak tahu harus berbuat apa.
+            val osEnabled = AgentAccessibilityService.getAppContext()?.let {
+                AgentAccessibilityService.osEnabled(it)
+            } ?: false
+            val health = AgentAccessibilityService.healthSnapshot()
+
+            val reason = if (osEnabled) {
+                "a11y_dead: service terdaftar aktif di OS tapi prosesnya mati — perlu Off/On manual di Accessibility Settings"
+            } else {
+                "a11y_disabled: service belum diaktifkan di Accessibility Settings"
+            }
+
+            resp.put("ok", false)
+                .put("error", "accessibility service not connected/ready")
+                .put("reason", reason)
+                .put("health", health)
+            AgentLog.add(cmd, false, 0, reason)
             return resp
         }
         // Use the non-null svc instance safely inside the block.
@@ -248,6 +284,19 @@ object AgentCommand {
                     val packages = apps.map { it.activityInfo.packageName }.distinct().sorted()
                     resp.put("ok", true).put("result", JSONObject().put("packages", JSONArray(packages)))
                 }
+            }
+            CMD_PING -> {
+                // v0.9.11: dipindah ke SERVICE_FREE. Ping HARUS selalu bisa
+                // dijawab — sebelumnya gagal saat service mati, membuat server
+                // salah mengira HP offline.
+                resp.put("ok", true).put("result", JSONObject().put("pong", true))
+            }
+            CMD_HEALTH -> {
+                // v0.9.11: snapshot kesehatan lengkap semua subsistem.
+                // Dipakai server untuk preflight job harvest (tolak SEBELUM
+                // kirim jika accessibility/ADB mati), dan dasbor untuk badge
+                // status real-time di kartu device.
+                resp.put("ok", true).put("result", AgentAccessibilityService.healthSnapshot())
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }
