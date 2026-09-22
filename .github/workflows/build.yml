@@ -24,8 +24,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest sudah punya Android SDK; hanya perlu accept licenses
+      # dan install platform/build-tools yang dibutuhkan.
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Cache Android debug keystore (stable APK signature)
         uses: actions/cache@v4
