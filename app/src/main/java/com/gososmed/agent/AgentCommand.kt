@@ -1,7 +1,10 @@
 package com.gososmed.agent
 
+import android.content.Context
+import android.content.Intent
 import com.gososmed.agent.privileged.AdbPairingController
 import com.gososmed.agent.privileged.PrivilegedShellHolder
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -65,8 +68,15 @@ object AgentCommand {
      *  2. `AgentWsClient` menjalankannya di thread IO, bukan main thread —
      *     wajib, karena `adbPair` dan `shell` bisa memakan belasan detik dan
      *     memblokir main thread akan memicu ANR.
+     *
+     * v0.9.10 (audit ANR 2026-09-22): `hasPackage` dan `listPackages` ditambahkan.
+     * Keduanya hanya memanggil PackageManager (API Context standar, bukan
+     * Accessibility tree). Saat accessibility service mati/unbound oleh OEM,
+     * command ini tetap HARUS berfungsi — backend memeriksa package terpasang
+     * di setiap awal harvest (ResolvePackage). Kegagalannya menyebabkan 3 dari
+     * 5 akun gagal verifikasi total pada insiden produksi 22-Sep-2026.
      */
-    val SERVICE_FREE_COMMANDS = setOf(CMD_ADB_PAIR, CMD_SHELL)
+    val SERVICE_FREE_COMMANDS = setOf(CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES)
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
@@ -125,6 +135,22 @@ object AgentCommand {
 
     private var lastScreenshotLogAt = 0L
     private const val SCREENSHOT_LOG_INTERVAL_MS = 30_000L
+
+    /**
+     * v0.9.10 — applicationContext untuk command SERVICE_FREE yang butuh
+     * PackageManager tapi TIDAK butuh AccessibilityService.
+     *
+     * Sumber: AgentAccessibilityService.appContext (disetel oleh AgentApp.onCreate),
+     * atau instance?.applicationContext sebagai fallback. Mengembalikan null hanya
+     * pada kasus patologis di mana AgentApp belum pernah dibuat (seharusnya
+     * mustahil di runtime normal, tapi JVM unit test bisa).
+     */
+    private fun appContext(): Context? {
+        // Coba instance service dulu (paling cepat, paling murah)
+        AgentAccessibilityService.instance?.applicationContext?.let { return it }
+        // Fallback ke appContext statis yang disetel AgentApp.onCreate()
+        return AgentAccessibilityService.getAppContext()
+    }
 
     /**
      * v0.9.0 — jawab command yang tidak butuh UI perangkat.
@@ -189,6 +215,38 @@ object AgentCommand {
                             }
                         }
                     )
+                }
+            }
+            CMD_HAS_PACKAGE -> {
+                // v0.9.10 (audit ANR): dipindah ke SERVICE_FREE karena hanya
+                // memanggil PackageManager.getPackageInfo — tidak butuh
+                // AccessibilityService. Memakai appContext dari AgentApp.
+                val pkg = req.optString("package", "")
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val installed = try {
+                        ctx.packageManager.getPackageInfo(pkg, 0)
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                    resp.put("ok", true).put("result", JSONObject().put("installed", installed))
+                }
+            }
+            CMD_LIST_PACKAGES -> {
+                // v0.9.10 (audit ANR): dipindah ke SERVICE_FREE karena hanya
+                // memanggil PackageManager.queryIntentActivities — tidak butuh
+                // AccessibilityService. Memakai appContext dari AgentApp.
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    val apps = ctx.packageManager.queryIntentActivities(intent, 0)
+                    val packages = apps.map { it.activityInfo.packageName }.distinct().sorted()
+                    resp.put("ok", true).put("result", JSONObject().put("packages", JSONArray(packages)))
                 }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")

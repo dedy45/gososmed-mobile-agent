@@ -39,9 +39,23 @@ class AgentAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "GoAgent"
 
-        /** Batas tunggu bukti foreground setelah launch (v0.7.1). Cold start
+        /** Batas tunggu bukti foreground setelah launch (v0.7.1).
+         *
+         *  v0.9.10 (audit ANR 2026-09-22): DIKURANGI dari 10s ke 4s.
+         *  Android menampilkan dialog ANR bila main thread diblokir >5 detik.
+         *  startAppVerified() fallback accessibility berjalan di main thread
+         *  dan memanggil awaitForeground() dengan Thread.sleep — dengan 10s
+         *  PASTI memicu ANR. 4s memberi margin 1s di bawah ambang ANR.
+         *
+         *  Jalur shell (startAppShell) menggunakan SHELL_LAUNCH_VERIFY_TIMEOUT_MS
+         *  yang lebih panjang karena berjalan di thread IO (aman dari ANR). */
+        private const val LAUNCH_VERIFY_TIMEOUT_MS = 4_000L
+
+        /** Batas tunggu bukti foreground untuk jalur shell (v0.9.10).
+         *  Jalur shell dijalankan di thread IO oleh AgentWsClient, sehingga
+         *  aman menggunakan timeout lebih panjang tanpa risiko ANR. Cold start
          *  app berat (Facebook/TikTok) di HP kelas menengah bisa 5-7 detik. */
-        private const val LAUNCH_VERIFY_TIMEOUT_MS = 10_000L
+        private const val SHELL_LAUNCH_VERIFY_TIMEOUT_MS = 15_000L
 
         /** Jarak antar pemeriksaan foreground; murah karena lokal di HP. */
         private const val FOREGROUND_POLL_MS = 250L
@@ -104,6 +118,14 @@ class AgentAccessibilityService : AccessibilityService() {
         fun attach(ctx: Context) {
             appContext = ctx.applicationContext
         }
+
+        /**
+         * v0.9.10 — akses applicationContext untuk command SERVICE_FREE
+         * (hasPackage, listPackages) yang butuh PackageManager tapi tidak
+         * butuh AccessibilityService. Mengembalikan null hanya jika
+         * AgentApp.onCreate() belum pernah dijalankan.
+         */
+        fun getAppContext(): Context? = appContext
 
         // ---- Pemindai dialog pairing Debug nirkabel (aktif hanya selama sesi pairing) ----
 
@@ -779,7 +801,7 @@ class AgentAccessibilityService : AccessibilityService() {
             // `am start` melaporkan Error/Warning di stdout walau exit code 0.
             val combined = (res.stdout + "\n" + res.stderr)
             val rejected = combined.contains("Error:", true) || combined.contains("Permission Denial", true)
-            if (res.ok && !rejected && awaitForeground(packageName, LAUNCH_VERIFY_TIMEOUT_MS)) {
+            if (res.ok && !rejected && awaitForeground(packageName, SHELL_LAUNCH_VERIFY_TIMEOUT_MS)) {
                 return null
             }
             lastError = when {
