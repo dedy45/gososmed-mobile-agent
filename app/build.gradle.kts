@@ -36,13 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 27 = v0.9.9 (STABIL) — pairing ADB notification-only,
-        // mDNS auto-port tangguh, auto-fetch dialog Setelan, overlay dihapus.
-        // Telah terverifikasi di perangkat fisik nyata.
-        // APK 0.8.0 ke bawah TIDAK bisa "update" ke sini bila signature-nya
-        // berbeda; user dengan APK dari keystore lama harus uninstall dulu.
-        versionCode = 27
-        versionName = "0.9.9"
+        // versionCode 28 = v0.9.12-dev.1 (DEV) — stabilisasi deteksi Langkah 1 & 2,
+        // auto-update GitHub Release fetcher & SemVer fix, ASYNC background automation,
+        // drop broken setup-android di release.yml, capabilities SERVICE_FREE.
+        versionCode = 28
+        versionName = "0.9.12-dev.1"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

@@ -24,10 +24,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest sudah punya Android SDK; hanya perlu accept licenses
+      # dan install platform/build-tools yang dibutuhkan.
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
       - name: Setup Gradle 8.9 (cached, action resmi — stabil, tanpa wget manual)
         uses: gradle/actions/setup-gradle@v4
         with:

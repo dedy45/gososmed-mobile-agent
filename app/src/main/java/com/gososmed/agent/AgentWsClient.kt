@@ -203,12 +203,27 @@ class AgentWsClient(
                             }
                             return
                         }
-                        // K13 (Plan 07): JANGAN tidur di main thread (dulu
-                        // Thread.sleep di AgentCommand.execute menyumbat main
-                        // looper ±2 dtk saat service MIUI re-bind). Tunggu
-                        // re-bind di thread IO (kebijakan retry lama tetap:
-                        // maks 10×200 ms), eksekusi TETAP di main thread
-                        // karena Accessibility API wajib main looper.
+                        // Command yang berpotensi memakan waktu (startApp dengan awaitForeground,
+                        // killApp dengan shell force-stop, wake dengan keyevent) dijalankan di
+                        // coroutine latar belakang agar main looper tidak pernah terblokir (anti-ANR & ringan).
+                        if (cmdName in AgentCommand.ASYNC_BACKGROUND_COMMANDS) {
+                            scope.launch {
+                                var tries = 0
+                                while (AgentAccessibilityService.instance == null && tries < 10) {
+                                    delay(200)
+                                    tries++
+                                }
+                                try {
+                                    val resp = AgentCommand.execute(obj)
+                                    webSocket.send(resp.toString())
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "cmd exec (bg) error", e)
+                                }
+                            }
+                            return
+                        }
+                        // Command yang menyentuh UI tree / gestures langsung (dump, tap, setText, screenshot, ...)
+                        // tetap dieksekusi di main thread sesuai syarat Android Accessibility API.
                         scope.launch {
                             var tries = 0
                             while (AgentAccessibilityService.instance == null && tries < 10) {

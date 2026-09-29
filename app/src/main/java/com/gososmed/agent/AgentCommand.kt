@@ -87,7 +87,16 @@ object AgentCommand {
      */
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
-        CMD_PING, CMD_HEALTH
+        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES
+    )
+
+    /**
+     * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
+     * tetapi tidak memerlukan main looper UI tree. Dijalankan di coroutine
+     * latar belakang agar main thread tidak pernah terblokir (anti-ANR).
+     */
+    val ASYNC_BACKGROUND_COMMANDS = setOf(
+        CMD_START_APP, CMD_KILL_APP, CMD_WAKE
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -297,6 +306,9 @@ object AgentCommand {
                 // kirim jika accessibility/ADB mati), dan dasbor untuk badge
                 // status real-time di kartu device.
                 resp.put("ok", true).put("result", AgentAccessibilityService.healthSnapshot())
+            }
+            CMD_CAPABILITIES -> {
+                resp.put("ok", true).put("result", AgentAccessibilityService.capabilitiesSnapshot(appContext()))
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }

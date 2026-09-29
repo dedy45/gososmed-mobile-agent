@@ -23,18 +23,49 @@ object AgentUpdateState {
     }
 
     /**
-     * Perbandingan semver sederhana x.y.z — suffix kanal (-dev.N) diabaikan
-     * supaya rilis stabil 0.7.0 dianggap lebih baru dari 0.7.0-dev.3.
+     * Perbandingan SemVer x.y.z[-prerelease]:
+     *  1. Bagian numerik (major.minor.patch) dibandingkan terlebih dahulu.
+     *  2. Bila numerik sama: versi tanpa prerelease (stabil) lebih baru dari prerelease.
+     *  3. Bila keduanya prerelease: bandingkan token suffix (dev.2 > dev.1).
      */
     fun compareVersions(a: String, b: String): Int {
-        fun parts(v: String) = v.trim().removePrefix("v").substringBefore("-")
-            .split(".").map { it.toIntOrNull() ?: 0 }
-        val pa = parts(a)
-        val pb = parts(b)
-        for (i in 0 until maxOf(pa.size, pb.size)) {
-            val x = pa.getOrElse(i) { 0 }
-            val y = pb.getOrElse(i) { 0 }
+        fun clean(v: String) = v.trim().removePrefix("v")
+        val ca = clean(a)
+        val cb = clean(b)
+
+        val coreA = ca.substringBefore("-").split(".").map { it.toIntOrNull() ?: 0 }
+        val coreB = cb.substringBefore("-").split(".").map { it.toIntOrNull() ?: 0 }
+
+        for (i in 0 until maxOf(coreA.size, coreB.size)) {
+            val x = coreA.getOrElse(i) { 0 }
+            val y = coreB.getOrElse(i) { 0 }
             if (x != y) return x - y
+        }
+
+        val hasPreA = ca.contains("-")
+        val hasPreB = cb.contains("-")
+
+        if (!hasPreA && hasPreB) return 1   // a stabil > b dev
+        if (hasPreA && !hasPreB) return -1  // a dev < b stabil
+        if (!hasPreA && !hasPreB) return 0
+
+        val preA = ca.substringAfter("-")
+        val preB = cb.substringAfter("-")
+        if (preA == preB) return 0
+
+        // Bandingkan segmen prerelease numerik (mis. dev.2 vs dev.1)
+        val toksA = preA.split(".")
+        val toksB = preB.split(".")
+        for (i in 0 until maxOf(toksA.size, toksB.size)) {
+            val tA = toksA.getOrElse(i) { "" }
+            val tB = toksB.getOrElse(i) { "" }
+            val numA = tA.filter { it.isDigit() }.toIntOrNull()
+            val numB = tB.filter { it.isDigit() }.toIntOrNull()
+            if (numA != null && numB != null && numA != numB) {
+                return numA - numB
+            }
+            val cmp = tA.compareTo(tB)
+            if (cmp != 0) return cmp
         }
         return 0
     }

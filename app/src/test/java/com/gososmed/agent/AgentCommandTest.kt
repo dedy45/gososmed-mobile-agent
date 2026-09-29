@@ -91,4 +91,24 @@ class AgentCommandTest {
         assertTrue("listPackages seharusnya tidak gagal karena accessibility: $error",
             !error.contains("accessibility"))
     }
+
+    @Test
+    fun `capabilities adalah SERVICE_FREE dan mengembalikan snapshot tanpa butuh service`() {
+        assertTrue("capabilities harus ada di SERVICE_FREE_COMMANDS",
+            AgentCommand.CMD_CAPABILITIES in AgentCommand.SERVICE_FREE_COMMANDS)
+        val resp = AgentCommand.execute(JSONObject("""{"id":30,"cmd":"capabilities"}"""))
+        assertTrue("capabilities harus selalu ok=true", resp.optBoolean("ok"))
+        val result = resp.optJSONObject("result")
+        assertTrue("result capabilities harus ada", result != null)
+        assertTrue("capabilities harus punya agent_version", result!!.has("agent_version"))
+        assertTrue("capabilities harus punya a11y_enabled", result.has("a11y_enabled"))
+        assertTrue("capabilities harus punya can_draw_overlay", result.has("can_draw_overlay"))
+    }
+
+    @Test
+    fun `ASYNC_BACKGROUND_COMMANDS berisi startApp killApp dan wake`() {
+        assertTrue("startApp harus async background", AgentCommand.CMD_START_APP in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue("killApp harus async background", AgentCommand.CMD_KILL_APP in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue("wake harus async background", AgentCommand.CMD_WAKE in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+    }
 }

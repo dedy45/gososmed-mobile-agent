@@ -11,6 +11,41 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+## [0.9.12-dev.1] — 2026-09-29
+
+### Fixed — Stabilisasi Deteksi Langkah 1 & 2, Perbaikan Auto-Update Fetcher & SemVer, Anti-ANR Background Commands
+
+Rilis **DEV** (belum diuji di perangkat fisik nyata — kanal dev sesuai AGENTS.md §2):
+
+1. **Auto-Update & GitHub Releases Fetcher Tangguh**:
+   - `MainActivity.checkUpdateNow()` kini menyertakan header resmi `User-Agent: GoSosmedAgent/<version>` agar tidak ditolak atau dibatasi GitHub REST API.
+   - Endpoint query beralih ke `/releases?per_page=5` (dengan fallback `/releases/latest`) sehingga pembaruan dev/prerelease dapat dideteksi dengan benar bagi pengguna penguji kanal dev.
+   - Menggunakan instance HTTP client bersama (`updateHttpClient`) dengan timeout koneksi/baca (10s/15s), menghindari pemborosan koneksi.
+   - Memperbaiki `AgentUpdateState.compareVersions` agar SemVer dievaluasi penuh: versi stabil diakui lebih baru dari prerelease (`0.9.12` > `0.9.12-dev.1`), dan prerelease berurutan dibandingkan dengan benar (`dev.2` > `dev.1`).
+
+2. **Stabilisasi Deteksi Langkah 1 (Aksesibilitas)**:
+   - Menambahkan event callback `AgentAccessibilityService.onStateChanged` pada siklus hidup service (`onServiceConnected`, `onUnbind`, `onDestroy`) dibungkus try-catch sehingga perubahan status langsung terkirim ke `MainActivity` seketika.
+   - Mendaftarkan `AccessibilityStateChangeListener` di `MainActivity` agar toggle aktivasi di layar Setelan OS memicu pembaruan UI secara instan saat kembali ke aplikasi.
+   - Memperbaiki `apiListed`: memeriksa `info.id` (menggunakan parsing `ComponentName`) selain `resolveInfo`, serta menambahkan fallback query `FEEDBACK_GENERIC` jika `FEEDBACK_ALL_MASK` terhalang filter ROM OEM.
+   - Memperbaiki `secureListed`: parsing token dengan `ComponentName.unflattenFromString()` dan trimming spasi/titik untuk mendukung variasi format string di Xiaomi, Samsung, Oppo, Vivo.
+   - Menjadwalkan sinkronisasi multi-interval (+300ms, +800ms, +1500ms) saat `onResume()` dan saat pergantian tab (`showPanel`) untuk mengantisipasi jeda asinkron binder service Android.
+
+3. **Stabilisasi Deteksi Langkah 2 (Overlay / Pengecualian BAL)**:
+   - `AgentOverlay.canDraw()` kini memeriksa `view != null` (langsung lolos bila window aktif terpasang) dan fallback langsung ke `AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW` (`unsafeCheckOpNoThrow`/`checkOpNoThrow`) untuk mengatasi jeda cache `Settings.canDrawOverlays(ctx)` pada Android 11+.
+   - Menjadwalkan refresh beruntun pasca kembali dari layar izin overlay.
+   - Menjadikan `AgentOverlay.main` lazy (`by lazy`) untuk mencegah kegagalan JVM unit test terkait unmocked Looper.
+
+4. **Optimasi Kinerja Otomasi & Anti-ANR**:
+   - Menambahkan kategori `ASYNC_BACKGROUND_COMMANDS` (`startApp`, `killApp`, `wake`) di `AgentCommand`: dieksekusi di coroutine latar belakang (`scope.launch`), tidak memblokir main looper UI. Operasi tunggu foreground (sampai 4s) dan shell exec tidak lagi membekukan tampilan aplikasi atau memicu dialog ANR sistem.
+   - Menambahkan `capabilities` ke `SERVICE_FREE_COMMANDS` dengan dukungan snapshot fallback `AgentAccessibilityService.capabilitiesSnapshot()`, sehingga server preflight tetap mendapatkan status kapabilitas nyata (ADB, baterai, overlay, dsb.) meski service aksesibilitas sedang dalam proses restart oleh sistem.
+
+5. **Perbaikan CI Release Workflow**:
+   - `.github/workflows/release.yml`: menghapus action usang `android-actions/setup-android@v3` dan menggantinya dengan SDK bawaan `ubuntu-latest` + penerimaan lisensi via `sdkmanager` (konsisten dengan perbaikan pada `build.yml` di commit e511656).
+
+### Batasan Pengujian (Jujur sesuai AGENTS.md §2)
+- Unit test JVM: 33 tes lolos (100% hijau).
+- Build APK: `assembleDebug` berhasil dikompilasi secara lokal.
+- Belum diuji di perangkat fisik nyata pada rilis ini -> tag menggunakan `-dev.1`.
 ### Added
 
 - `docs/TOOLCHAIN-LOKAL.md` — peta toolchain build APK lokal: JDK 17, Gradle 8.9,
@@ -698,7 +733,8 @@ Nama transport berubah: `shell_shizuku` → **`shell_adb`**. Kapabilitas
   `device_id` persisten.
 - CI GitHub Actions: build APK per push (artifact `gososmed-agent-debug`).
 
-[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.12-dev.1...HEAD
+[0.9.12-dev.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.9...v0.9.12-dev.1
 [0.7.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.5.0-dev.1...v0.6.0

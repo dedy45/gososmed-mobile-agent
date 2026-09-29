@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
@@ -104,6 +105,14 @@ class AgentAccessibilityService : AccessibilityService() {
             private set
 
         /**
+         * Callback saat status koneksi layanan berubah (connected/unbound/destroyed).
+         * Digunakan oleh MainActivity agar UI Langkah 1 langsung terbarui seketika
+         * tanpa menunggu pengguna berpindah layar.
+         */
+        @Volatile
+        var onStateChanged: (() -> Unit)? = null
+
+        /**
          * v0.9.7 — applicationContext. Diperlukan supaya `isEnabled()` bisa
          * bertanya LANGSUNG ke sistem operasi (lihat [osEnabled]) tanpa harus
          * menunggu sebuah Activity hidup. Sebelum ini, `isEnabled()` hanya
@@ -188,6 +197,42 @@ class AgentAccessibilityService : AccessibilityService() {
                 put("adb_error", shellStatus.error)
             }
         }
+        /**
+         * Snapshot kapabilitas perangkat yang aman dipanggil kapan pun,
+         * bahkan saat `instance` service sedang null/re-binding.
+         */
+        fun capabilitiesSnapshot(ctx: Context?): JSONObject {
+            val svc = instance
+            if (svc != null) return svc.capabilitiesJson()
+            val effectiveCtx = ctx ?: appContext
+            val pm = effectiveCtx?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val shellStatus = PrivilegedShellHolder.get().status()
+            val overlayOk = effectiveCtx?.let { AgentOverlay.canDraw(it) } ?: false
+            return JSONObject().apply {
+                put("agent_version", BuildConfig.VERSION_NAME)
+                put("api_level", Build.VERSION.SDK_INT)
+                put("manufacturer", Build.MANUFACTURER)
+                put("model", Build.MODEL)
+                put("a11y_enabled", isEnabled())
+                put("a11y_ready", false)
+                put("can_draw_overlay", overlayOk)
+                put("overlay_attached", AgentOverlay.isAttached())
+                put("transport_tier", if (shellStatus.available) TRANSPORT_SHELL else TRANSPORT_A11Y)
+                put("last_launch_transport", TRANSPORT_A11Y)
+                put("adb_paired", shellStatus.paired)
+                put("adb_connected", shellStatus.connected)
+                put("adb_uid", shellStatus.uid)
+                put("adb_error", shellStatus.error)
+                put("can_shell", shellStatus.available)
+                put("can_launch_app", shellStatus.available || overlayOk)
+                put("can_force_stop", shellStatus.available)
+                put("can_inject_input", shellStatus.available)
+                put("can_screenshot", Build.VERSION.SDK_INT >= 30)
+                put("battery_unrestricted", effectiveCtx?.let { pm?.isIgnoringBatteryOptimizations(it.packageName) } == true)
+                put("screen_interactive", pm?.isInteractive == true)
+            }
+        }
+
 
         // ---- Pemindai dialog pairing Debug nirkabel (aktif hanya selama sesi pairing) ----
 
@@ -284,20 +329,43 @@ class AgentAccessibilityService : AccessibilityService() {
             return try {
                 val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
                     ?: return false
-                val list = am.getEnabledAccessibilityServiceList(
-                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-                ) ?: return false
-                val myName = AgentAccessibilityService::class.java.name
+                val myPkg = ctx.packageName
+                val myClass = AgentAccessibilityService::class.java.name
+                val mySimple = AgentAccessibilityService::class.java.simpleName
+
+                // Cek feedback mask umum, lalu fallback ke FEEDBACK_GENERIC (sesuai config XML)
+                val list = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                    ?: am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC)
+                    ?: return false
+
                 list.any { info ->
-                    val si = info.resolveInfo?.serviceInfo ?: return@any false
-                    si.packageName == ctx.packageName && si.name == myName
+                    // 1. Cek info.id (format: "pkg/className" atau "pkg/.simpleName")
+                    val id = info.id
+                    if (!id.isNullOrEmpty()) {
+                        val cn = android.content.ComponentName.unflattenFromString(id)
+                        if (cn != null && cn.packageName == myPkg &&
+                            (cn.className == myClass || cn.className == "$myPkg.$mySimple")
+                        ) {
+                            return@any true
+                        }
+                        if (id.equals("$myPkg/$myClass", ignoreCase = true) ||
+                            id.equals("$myPkg/.$mySimple", ignoreCase = true) ||
+                            id.equals("$myPkg/$mySimple", ignoreCase = true)
+                        ) {
+                            return@any true
+                        }
+                    }
+                    // 2. Cek resolveInfo bila tersedia
+                    val si = info.resolveInfo?.serviceInfo
+                    si != null && si.packageName == myPkg &&
+                        (si.name == myClass || si.name == "$myPkg.$mySimple")
                 }
             } catch (_: Throwable) {
                 false
             }
         }
 
-        /** Sumber 2: Settings.Secure (bentuk panjang maupun pendek). */
+        /** Sumber 2: Settings.Secure (bentuk panjang maupun pendek, tahan format OEM). */
         private fun secureListed(ctx: Context): Boolean {
             return try {
                 val enabled = android.provider.Settings.Secure.getString(
@@ -307,11 +375,25 @@ class AgentAccessibilityService : AccessibilityService() {
                 if (enabled.isNullOrEmpty()) {
                     false
                 } else {
-                    val me = ctx.packageName + "/" + AgentAccessibilityService::class.java.name
-                    val meShort =
-                        ctx.packageName + "/." + AgentAccessibilityService::class.java.simpleName
-                    enabled.split(':').any {
-                        it.equals(me, ignoreCase = true) || it.equals(meShort, ignoreCase = true)
+                    val myPkg = ctx.packageName
+                    val myClass = AgentAccessibilityService::class.java.name
+                    val mySimple = AgentAccessibilityService::class.java.simpleName
+                    val meLong = "$myPkg/$myClass"
+                    val meShort = "$myPkg/.$mySimple"
+                    val meBare = "$myPkg/$mySimple"
+
+                    enabled.split(':').any { raw ->
+                        val token = raw.trim()
+                        if (token.isEmpty()) return@any false
+                        if (token.equals(meLong, ignoreCase = true) ||
+                            token.equals(meShort, ignoreCase = true) ||
+                            token.equals(meBare, ignoreCase = true)
+                        ) {
+                            return@any true
+                        }
+                        val cn = android.content.ComponentName.unflattenFromString(token)
+                        cn != null && cn.packageName == myPkg &&
+                            (cn.className == myClass || cn.className == "$myPkg.$mySimple")
                     }
                 }
             } catch (_: Throwable) {
@@ -383,9 +465,11 @@ class AgentAccessibilityService : AccessibilityService() {
         instance = this
         bound = true
         Log.i(TAG, "AccessibilityService connected")
-        // v0.9.0: tidak ada lagi permintaan izin Shizuku di sini. Transport
-        // shell kini ADB lokal, dan pairing-nya dipicu dari UI/command
-        // `adbPair` (kontrak §3.2) — bukan otomatis saat service ter-bind.
+        try {
+            onStateChanged?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "onStateChanged error saat connected", t)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -421,14 +505,23 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        // v0.9.6 — layanan dilepas (mis. dimatikan manual / di-restart OEM).
         bound = false
+        try {
+            onStateChanged?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "onStateChanged error saat unbind", t)
+        }
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         bound = false
         instance = null
+        try {
+            onStateChanged?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "onStateChanged error saat destroy", t)
+        }
         super.onDestroy()
     }
 

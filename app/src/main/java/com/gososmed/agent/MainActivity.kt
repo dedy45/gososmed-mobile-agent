@@ -101,6 +101,18 @@ class MainActivity : AppCompatActivity() {
     private var logPaused = false
     private var pausedDirty = false
     private val logSb = SpannableStringBuilder()
+    private val a11yStateChangeListener =
+        android.view.accessibility.AccessibilityManager.AccessibilityStateChangeListener {
+            runOnUiThread { refreshStatus() }
+        }
+
+
+    private val updateHttpClient: okhttp3.OkHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
 
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -226,6 +238,11 @@ class MainActivity : AppCompatActivity() {
             AgentLog.add("crash sebelumnya", false, 0L, crash.replace("\n", "  |  "))
         }
         rerenderLog()
+        // Dengarkan perubahan status langsung dari service di proses ini
+        AgentAccessibilityService.onStateChanged = {
+            runOnUiThread { refreshStatus() }
+        }
+
 
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
         handlePairIntent(intent)
@@ -253,41 +270,95 @@ class MainActivity : AppCompatActivity() {
         updateInfoTv.text = "Memeriksa update…"
         Thread {
             try {
+                val userAgent = "GoSosmedAgent/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE}; ${Build.MODEL})"
+                val releasesUrl = "https://api.github.com/repos/dedy45/gososmed-mobile-agent/releases?per_page=5"
                 val req = okhttp3.Request.Builder()
-                    .url("https://api.github.com/repos/dedy45/gososmed-mobile-agent/releases/latest")
+                    .url(releasesUrl)
                     .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", userAgent)
                     .build()
-                okhttp3.OkHttpClient().newCall(req).execute().use { resp ->
-                    val body = resp.body?.string() ?: ""
-                    if (!resp.isSuccessful) throw IllegalStateException("GitHub HTTP ${resp.code}")
-                    val json = org.json.JSONObject(body)
-                    val tag = json.optString("tag_name", "").removePrefix("v")
-                    var apk = ""
-                    val assets = json.optJSONArray("assets")
-                    if (assets != null) {
-                        for (i in 0 until assets.length()) {
-                            val a = assets.getJSONObject(i)
-                            if (a.optString("name", "").endsWith(".apk")) {
-                                apk = a.optString("browser_download_url", "")
-                                break
+
+                var bestTag = ""
+                var bestApk = ""
+                val current = BuildConfig.VERSION_NAME
+                val isCurrentDev = current.contains("-dev")
+
+                val resp = updateHttpClient.newCall(req).execute()
+                resp.use { r ->
+                    if (r.isSuccessful) {
+                        val body = r.body?.string().orEmpty()
+                        val array = org.json.JSONArray(body)
+                        for (i in 0 until array.length()) {
+                            val rel = array.getJSONObject(i)
+                            if (rel.optBoolean("draft", false)) continue
+                            val isPre = rel.optBoolean("prerelease", false)
+                            val tag = rel.optString("tag_name", "").removePrefix("v")
+                            if (tag.isEmpty()) continue
+
+                            var apkUrl = ""
+                            val assets = rel.optJSONArray("assets")
+                            if (assets != null) {
+                                for (j in 0 until assets.length()) {
+                                    val a = assets.getJSONObject(j)
+                                    if (a.optString("name", "").endsWith(".apk")) {
+                                        apkUrl = a.optString("browser_download_url", "")
+                                        break
+                                    }
+                                }
+                            }
+
+                            if (AgentUpdateState.compareVersions(tag, current) > 0) {
+                                if (!isCurrentDev && isPre && bestTag.isNotEmpty()) {
+                                    continue
+                                }
+                                bestTag = tag
+                                bestApk = apkUrl
+                                if (!isPre) break
+                            } else if (bestTag.isEmpty()) {
+                                bestTag = tag
+                                bestApk = apkUrl
                             }
                         }
-                    }
-                    if (tag.isNotEmpty()) {
-                        AgentUpdateState.latestVersion = tag
-                        if (apk.isNotEmpty()) AgentUpdateState.apkUrl = apk
-                        AgentUpdateState.checkedAt = System.currentTimeMillis()
-                    }
-                    val msg = if (AgentUpdateState.isNewer(BuildConfig.VERSION_NAME)) {
-                        "Update tersedia: v${AgentUpdateState.latestVersion}"
+                    } else if (r.code == 404 || r.code == 403) {
+                        val latestReq = okhttp3.Request.Builder()
+                            .url("https://api.github.com/repos/dedy45/gososmed-mobile-agent/releases/latest")
+                            .header("Accept", "application/vnd.github+json")
+                            .header("User-Agent", userAgent)
+                            .build()
+                        updateHttpClient.newCall(latestReq).execute().use { lr ->
+                            if (!lr.isSuccessful) throw IllegalStateException("GitHub HTTP ${lr.code}")
+                            val json = org.json.JSONObject(lr.body?.string().orEmpty())
+                            bestTag = json.optString("tag_name", "").removePrefix("v")
+                            val assets = json.optJSONArray("assets")
+                            if (assets != null) {
+                                for (i in 0 until assets.length()) {
+                                    val a = assets.getJSONObject(i)
+                                    if (a.optString("name", "").endsWith(".apk")) {
+                                        bestApk = a.optString("browser_download_url", "")
+                                        break
+                                    }
+                                }
+                            }
+                        }
                     } else {
-                        "Sudah versi terbaru (v${BuildConfig.VERSION_NAME})"
+                        throw IllegalStateException("GitHub HTTP ${r.code}")
                     }
-                    runOnUiThread {
-                        refreshUpdateState()
-                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                        AgentLog.event("cek update: $msg")
-                    }
+                }
+
+                if (bestTag.isNotEmpty()) {
+                    AgentUpdateState.latestVersion = bestTag
+                    if (bestApk.isNotEmpty()) AgentUpdateState.apkUrl = bestApk
+                    AgentUpdateState.checkedAt = System.currentTimeMillis()
+                }
+                val msg = if (AgentUpdateState.isNewer(current)) {
+                    "Update tersedia: v${AgentUpdateState.latestVersion}"
+                } else {
+                    "Sudah versi terbaru (v$current)"
+                }
+                runOnUiThread {
+                    refreshUpdateState()
+                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    AgentLog.event("cek update: $msg")
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -326,6 +397,9 @@ class MainActivity : AppCompatActivity() {
         panelBeranda.visibility = if (index == 0) View.VISIBLE else View.GONE
         panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
         panelLog.visibility = if (index == 2) View.VISIBLE else View.GONE
+        if (index == 0 || index == 1) {
+            refreshStatus()
+        }
     }
 
     // ---- Panel log (berwarna + jeda/salin/bersih) ----
@@ -877,6 +951,22 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.w("GoAgent", "registerReceiver gagal: ${e.message}")
         }
+        try {
+            val am = getSystemService(android.view.accessibility.AccessibilityManager::class.java)
+            am?.addAccessibilityStateChangeListener(a11yStateChangeListener)
+        } catch (e: Exception) {
+            Log.w("GoAgent", "addAccessibilityStateChangeListener gagal: ${e.message}")
+        }
+        // Sinkronisasi asinkron pasca kembali dari Setelan OS (binder service / AppOps delay)
+        val delays = longArrayOf(300L, 800L, 1500L)
+        for (d in delays) {
+            tabLayout.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    refreshStatus()
+                    if (AgentOverlay.canDraw(this)) AgentOverlay.ensure(this)
+                }
+            }, d)
+        }
         handleValidationIntent(intent)
     }
 
@@ -887,9 +977,16 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             // belum terdaftar — abaikan
         }
+        try {
+            val am = getSystemService(android.view.accessibility.AccessibilityManager::class.java)
+            am?.removeAccessibilityStateChangeListener(a11yStateChangeListener)
+        } catch (_: Exception) {
+            // abaikan
+        }
     }
 
     override fun onDestroy() {
+        AgentAccessibilityService.onStateChanged = null
         AgentLog.listener = null
         super.onDestroy()
     }

@@ -49,10 +49,34 @@ object AgentOverlay {
     @Volatile
     private var view: View? = null
 
-    private val main = Handler(Looper.getMainLooper())
+    private val main by lazy { Handler(Looper.getMainLooper()) }
 
     /** true bila pemilik HP sudah memberi izin "tampil di atas app lain". */
-    fun canDraw(ctx: Context): Boolean = Settings.canDrawOverlays(ctx)
+    fun canDraw(ctx: Context): Boolean {
+        if (view != null) return true
+        if (Settings.canDrawOverlays(ctx)) return true
+        return try {
+            val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
+                ?: return false
+            val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(
+                    android.app.AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                    android.os.Process.myUid(),
+                    ctx.packageName
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(
+                    android.app.AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                    android.os.Process.myUid(),
+                    ctx.packageName
+                )
+            }
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     /** true bila overlay agent sedang terpasang (window terlihat aktif). */
     fun isAttached(): Boolean = view != null
