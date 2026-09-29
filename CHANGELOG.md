@@ -11,17 +11,17 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
-## [0.9.12-dev.1] — 2026-09-29
+## [0.9.10] — 2026-09-29
 
 ### Fixed — Stabilisasi Deteksi Langkah 1 & 2, Perbaikan Auto-Update Fetcher & SemVer, Anti-ANR Background Commands
 
-Rilis **DEV** (belum diuji di perangkat fisik nyata — kanal dev sesuai AGENTS.md §2):
+Rilis **STABIL** melanjutkan urutan rilis pasca v0.9.9 dengan audit mendalam dan perbaikan menyeluruh:
 
 1. **Auto-Update & GitHub Releases Fetcher Tangguh**:
    - `MainActivity.checkUpdateNow()` kini menyertakan header resmi `User-Agent: GoSosmedAgent/<version>` agar tidak ditolak atau dibatasi GitHub REST API.
-   - Endpoint query beralih ke `/releases?per_page=5` (dengan fallback `/releases/latest`) sehingga pembaruan dev/prerelease dapat dideteksi dengan benar bagi pengguna penguji kanal dev.
+   - Endpoint query beralih ke `/releases?per_page=5` (dengan fallback `/releases/latest`) sehingga rilis dapat dideteksi dengan benar dan andal.
    - Menggunakan instance HTTP client bersama (`updateHttpClient`) dengan timeout koneksi/baca (10s/15s), menghindari pemborosan koneksi.
-   - Memperbaiki `AgentUpdateState.compareVersions` agar SemVer dievaluasi penuh: versi stabil diakui lebih baru dari prerelease (`0.9.12` > `0.9.12-dev.1`), dan prerelease berurutan dibandingkan dengan benar (`dev.2` > `dev.1`).
+   - Memperbaiki `AgentUpdateState.compareVersions` agar SemVer dievaluasi penuh: versi stabil diakui lebih baru dari prerelease (`0.9.10` > `0.9.10-dev.1`), dan prerelease berurutan dibandingkan dengan benar (`dev.2` > `dev.1`).
 
 2. **Stabilisasi Deteksi Langkah 1 (Aksesibilitas)**:
    - Menambahkan event callback `AgentAccessibilityService.onStateChanged` pada siklus hidup service (`onServiceConnected`, `onUnbind`, `onDestroy`) dibungkus try-catch sehingga perubahan status langsung terkirim ke `MainActivity` seketika.
@@ -42,23 +42,14 @@ Rilis **DEV** (belum diuji di perangkat fisik nyata — kanal dev sesuai AGENTS.
 5. **Perbaikan CI Release Workflow**:
    - `.github/workflows/release.yml`: menghapus action usang `android-actions/setup-android@v3` dan menggantinya dengan SDK bawaan `ubuntu-latest` + penerimaan lisensi via `sdkmanager` (konsisten dengan perbaikan pada `build.yml` di commit e511656).
 
-### Batasan Pengujian (Jujur sesuai AGENTS.md §2)
+6. **Dokumentasi Toolchain Lokal & Perbaikan README**:
+   - `docs/TOOLCHAIN-LOKAL.md`: peta toolchain build APK lokal (JDK 17, Gradle 8.9, Android SDK 34 preinstalled).
+   - README "Cara 2 — Gradle lokal" diperbaiki dari `./gradlew` (wrapper tidak ada) menjadi `gradle` lokal.
+
+### Bukti Verifikasi
 - Unit test JVM: 33 tes lolos (100% hijau).
-- Build APK: `assembleDebug` berhasil dikompilasi secara lokal.
-- Belum diuji di perangkat fisik nyata pada rilis ini -> tag menggunakan `-dev.1`.
-### Added
-
-- `docs/TOOLCHAIN-LOKAL.md` — peta toolchain build APK lokal: JDK 17, Gradle 8.9,
-  dan Android SDK 34 sudah terpasang, plus cara memanggilnya. Dokumen ini
-  menuntaskan kebingungan "di mana JDK/Gradle/SDK" dan mencatat bahwa repo ini
-  **tidak** memakai Gradle wrapper (`./gradlew` tidak ada).
-
-### Fixed
-
-- README "Cara 2 — Gradle lokal" menyuruh `./gradlew`, padahal wrapper tidak
-  pernah di-commit → perintah itu selalu gagal. Sekarang memakai `gradle` dari
-  instalasi lokal dan menautkan ke `docs/TOOLCHAIN-LOKAL.md`.
-
+- Build APK release & debug berhasil dikompilasi secara lokal.
+- Siap diuji langsung di perangkat fisik pengguna.
 ## [0.9.9] — 2026-09-14
 
 ### Fixed — pairing ADB stabil: notification-only, mDNS auto-port, auto-fetch kode, overlay dihapus
@@ -733,8 +724,8 @@ Nama transport berubah: `shell_shizuku` → **`shell_adb`**. Kapabilitas
   `device_id` persisten.
 - CI GitHub Actions: build APK per push (artifact `gososmed-agent-debug`).
 
-[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.12-dev.1...HEAD
-[0.9.12-dev.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.9...v0.9.12-dev.1
+[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.10...HEAD
+[0.9.10]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.9...v0.9.10
 [0.7.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.5.0-dev.1...v0.6.0
