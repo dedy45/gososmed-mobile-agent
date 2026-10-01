@@ -62,6 +62,9 @@ object AgentCommand {
     // Dipakai server untuk preflight sebelum harvest dan oleh dasbor untuk badge
     // status real-time di kartu device.
     const val CMD_HEALTH = "health"
+    // v1.0.0: native HTTP media staging — download, SHA-256 verify, register
+    // to MediaStore. Does NOT need AccessibilityService; runs on IO thread.
+    const val CMD_STAGE_MEDIA = "stageMedia"
 
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
@@ -87,7 +90,7 @@ object AgentCommand {
      */
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
-        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES
+        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA
     )
 
     /**
@@ -96,7 +99,7 @@ object AgentCommand {
      * latar belakang agar main thread tidak pernah terblokir (anti-ANR).
      */
     val ASYNC_BACKGROUND_COMMANDS = setOf(
-        CMD_START_APP, CMD_KILL_APP, CMD_WAKE
+        CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -309,6 +312,29 @@ object AgentCommand {
             }
             CMD_CAPABILITIES -> {
                 resp.put("ok", true).put("result", AgentAccessibilityService.capabilitiesSnapshot(appContext()))
+            }
+            CMD_STAGE_MEDIA -> {
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val stageUrl      = req.optString("url", "")
+                    val stageFilename = req.optString("filename", "staged_${System.currentTimeMillis()}.mp4")
+                    val stageSha256   = req.optString("sha256", "")
+                    val stageBytes    = req.optLong("bytes", 0L)
+                    if (stageUrl.isBlank()) {
+                        resp.put("ok", false).put("error", "stageMedia requires url")
+                    } else {
+                        val result = MediaStager.stageMedia(ctx, stageUrl, stageFilename, stageSha256, stageBytes)
+                        // MediaStager returns { ok, result/error } — merge into resp.
+                        resp.put("ok", result.optBoolean("ok", false))
+                        if (result.optBoolean("ok", false)) {
+                            resp.put("result", result.optJSONObject("result"))
+                        } else {
+                            resp.put("error", result.optString("error", "stageMedia failed"))
+                        }
+                    }
+                }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }
