@@ -1,0 +1,133 @@
+{
+  "duplicatesAudit": {
+    "totalClickables": 31,
+    "duplicates": {
+      "Hapus sesi": [
+        {
+          "text": "Hapus sesi",
+          "tag": "BUTTON",
+          "role": null,
+          "rect": {
+            "x": 500,
+            "y": 230,
+            "width": 22,
+            "height": 22
+          },
+          "classes": "p-1 rounded-md text-[var(--text-secondary)] hover:text-rose-400 hover:bg-rose-500/10"
+        },
+        {
+          "text": "Hapus sesi",
+          "tag": "BUTTON",
+          "role": null,
+          "rect": {
+            "x": 500,
+            "y": 284,
+            "width": 22,
+            "height": 22
+          },
+          "classes": "p-1 rounded-md text-[var(--text-secondary)] hover:text-rose-400 hover:bg-rose-500/10"
+        }
+      ],
+      "🔌 Tools": [
+        {
+          "text": "🔌 Tools",
+          "tag": "BUTTON",
+          "role": null,
+          "rect": {
+            "x": 1301,
+            "y": 66,
+            "width": 75,
+            "height": 34
+          },
+          "classes": "px-2.5 py-1.5 rounded-xl border text-xs"
+        },
+        {
+          "text": "🔌 Tools",
+          "tag": "BUTTON",
+          "role": null,
+          "rect": {
+            "x": 571,
+            "y": 820,
+            "width": 69,
+            "height": 30
+          },
+          "classes": "flex items-center gap-1 px-2.5 py-1.5"
+        }
+      ]
+    }
+  },
+  "searchFilterResult": {
+    "found": false
+  },
+  "suggestionClick": {
+    "clicked": true,
+    "cardText": "💡\nBuatkan draft 3 konten TikTok viral minggu ini",
+    "textareaValue": ""
+  },
+  "accountsBtnClick": {
+    "clicked": true,
+    "text": "👥\nAkun"
+  },
+  "modelBtnClick": {
+    "clicked": true,
+    "text": "✦\n✦ Gemini 3.7 Flash\n▾"
+  },
+  "selectClaude": {
+    "selected": true,
+    "text": "✦ Claude 3.5 Sonnet\nCoding & Logika Kompleks"
+  },
+  "subSidebarMemClick": {
+    "clicked": true,
+    "text": "🧠\nMemori"
+  },
+  "panelCollisionMetrics": [
+    {
+      "title": "GoSosmed Buat Post UTAMA Dashboard Peran",
+      "zIndex": "40",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900
+      }
+    },
+    {
+      "title": "🤖 Agent AI BETA  GoSosmed Autonomous Hu",
+      "zIndex": "auto",
+      "rect": {
+        "x": 256,
+        "y": 64,
+        "width": 288,
+        "height": 836
+      }
+    },
+    {
+      "title": "📱 Layar Live HP Android Live  agent-ef0",
+      "zIndex": "auto",
+      "rect": {
+        "x": 1020,
+        "y": 64,
+        "width": 420,
+        "height": 836
+      }
+    },
+    {
+      "title": "🔧 Katalog & Inspector MCP Tools  GoSosm",
+      "zIndex": "50",
+      "rect": {
+        "x": 960,
+        "y": 0,
+        "width": 480,
+        "height": 900
+      }
+    }
+  ],
+  "typingTest": {
+    "beforeDisabled": false,
+    "afterDisabled": false,
+    "sendBtnAriaLabel": "Ciutkan sidebar",
+    "sendBtnClasses": "ml-auto hidden shrink-0 items-center justify-center rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] lg:flex"
+  },
+  "consoleLogs": [],
+  "networkLogs": []
+}

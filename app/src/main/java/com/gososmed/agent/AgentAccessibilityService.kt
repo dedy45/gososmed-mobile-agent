@@ -209,6 +209,7 @@ class AgentAccessibilityService : AccessibilityService() {
             val shellStatus = PrivilegedShellHolder.get().status()
             val overlayOk = effectiveCtx?.let { AgentOverlay.canDraw(it) } ?: false
             return JSONObject().apply {
+                put("protocol_versions", org.json.JSONArray(listOf(1, 2)))
                 put("agent_version", BuildConfig.VERSION_NAME)
                 put("api_level", Build.VERSION.SDK_INT)
                 put("manufacturer", Build.MANUFACTURER)
@@ -734,6 +735,74 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * Captures screenshot and returns raw bytes without base64 encoding (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
+     * Returns Triple(bytes, width, height) or Triple(null, 0, 0).
+     */
+    fun takeScreenshotRawBytes(scale: Float = 1f, format: String = "jpeg", quality: Int = 80): Triple<ByteArray?, Int, Int> {
+        if (Build.VERSION.SDK_INT < 30) {
+            return Triple(null, 0, 0)
+        }
+        val latch = CountDownLatch(1)
+        var hw: android.hardware.HardwareBuffer? = null
+        var colorSpace: android.graphics.ColorSpace? = null
+
+        takeScreenshot(
+            Display.DEFAULT_DISPLAY,
+            screenshotExecutor,
+            object : AccessibilityService.TakeScreenshotCallback {
+                override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                    hw = screenshot.hardwareBuffer
+                    colorSpace = screenshot.colorSpace
+                    latch.countDown()
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    latch.countDown()
+                }
+            }
+        )
+
+        try {
+            latch.await(8, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return Triple(null, 0, 0)
+        }
+        val buffer = hw ?: return Triple(null, 0, 0)
+
+        val bitmap = Bitmap.wrapHardwareBuffer(buffer, colorSpace)
+        buffer.close() ?: return Triple(null, 0, 0)
+        var soft = bitmap?.copy(Bitmap.Config.ARGB_8888, false)
+        bitmap?.recycle()
+        if (soft == null) return Triple(null, 0, 0)
+
+        val s = scale.coerceIn(0.25f, 1f)
+        if (s < 1f) {
+            val scaled = Bitmap.createScaledBitmap(
+                soft,
+                (soft.width * s).toInt().coerceAtLeast(1),
+                (soft.height * s).toInt().coerceAtLeast(1),
+                true
+            )
+            soft.recycle()
+            soft = scaled
+        }
+
+        val finalWidth = soft.width
+        val finalHeight = soft.height
+        val out = ByteArrayOutputStream()
+        val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
+            soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
+        } else {
+            soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        }
+        soft.recycle()
+        if (!fmt) return Triple(null, 0, 0)
+        val bytes = out.toByteArray()
+        return Triple(bytes, finalWidth, finalHeight)
+    }
+
+    /**
      * v0.9.6 — KESIAPAN LIVE: apakah window aktif BENAR-BENAR bisa dibaca
      * SEKARANG. Ini satu-satunya makna yang benar untuk fungsi ini.
      *
@@ -1127,6 +1196,7 @@ class AgentAccessibilityService : AccessibilityService() {
         val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
         val shellStatus = PrivilegedShellHolder.get().status()
         return JSONObject().apply {
+            put("protocol_versions", org.json.JSONArray(listOf(1, 2)))
             put("agent_version", BuildConfig.VERSION_NAME)
             put("api_level", Build.VERSION.SDK_INT)
             put("manufacturer", Build.MANUFACTURER)

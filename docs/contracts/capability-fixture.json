@@ -1,0 +1,31 @@
+{
+  "id": 1,
+  "ok": true,
+  "result": {
+    "protocol_versions": [
+      1,
+      2
+    ],
+    "agent_version": "1.0.0",
+    "api_level": 34,
+    "manufacturer": "Xiaomi",
+    "model": "2201117PG",
+    "a11y_enabled": true,
+    "a11y_ready": true,
+    "can_draw_overlay": true,
+    "overlay_attached": true,
+    "transport_tier": "shell_adb",
+    "last_launch_transport": "shell_adb",
+    "adb_paired": true,
+    "adb_connected": true,
+    "adb_uid": 2000,
+    "adb_error": "",
+    "can_shell": true,
+    "can_launch_app": true,
+    "can_force_stop": true,
+    "can_inject_input": true,
+    "can_screenshot": true,
+    "battery_unrestricted": true,
+    "screen_interactive": true
+  }
+}

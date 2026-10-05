@@ -9,7 +9,105 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [Unreleased]
+## [1.0.0] - 2026-10-05
+
+### Added — Deterministic Android Portal & Protocol Version 2 Hardening (Stabil)
+
+Rilis **STABIL** `v1.0.0` (versionCode 30) meresmikan arsitektur Deterministic Android Portal dan Protocol Version 2 dengan seluruh penguatan runtime, anti-bloat, dan regression suite lengkap:
+
+1. **Active In-Flight Target Cancellation (`CommandCancellationRegistry`, `AgentCommand`)**:
+   - Mendukung pembatalan target spesifik via `target_request_id` pada command `cancelAction`.
+   - Mengembalikan `{"cancelled": true}` jika request target aktif ditemukan di memori, dan `{"cancelled": false}` jika target tidak aktif atau tidak ditemukan.
+   - Loop aksi dan polling transisi (`waitForNode`, `waitForScreen`, `actNode`, `actAndVerify`) secara aktif memeriksa `isCancelled(requestId)` pada setiap iterasi dan abort seketika dengan reason code `cancelled`.
+
+2. **Binary Debug Frame Pipeline & Zero ACK Leak (`DebugFrameEncoder`, `AgentWsClient`)**:
+   - Bounded queue memvalidasi kapasitas minimum 1 (`maxCapacity.coerceAtLeast(1)`), mencegah alokasi antrean nol atau negatif.
+   - Mekanisme `evictExpiredAcks(timeoutMs = 10_000L)` membersihkan ACK kadaluwarsa secara berkala di background loop, mencegah kebocoran memori pada koneksi lambat.
+   - Aliran biner WebSocket mentransmisikan frame langsung dari memori (`webSocket.send(bytes.toByteString())`) tanpa menyentuh disk.
+   - Pembersihan otomatis (`clear()`) dan pembatalan job saat koneksi ditutup atau terputus.
+
+3. **Password Redaction & Privacy Hardening (`ActionableNodeRegistry`, `WindowRootCollector`)**:
+   - Redaksi menyeluruh: node dengan `isPassword == true` secara konsisten mengubah `text` dan `contentDescription` menjadi `[REDACTED]`, baik pada level traversal window, kalkulasi SHA-256 node ID, maupun payload JSON snapshot.
+
+4. **Envelope Validation & Duplicate Protection (`ProtocolV2`, `AgentCommand`)**:
+   - Validasi ketat Protocol v2 menolak `request_id` kosong/blank dengan reason code `action_rejected`.
+   - Deteksi duplicate request in-flight mencegah race condition dan menolak request kedua dengan reason code `device_busy`.
+   - Deadline dinormalisasi: nilai non-positif (`<= 0`) secara aman didefault ke 10 detik, dan nilai ekstrem dilindungi dari overflow `Long.MAX_VALUE`.
+   - Kompatibilitas penuh Protocol v1 dipertahankan untuk backward compatibility dasbor.
+
+5. **Comprehensive Regression Unit Tests (135 Tests / 18 Suites Passing 100%)**:
+   - Menambahkan unit test komprehensif pada `ProtocolV2Test`, `CommandCancellationRegistryTest`, `SnapshotRegistryTest`, `MutationGuardTest`, `DebugFrameEncoderTest`, `ActionableNodeRegistryTest`, dan `DeterministicResolverTest`.
+   - 100% lulus tanpa kegagalan (0 failures, 0 errors, 0 skipped).
+
+6. **Real-Device Acceptance Matrix (19/19 Vektor Terverifikasi di Redmi Note 13 Pro 5G `2c76b8a3`)**:
+   - **Vektor 1 (Observe Settings)**: Menangkap display 1220x2466 @ 480dpi, package `com.android.settings`, 25 nodes, hash SHA-256 valid.
+   - **Vektor 2 (Password Redaction)**: Node password diredaksi menjadi `[REDACTED]` (`password: true`), zero plaintext leak.
+   - **Vektor 3 (Resolve Exact)**: Resolusi deterministik node tunggal dengan tautan clickable ancestor yang benar.
+   - **Vektor 4 (Ambiguous Selector)**: Kandidat teks identik ganda dideteksi dan ditolak dengan `ambiguous` tanpa klik blind.
+   - **Vektor 5 (Stale Snapshot)**: Permintaan dengan snapshot ID yang tidak terdaftar ditolak seketika dengan `stale_snapshot`.
+   - **Vektor 6 (Wrong Package)**: Aksi ditolak dengan `wrong_package` jika foreground package tidak sesuai prakondisi.
+   - **Vektor 7 (Native Click)**: Klik native `performAction` berhasil tanpa gesture fallback (`used_gesture_fallback: false`), layar berganti.
+   - **Vektor 8 (Gesture Fallback)**: Resolusi fallback koordinat titik (`point`) berhasil memetakan view container.
+   - **Vektor 9 (Set Text Unicode)**: Injeksi teks Unicode (`"GoSosmed 🚀 测试 123"`) via `ACTION_SET_TEXT` terbaca kembali secara verbatim.
+   - **Vektor 10 (Wait Success)**: Elemen terdeteksi sebelum deadline dan dilaporkan berhasil (`found: true`).
+   - **Vektor 11 (Wait Timeout)**: Elemen fiktif dilaporkan timeout secara jujur setelah batas waktu habis (`found: false`).
+   - **Vektor 12 (Cancellation Aktif)**: Target operasi tunggu in-flight (deadline 15s) dibatalkan via `cancelAction` dalam 769ms (`reason_code: "cancelled"`).
+   - **Vektor 13 (Submit Barrier)**: Replay aksi mutasi dengan `operation_id` sama tetapi `request_id` berbeda ditolak dengan `submit_barrier`.
+   - **Vektor 14 (Debug Frame Start)**: Producer coroutine frame streaming aktif memproduksi frame biner di memori dengan statistik antrean.
+   - **Vektor 15 (Stop Frames)**: Streaming frame dihentikan bersih, antrean frame dibersihkan (`status: "stopped"`).
+   - **Vektor 16 (Orientation Gate)**: Perubahan orientasi layar memvalidasi penolakan snapshot pra-rotasi sebagai stale.
+   - **Vektor 17 (Keyboard / Dialog)**: Jendela dialog sistem dan notification shade OS (`com.android.systemui`) terbaca tanpa crash.
+   - **Vektor 18 (Process Restart & Reconnect)**: Pemulihan proses pasca `am force-stop` via Launcher monkey berhasil menyambungkan kembali layanan aksesibilitas (`ok: true`).
+   - **Vektor 19 (Repetition 100x)**: 100 siklus observasi loop selesai dalam 71.05s (rata-rata 710.5ms/siklus) dengan kestabilan memori PSS 144MB $\to$ 151MB.
+
+7. **Artifact Output & Limitations**:
+   - Debug APK: `app/build/outputs/apk/debug/app-debug.apk` (18,786,616 bytes / 17.92 MB, `versionCode = 30`, `versionName = "1.0.0"`).
+   - Limitations: Integrasi otomatisasi end-to-end pada 5 platform sosial (Threads, TikTok, Instagram, YouTube, Facebook) bergantung pada backend DEV remote yang dijalankan terkontrol di fase deployment berikutnya.
+## [0.9.11-dev.1] — 2026-10-05
+
+### Added — Deterministic Android Portal & Protocol Version 2 (Real-Device Validated)
+
+Rilis **DEV** mengimplementasikan arsitektur Deterministic Android Portal dan Protocol Version 2 sesuai spesifikasi `docs/PLAN-DETERMINISTIC-ANDROID-PORTAL.md`, dengan penutupan lengkap seluruh 7 Quality Gates hasil audit:
+
+1. **Hierarchy Bloat Guard (`WindowRootCollector`)**:
+   - Traversal pohon window dibatasi kuota `NodeBudget(MAX_NODES = 2000)` dan kedalaman `MAX_DEPTH = 16`.
+   - Rekursi anak dihentikan seketika bila kuota habis atau batas kedalaman tercapai, mencegah OOM dan StackOverflow pada layout kompleks (WebView / nested RecyclerView).
+
+2. **Active SnapshotRegistry & Stale Snapshot Guard (`SnapshotRegistry`)**:
+   - Cache in-memory berstruktur LRU (kapasitas 5 snapshot, TTL 30 detik) mencatat snapshot layar aktif.
+   - Command `observe` otomatis mendaftarkan snapshot ke registry.
+   - `resolve`: mendukung pencarian node berbasis `snapshot_id` teregistrasi bila array `nodes` tidak dikirim; snapshot usang ditolak dengan `stale_snapshot`.
+   - `actNode` & `actAndVerify`: parameter `snapshot_id` diwajibkan; snapshot tidak terdaftar atau kadaluarsa ditolak seketika dengan `stale_snapshot`. Integritas state divalidasi via perbandingan `treeHash` sebelum aksi dieksekusi (`expectedTreeHash`).
+
+3. **Non-blocking Coroutine Delays (`AgentCommand`, `ScreenTransitionVerifier`)**:
+   - `executeV2` dijadikan suspend function; `waitForNode` dan `waitForScreen` bermigrasi dari blocking `Thread.sleep` ke `kotlinx.coroutines.delay(pollIntervalMs)`.
+   - Pemeriksaan `CommandCancellationRegistry.isCancelled(requestId)` dilakukan pada setiap iterasi loop sehingga permintaan pembatalan (`cancelAction`) merespons seketika.
+   - Verifikasi transisi settle pada `actNode` dan `actAndVerify` didelegasikan ke `ScreenTransitionVerifier.verifyTransitionAsync`.
+
+4. **Durable Submit Barrier & Idempotency Key (`MutationGuard`)**:
+   - Menambahkan parameter `operationId` dan penyimpanan in-memory tabel `submittedOperations` ber-TTL 10 menit.
+   - Aksi mutasi dengan `is_submit = true`, `operation_id`, atau `idempotency_key` yang diulang (meskipun menggunakan `requestId` baru) diblokir seketika dengan reason code kanonikal `submit_barrier`.
+
+5. **Recurring Debug Frame Streaming (`AgentWsClient`)**:
+   - Background producer coroutine `debugStreamingJob` memproduksi snapshot frame berkala sesuai `fps` (1..10), `quality` (10..100), dan `scale` (0.2..1.0).
+   - Frame dikompresi murni di memori (zero disk write), diantrekan ke `BoundedFrameQueue`, dan dikirimkan sebagai binary WebSocket message (`toByteString()`).
+   - Otomatis dibatalkan seketika saat `stopDebugFrames` atau penutupan WebSocket.
+
+6. **Real-Device Protocol v2 Validation Matrix (10 Vektor Uji)**:
+   - Terverifikasi 100% pada Redmi Note 13 Pro 5G (`2c76b8a3`), Android 14 (HyperOS, API 34):
+     - **Vektor 1 (Fresh `observe`)**: Menangkap snapshot layar riil `com.android.settings`, 34 nodes, display 1220x2466 @ 480dpi, tree hash sha256 valid.
+     - **Vektor 2 (`stale_snapshot`)**: Aksi dengan `snapshot_id` fiktif/usang ditolak dengan `ok: false, reason_code: "stale_snapshot"`.
+     - **Vektor 3 (`wrong_package`)**: Validasi precondition menolak aksi saat foreground adalah Settings tetapi `expected_package: "com.facebook.katana"`.
+     - **Vektor 4 (`ambiguous`)**: Resolusi selektor `TextView` menghasilkan 15 kandidat dengan skor seri 50, ditolak dengan `reason_code: "ambiguous"` (zero blind tap).
+     - **Vektor 5 (`actNode` live)**: Eksekusi klik pada `"Additional settings"`, delegasi ke clickable ancestor, dan verifikasi transisi sukses (`ok: true`).
+     - **Vektor 6 (`actAndVerify` live)**: Eksekusi klik pada `"Date and time"` dan verifikasi perubahan layar sukses dengan bukti `before_snapshot_id` & `after_snapshot_id`.
+     - **Vektor 7 (`waitForNode` timeout)**: Polling elemen fiktif berakhir jujur dengan `reason_code: "timeout"` setelah 1551 ms.
+     - **Vektor 8 (`cancelAction`)**: Perintah pembatalan aksi diakui (`ok: true, cancelled: false`).
+     - **Vektor 9 (`submit_barrier`)**: Retry mutasi ber-`operation_id: "op-durable-001"` dengan `requestId` baru diblokir seketika dengan `reason_code: "submit_barrier"`.
+     - **Vektor 10 (`startDebugFrames` & `stopDebugFrames`)**: Siklus hidup streaming frame debug binary berjalan bersih (`started` -> `stopped`).
+
+7. **Test Suite Completeness**:
+   - 86 unit tests JVM lulus 100% tanpa regresi.
 
 ## [0.9.10] — 2026-09-29
 
@@ -724,7 +822,8 @@ Nama transport berubah: `shell_shizuku` → **`shell_adb`**. Kapabilitas
   `device_id` persisten.
 - CI GitHub Actions: build APK per push (artifact `gososmed-agent-debug`).
 
-[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.10...HEAD
+[Unreleased]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.11-dev.1...HEAD
+[0.9.11-dev.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.10...v0.9.11-dev.1
 [0.9.10]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.9.9...v0.9.10
 [0.7.0]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/dedy45/gososmed-mobile-agent/compare/v0.6.0...v0.6.1

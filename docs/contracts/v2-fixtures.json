@@ -1,0 +1,933 @@
+{
+  "version": 2,
+  "description": "Protocol Version 2 Request, Response & Canonical Reason Code Fixtures (PLAN-DETERMINISTIC-ANDROID-PORTAL.md)",
+  "envelope_specification": {
+    "request": {
+      "protocol_version": 2,
+      "request_id": "string (UUID or ULID)",
+      "cmd": "string (canonical command name)",
+      "deadline_ms": "long (default 10000ms)",
+      "args": "object (command-specific parameters)"
+    },
+    "response": {
+      "protocol_version": 2,
+      "request_id": "string (echoed from request)",
+      "ok": "boolean (final ground truth of execution)",
+      "reason_code": "string (mandatory when ok=false, forbidden when ok=true)",
+      "retryable": "boolean",
+      "result": "object (nested result.ok must not contradict top-level ok)",
+      "timing": {
+        "started_at_ms": "long",
+        "completed_at_ms": "long",
+        "duration_ms": "long"
+      }
+    }
+  },
+  "commands": {
+    "observe": [
+      {
+        "scenario": "observe_success",
+        "description": "Collect synchronized multi-window accessibility snapshot and display frame",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-observe-001",
+          "cmd": "observe",
+          "deadline_ms": 10000,
+          "args": {
+            "include_nodes": true,
+            "include_image": true,
+            "image_format": "jpeg",
+            "image_quality": 70,
+            "max_depth": 20
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-observe-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "frame_seq": 101,
+            "captured_at_ms": 1728000000000,
+            "display": {
+              "id": 0,
+              "width": 1080,
+              "height": 2400,
+              "rotation": 0,
+              "density_dpi": 440
+            },
+            "foreground": {
+              "package": "com.facebook.katana",
+              "window_id": 14
+            },
+            "tree_hash": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+            "screen_fingerprint": "pkg:com.facebook.katana|w:1|nodes:45",
+            "quality": {
+              "valid": true,
+              "invalid_bounds_ratio": 0.0,
+              "window_changed": false,
+              "reasons": []
+            },
+            "nodes": [
+              {
+                "node_id": "node_01J98K6P001",
+                "display_id": 0,
+                "window_id": 14,
+                "package_name": "com.facebook.katana",
+                "resource_id": "com.facebook.katana:id/login_button",
+                "class_name": "android.widget.Button",
+                "text": "Log In",
+                "content_description": "Log In Button",
+                "ancestor_path": "FrameLayout/LinearLayout/Button",
+                "sibling_index": 0,
+                "bounds": {
+                  "left": 100,
+                  "top": 1200,
+                  "right": 980,
+                  "bottom": 1340
+                },
+                "clickable": true,
+                "long_clickable": false,
+                "editable": false,
+                "checkable": false,
+                "scrollable": false,
+                "actionable": true,
+                "clickable_ancestor_id": null
+              }
+            ],
+            "image": {
+              "format": "jpeg",
+              "width": 540,
+              "height": 1200,
+              "quality": 70,
+              "binary_message_id": "bin-frame-101"
+            }
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000120,
+            "duration_ms": 120
+          }
+        }
+      },
+      {
+        "scenario": "observe_unstable_tree",
+        "description": "Snapshot capture failed because accessibility hierarchy mutated during collection",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-observe-002",
+          "cmd": "observe",
+          "deadline_ms": 5000,
+          "args": {}
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-observe-002",
+          "ok": false,
+          "reason_code": "unstable_tree",
+          "retryable": true,
+          "result": {
+            "reasons": [
+              "Tree hash mutated across successive passes"
+            ]
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000085,
+            "duration_ms": 85
+          }
+        }
+      }
+    ],
+    "resolve": [
+      {
+        "scenario": "resolve_success",
+        "description": "Deterministically score candidates and select best actionable node",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-resolve-001",
+          "cmd": "resolve",
+          "deadline_ms": 5000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "selector": {
+              "resource_id": "com.facebook.katana:id/login_button",
+              "text": "Log In",
+              "class_name": "android.widget.Button"
+            },
+            "ambiguity_threshold": 0.15
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-resolve-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "candidates": [
+              {
+                "node_id": "node_01J98K6P001",
+                "score": 0.98,
+                "matched_criteria": [
+                  "resource_id",
+                  "text",
+                  "class_name"
+                ]
+              }
+            ],
+            "selected_node_id": "node_01J98K6P001",
+            "ambiguity_state": "resolved",
+            "clickable_ancestor_id": null
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000015,
+            "duration_ms": 15
+          }
+        }
+      },
+      {
+        "scenario": "resolve_ambiguous",
+        "description": "Two or more top candidate nodes scored too closely within ambiguity threshold",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-resolve-002",
+          "cmd": "resolve",
+          "deadline_ms": 5000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "selector": {
+              "text": "Post"
+            },
+            "ambiguity_threshold": 0.15
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-resolve-002",
+          "ok": false,
+          "reason_code": "ambiguous",
+          "retryable": false,
+          "result": {
+            "candidates": [
+              {
+                "node_id": "node_post_header",
+                "score": 0.72,
+                "matched_criteria": [
+                  "text"
+                ]
+              },
+              {
+                "node_id": "node_post_button",
+                "score": 0.71,
+                "matched_criteria": [
+                  "text"
+                ]
+              }
+            ],
+            "ambiguity_margin": 0.01,
+            "ambiguity_threshold": 0.15
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000018,
+            "duration_ms": 18
+          }
+        }
+      }
+    ],
+    "actNode": [
+      {
+        "scenario": "actNode_success",
+        "description": "Perform native accessibility action (ACTION_CLICK / ACTION_SET_TEXT) on resolved node",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-act-001",
+          "cmd": "actNode",
+          "deadline_ms": 5000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "node_id": "node_01J98K6P001",
+            "action": "click",
+            "postcondition_settle_ms": 300
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-act-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "action": "click",
+            "action_type": "ACTION_CLICK",
+            "performed": true,
+            "settled": true
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000350,
+            "duration_ms": 350
+          }
+        }
+      },
+      {
+        "scenario": "actNode_action_rejected",
+        "description": "AccessibilityNodeInfo.performAction() rejected by host view",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-act-002",
+          "cmd": "actNode",
+          "deadline_ms": 5000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "node_id": "node_disabled_btn",
+            "action": "click"
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-act-002",
+          "ok": false,
+          "reason_code": "action_rejected",
+          "retryable": false,
+          "result": {
+            "node_id": "node_disabled_btn",
+            "action": "click"
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000045,
+            "duration_ms": 45
+          }
+        }
+      }
+    ],
+    "actAndVerify": [
+      {
+        "scenario": "actAndVerify_success",
+        "description": "Perform action and verify screen transition settle matches expectation",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-actverify-001",
+          "cmd": "actAndVerify",
+          "deadline_ms": 8000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "node_id": "node_01J98K6P001",
+            "action": "click",
+            "expected_screen": {
+              "package": "com.facebook.katana",
+              "fingerprint": "feed_screen_v1"
+            },
+            "settle_timeout_ms": 4000
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-actverify-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "action_performed": true,
+            "verified": true,
+            "before_snapshot_id": "01J98K6P000000000000000001",
+            "after_snapshot_id": "01J98K6P000000000000000002",
+            "screen_fingerprint": "feed_screen_v1"
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000780,
+            "duration_ms": 780
+          }
+        }
+      },
+      {
+        "scenario": "actAndVerify_screen_not_changed",
+        "description": "Action executed but screen hierarchy and fingerprint remained identical after settle window",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-actverify-002",
+          "cmd": "actAndVerify",
+          "deadline_ms": 8000,
+          "args": {
+            "snapshot_id": "01J98K6P000000000000000001",
+            "node_id": "node_01J98K6P001",
+            "action": "click"
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-actverify-002",
+          "ok": false,
+          "reason_code": "screen_not_changed",
+          "retryable": true,
+          "result": {
+            "tree_hash": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000001200,
+            "duration_ms": 1200
+          }
+        }
+      }
+    ],
+    "waitForNode": [
+      {
+        "scenario": "waitForNode_success",
+        "description": "Poll screen until matching selector node appears",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-waitnode-001",
+          "cmd": "waitForNode",
+          "deadline_ms": 5000,
+          "args": {
+            "selector": {
+              "text": "Welcome Back"
+            },
+            "timeout_ms": 4000,
+            "interval_ms": 250
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-waitnode-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "found": true,
+            "node_id": "node_welcome_hdr",
+            "snapshot_id": "01J98K6P000000000000000003",
+            "elapsed_ms": 750
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000750,
+            "duration_ms": 750
+          }
+        }
+      },
+      {
+        "scenario": "waitForNode_timeout",
+        "description": "Specified timeout elapsed before target node appeared",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-waitnode-002",
+          "cmd": "waitForNode",
+          "deadline_ms": 3000,
+          "args": {
+            "selector": {
+              "text": "NonExistentPrompt"
+            },
+            "timeout_ms": 2000
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-waitnode-002",
+          "ok": false,
+          "reason_code": "timeout",
+          "retryable": true,
+          "result": {
+            "elapsed_ms": 2010
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000002010,
+            "duration_ms": 2010
+          }
+        }
+      }
+    ],
+    "waitForScreen": [
+      {
+        "scenario": "waitForScreen_success",
+        "description": "Poll screen until matching foreground package and fingerprint settle",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-waitscreen-001",
+          "cmd": "waitForScreen",
+          "deadline_ms": 6000,
+          "args": {
+            "target_package": "com.facebook.katana",
+            "fingerprint": "feed_screen_v1",
+            "timeout_ms": 5000
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-waitscreen-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "matched": true,
+            "current_package": "com.facebook.katana",
+            "screen_fingerprint": "feed_screen_v1",
+            "elapsed_ms": 1100
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000001100,
+            "duration_ms": 1100
+          }
+        }
+      }
+    ],
+    "cancelAction": [
+      {
+        "scenario": "cancelAction_success",
+        "description": "Cancel pending asynchronous action before execution",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-cancel-001",
+          "cmd": "cancelAction",
+          "deadline_ms": 3000,
+          "args": {
+            "target_request_id": "req-actverify-001",
+            "reason": "server_deadline_exceeded"
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-cancel-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "cancelled": true,
+            "target_request_id": "req-actverify-001"
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000010,
+            "duration_ms": 10
+          }
+        }
+      }
+    ],
+    "startDebugFrames": [
+      {
+        "scenario": "startDebugFrames_success",
+        "description": "Start live streaming of downsampled debug frame previews",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-startframes-001",
+          "cmd": "startDebugFrames",
+          "deadline_ms": 3000,
+          "args": {
+            "fps": 5,
+            "format": "jpeg",
+            "quality": 60,
+            "scale": 0.5
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-startframes-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "streaming": true,
+            "session_id": "dbg-sess-001",
+            "fps": 5
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000025,
+            "duration_ms": 25
+          }
+        }
+      }
+    ],
+    "stopDebugFrames": [
+      {
+        "scenario": "stopDebugFrames_success",
+        "description": "Stop debug frame streaming session",
+        "request": {
+          "protocol_version": 2,
+          "request_id": "req-stopframes-001",
+          "cmd": "stopDebugFrames",
+          "deadline_ms": 3000,
+          "args": {
+            "session_id": "dbg-sess-001"
+          }
+        },
+        "response": {
+          "protocol_version": 2,
+          "request_id": "req-stopframes-001",
+          "ok": true,
+          "retryable": false,
+          "result": {
+            "streaming": false,
+            "frames_sent": 42
+          },
+          "timing": {
+            "started_at_ms": 1728000000000,
+            "completed_at_ms": 1728000000008,
+            "duration_ms": 8
+          }
+        }
+      }
+    ]
+  },
+  "canonical_reason_codes": {
+    "no_node": {
+      "description": "Target node matching selector could not be found in active snapshot",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-no_node",
+        "ok": false,
+        "reason_code": "no_node",
+        "retryable": false,
+        "result": {
+          "selector": {
+            "resource_id": "btn_missing"
+          }
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000010,
+          "duration_ms": 10
+        }
+      }
+    },
+    "ambiguous": {
+      "description": "Multiple candidate nodes matched selector within ambiguity margin",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-ambiguous",
+        "ok": false,
+        "reason_code": "ambiguous",
+        "retryable": false,
+        "result": {
+          "candidates_count": 2,
+          "ambiguity_margin": 0.02
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000012,
+          "duration_ms": 12
+        }
+      }
+    },
+    "invalid_bounds": {
+      "description": "Resolved node has degenerate or off-screen bounding rectangle",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-invalid_bounds",
+        "ok": false,
+        "reason_code": "invalid_bounds",
+        "retryable": false,
+        "result": {
+          "bounds": {
+            "left": -10,
+            "top": -10,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000008,
+          "duration_ms": 8
+        }
+      }
+    },
+    "stale_snapshot": {
+      "description": "Requested action references snapshot that has been superseded by newer state",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-stale_snapshot",
+        "ok": false,
+        "reason_code": "stale_snapshot",
+        "retryable": true,
+        "result": {
+          "requested_snapshot_id": "01J98K6P000000000000000001",
+          "current_snapshot_id": "01J98K6P000000000000000005"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000005,
+          "duration_ms": 5
+        }
+      }
+    },
+    "wrong_package": {
+      "description": "Foreground package does not match expected target package precondition",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-wrong_package",
+        "ok": false,
+        "reason_code": "wrong_package",
+        "retryable": false,
+        "result": {
+          "expected_package": "com.facebook.katana",
+          "actual_package": "com.miui.home"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000007,
+          "duration_ms": 7
+        }
+      }
+    },
+    "unstable_tree": {
+      "description": "Hierarchy is mutating rapidly (animations/content loading) during snapshot",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-unstable_tree",
+        "ok": false,
+        "reason_code": "unstable_tree",
+        "retryable": true,
+        "result": {
+          "retry_after_ms": 200
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000060,
+          "duration_ms": 60
+        }
+      }
+    },
+    "action_not_supported": {
+      "description": "Target view node does not advertise requested accessibility action",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-action_not_supported",
+        "ok": false,
+        "reason_code": "action_not_supported",
+        "retryable": false,
+        "result": {
+          "requested_action": "setText",
+          "supported_actions": [
+            "click",
+            "focus"
+          ]
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000010,
+          "duration_ms": 10
+        }
+      }
+    },
+    "action_rejected": {
+      "description": "View system rejected performAction invocation",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-action_rejected",
+        "ok": false,
+        "reason_code": "action_rejected",
+        "retryable": false,
+        "result": {
+          "action": "click"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000025,
+          "duration_ms": 25
+        }
+      }
+    },
+    "gesture_cancelled": {
+      "description": "AccessibilityService dispatchGesture was cancelled by window manager",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-gesture_cancelled",
+        "ok": false,
+        "reason_code": "gesture_cancelled",
+        "retryable": true,
+        "result": {},
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000100,
+          "duration_ms": 100
+        }
+      }
+    },
+    "screen_not_changed": {
+      "description": "Action executed but screen state did not change within verification window",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-screen_not_changed",
+        "ok": false,
+        "reason_code": "screen_not_changed",
+        "retryable": true,
+        "result": {
+          "hash": "sha256:7f83b165..."
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000001000,
+          "duration_ms": 1000
+        }
+      }
+    },
+    "unexpected_screen": {
+      "description": "Screen transition arrived at unrecognized or unexpected activity state",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-unexpected_screen",
+        "ok": false,
+        "reason_code": "unexpected_screen",
+        "retryable": false,
+        "result": {
+          "observed_fingerprint": "screen_checkpoint_challenge"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000850,
+          "duration_ms": 850
+        }
+      }
+    },
+    "blocked_dialog": {
+      "description": "Target action blocked by system overlay or permission dialog",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-blocked_dialog",
+        "ok": false,
+        "reason_code": "blocked_dialog",
+        "retryable": false,
+        "result": {
+          "blocking_package": "com.google.android.permissioncontroller"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000030,
+          "duration_ms": 30
+        }
+      }
+    },
+    "timeout": {
+      "description": "Operation exceeded allocated deadline without satisfying conditions",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-timeout",
+        "ok": false,
+        "reason_code": "timeout",
+        "retryable": true,
+        "result": {
+          "timeout_ms": 5000
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000005010,
+          "duration_ms": 5010
+        }
+      }
+    },
+    "cancelled": {
+      "description": "Operation explicitly cancelled via cancelAction command",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-cancelled",
+        "ok": false,
+        "reason_code": "cancelled",
+        "retryable": false,
+        "result": {
+          "cancellation_reason": "user_abort"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000150,
+          "duration_ms": 150
+        }
+      }
+    },
+    "device_busy": {
+      "description": "Device is executing concurrent critical section or gesture playback",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-device_busy",
+        "ok": false,
+        "reason_code": "device_busy",
+        "retryable": true,
+        "result": {
+          "active_operation": "actAndVerify"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000005,
+          "duration_ms": 5
+        }
+      }
+    },
+    "submit_barrier": {
+      "description": "Destructive or financial action held by barrier policy requiring confirmation",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-submit_barrier",
+        "ok": false,
+        "reason_code": "submit_barrier",
+        "retryable": false,
+        "result": {
+          "barrier_type": "post_confirmation"
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000015,
+          "duration_ms": 15
+        }
+      }
+    },
+    "screenshot_failed": {
+      "description": "Display capture API failed to capture bitmap",
+      "retryable": true,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-screenshot_failed",
+        "ok": false,
+        "reason_code": "screenshot_failed",
+        "retryable": true,
+        "result": {
+          "display_id": 0
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000300,
+          "duration_ms": 300
+        }
+      }
+    },
+    "protocol_mismatch": {
+      "description": "Requested protocol version is not supported by agent runtime",
+      "retryable": false,
+      "sample_response": {
+        "protocol_version": 2,
+        "request_id": "req-err-protocol_mismatch",
+        "ok": false,
+        "reason_code": "protocol_mismatch",
+        "retryable": false,
+        "result": {
+          "supported_versions": [
+            1,
+            2
+          ],
+          "received_version": 3
+        },
+        "timing": {
+          "started_at_ms": 1728000000000,
+          "completed_at_ms": 1728000000002,
+          "duration_ms": 2
+        }
+      }
+    }
+  }
+}

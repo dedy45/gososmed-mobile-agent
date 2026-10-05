@@ -93,15 +93,15 @@ Legenda kolom **T**: `A` = accessibility cukup, `S` = butuh shell (ADB),
 |---|---|---|---|---|
 | 1 | `ping` | — | `{pong}` | A |
 | 2 | `capabilities` | — | lihat §5 | A |
-| 3 | `dump` | — | `{xml, package}` | A |
-| 4 | `dumpWindows` | — | `{windows[], activePackage}` | A |
+| 3 | `dump` **[DEPRECATED for new app cards; retained for backward compatibility]** | — | `{xml, package}` | A |
+| 4 | `dumpWindows` **[DEPRECATED for new app cards; retained for backward compatibility]** | — | `{windows[], activePackage}` | A |
 | 5 | `package` | — | `{package}` | A |
 | 6 | `startApp` | `package`, `activity?` | `{ok, package, foreground, transport, reason?}` | A→S |
 | 7 | `killApp` | `package` | `{ok, mode, force_stop, transport}` | A→S |
-| 8 | `tap` | `x`, `y` | `{ok}` | A→S |
-| 9 | `tapByText` | `text` | `{ok}` | A |
-| 10 | `tapFirstClickable` | — | `{ok, bounds?}` | A |
-| 11 | `setText` | `text` | `{ok}` | A |
+| 8 | `tap` **[DEPRECATED for new app cards; retained for backward compatibility]** | `x`, `y` | `{ok}` | A→S |
+| 9 | `tapByText` **[DEPRECATED for new app cards; retained for backward compatibility]** | `text` | `{ok}` | A |
+| 10 | `tapFirstClickable` **[DEPRECATED for new app cards; retained for backward compatibility]** | — | `{ok, bounds?}` | A |
+| 11 | `setText` **[DEPRECATED for new app cards; retained for backward compatibility]** | `text` | `{ok}` | A |
 | 12 | `back` | — | `{ok}` | A |
 | 13 | `home` | — | `{ok}` | A |
 | 14 | `recents` | — | `{ok}` | A |
@@ -109,7 +109,7 @@ Legenda kolom **T**: `A` = accessibility cukup, `S` = butuh shell (ADB),
 | 16 | `wake` | — | `{ok}` | A→S |
 | 17 | `hasPackage` | `package` | `{installed}` | A |
 | 18 | `listPackages` | — | `{packages[]}` | A |
-| 19 | `screenshot` | `scale?`, `format?`, `quality?` | `{format, data}` | A |
+| 19 | `screenshot` **[DEPRECATED for new app cards; retained for backward compatibility]** | `scale?`, `format?`, `quality?` | `{format, data}` | A |
 | 20 | `shell` | `command`, `timeoutMs?` | `{ok, exit_code, stdout, stderr, transport, reason?}` | S |
 | 21 | **`adbPair`** (baru) | `host`, `port`, `code` | `{ok, paired, adb_connected, reason?}` | — |
 | ~~—~~ | ~~`shizukuRequest`~~ | — | **DIHAPUS** | — |
@@ -175,6 +175,15 @@ Konsekuensi untuk backend/frontend:
 - **Kegagalan `result.ok = false` bersifat terminal untuk percobaan itu** —
   `reason` menjelaskan sebabnya (`adb_pair_failed` kode salah/kedaluwarsa,
   `adb_auth_failed` kunci ditolak, dst).
+
+### 3.3 Kebijakan Deprecasi Command Legacy (v1)
+
+Command legacy berikut ditandai sebagai **[DEPRECATED for new app cards; retained for backward compatibility]**:
+- `dump` & `dumpWindows`: digantikan oleh `observe` (Protocol v2) yang mengumpulkan multi-window hierarchy, orientasi, display metrics, screen fingerprint, dan tree hash secara terkoordinasi.
+- `tap`, `tapByText`, `tapFirstClickable`, `setText`: digantikan oleh kombinasi `resolve` + `actNode` / `actAndVerify` (Protocol v2) yang deterministik, memiliki scoring kandidat, proteksi ambiguitas (zero ambiguous taps), resolusi clickable ancestor, dan verifikasi transisi settle.
+- `screenshot`: digantikan oleh synchronized frame capture di dalam `observe` dan streaming preview terkuantisasi via `startDebugFrames` / `stopDebugFrames`.
+
+**Kompatibilitas:** Seluruh command legacy tetap berfungsi penuh pada APK untuk memastikan alur kartu aplikasi lama tidak rusak. Namun, seluruh kartu aplikasi produksi baru WAJIB menggunakan command Protocol Version 2 (§10).
 
 ---
 
@@ -354,3 +363,140 @@ Ini pernah bocor di produksi (dua akun Instagram `active` bersamaan).
 | 8 | `shell` dengan biner di luar daftar putih | `reason=blocked`, tidak dieksekusi |
 | 9 | Dua akun platform sama dibuat | yang kedua ditolak (invarian §8) |
 | 10 | `grep -ri shizuku` pada APK | 0 hasil |
+
+---
+
+## 10. Protocol Version 2 — Deterministic Android Portal
+
+Protokol Version 2 dirancang untuk mengatasi kelemahan dan non-determinisme pada protokol v1 (seperti envelope yang kontradiktif, tap berbasis teks tanpa scoring, tidak adanya sinkronisasi antara hierarchy dan screenshot, serta tidak adanya proteksi ambiguitas).
+
+### 10.1 Request Envelope Schema (v2)
+
+Setiap request dari server ke APK pada Protocol v2 memiliki format:
+
+```json
+{
+  "protocol_version": 2,
+  "request_id": "req-uuid-or-ulid",
+  "cmd": "observe",
+  "deadline_ms": 10000,
+  "args": {}
+}
+```
+
+| Field | Tipe | Keterangan |
+|---|---|---|
+| `protocol_version` | integer | Bernilai `2` untuk protokol v2. Jika tidak ada atau bernilai `1`, ditangani sebagai legacy v1. |
+| `request_id` | string | ID unik per request (UUID/ULID). Wajib di-echo kembali pada response. |
+| `cmd` | string | Nama command canonical v2. |
+| `deadline_ms` | long | Batas waktu eksekusi dalam milidetik (default 10000ms). APK memeriksa deadline sebelum langkah mahal. |
+| `args` | object | Parameter spesifik command. |
+
+### 10.2 Response Envelope Schema (v2)
+
+Setiap response dari APK ke server pada Protocol v2 memiliki format:
+
+```json
+{
+  "protocol_version": 2,
+  "request_id": "req-uuid-or-ulid",
+  "ok": true,
+  "retryable": false,
+  "result": {},
+  "timing": {
+    "started_at_ms": 1728000000000,
+    "completed_at_ms": 1728000000150,
+    "duration_ms": 150
+  }
+}
+```
+
+Bila terjadi kegagalan (`ok: false`):
+
+```json
+{
+  "protocol_version": 2,
+  "request_id": "req-uuid-or-ulid",
+  "ok": false,
+  "reason_code": "ambiguous",
+  "retryable": false,
+  "result": {},
+  "timing": {
+    "started_at_ms": 1728000000000,
+    "completed_at_ms": 1728000000020,
+    "duration_ms": 20
+  }
+}
+```
+
+### 10.3 Aturan Integritas Envelope (Invariant)
+
+1. **Top-level `ok` adalah kebenaran final (ground truth):** Tidak ada lagi pola v1 di mana outer `ok: true` namun aksi internal gagal.
+2. **`reason_code` WAJIB saat `ok == false`:** Jika perintah gagal, `reason_code` kanonikal harus disertakan; sebaliknya saat `ok == true`, `reason_code` wajib bernilai null / tidak disertakan.
+3. **Nested `result.ok` dilarang bertentangan:** Jika objek `result` memiliki field `ok`, nilainya tidak boleh berbeda dari top-level `ok`. Pelanggaran memicu `IllegalArgumentException` pada parser APK.
+4. **Request tanpa versi:** Request tanpa `protocol_version` diproses oleh adapter v1 demi kompatibilitas mundur.
+5. **Versi tidak didukung:** Versi selain 1 dan 2 ditolak seketika dengan `reason_code: "protocol_mismatch"`.
+
+### 10.4 Command Baru Protocol Version 2
+
+| Command | Argumen Utama | Hasil Utama (`result`) | Deskripsi |
+|---|---|---|---|
+| `observe` | `include_nodes`, `include_image`, `max_depth` | `snapshot_id`, `display`, `foreground`, `tree_hash`, `screen_fingerprint`, `quality`, `nodes[]`, `image` | Mengumpulkan multi-window hierarchy, orientasi, display metrics, hash integritas, dan screenshot tersinkronisasi. |
+| `resolve` | `snapshot_id`, `selector`, `ambiguity_threshold` | `candidates[]`, `selected_node_id`, `ambiguity_state`, `clickable_ancestor_id` | Menilai kandidat node dengan 8 tier selektor dan berhenti aman bila ambigu (zero ambiguous taps). |
+| `actNode` | `snapshot_id`, `node_id`, `action`, `postcondition_settle_ms` | `action`, `action_type`, `performed`, `settled` | Menjalankan aksi native (`ACTION_CLICK`, `ACTION_SET_TEXT`, dll.) atau fallback gesture terukur pada node yang sudah teresolusi. |
+| `actAndVerify` | `snapshot_id`, `node_id`, `action`, `expected_screen`, `settle_timeout_ms` | `action_performed`, `verified`, `before_snapshot_id`, `after_snapshot_id`, `screen_fingerprint` | Menjalankan aksi dan memverifikasi transisi layar telah settle sebelum menyatakan sukses. |
+| `waitForNode` | `selector`, `timeout_ms`, `interval_ms` | `found`, `node_id`, `snapshot_id`, `elapsed_ms` | Polling hierarki sampai node dengan kriteria selektor muncul di layar atau batas waktu habis. |
+| `waitForScreen` | `target_package`, `fingerprint`, `timeout_ms` | `matched`, `current_package`, `screen_fingerprint`, `elapsed_ms` | Polling transisi sampai layar dan paket aplikasi target stabil sesuai fingerprint. |
+| `cancelAction` | `target_request_id` | `cancelled` (boolean) | Membatalkan aksi asinkron in-flight (`waitForNode`, `waitForScreen`, `actNode`). Bila target aktif ditemukan di memori, mengembalikan `{"cancelled": true}` dan target abort seketika dengan `reason_code: "cancelled"`. Bila target tidak ditemukan/selesai, mengembalikan `{"cancelled": false}`. |
+| `startDebugFrames` | `fps`, `format`, `quality`, `scale`, `session_id` | `status: "started"`, `queue_stats` | Memulai streaming frame debug downsampled (antrean terbatas kapasitas minimum 1, in-memory ByteArray, drop-oldest, eviksi ACK kadaluwarsa, zero disk write). |
+| `stopDebugFrames` | (opsional) | `status: "stopped"`, `queue_stats` | Menghentikan sesi streaming frame debug dan membersihkan antrean. |
+
+### 10.5 Daftar 18 Kode Alasan Kanonikal (Canonical Reason Codes)
+
+| Kode `reason_code` | Retryable | Keterangan & Kondisi Terjadi |
+|---|---|---|
+| `no_node` | Tidak | Tidak ditemukan node yang cocok dengan selektor pada snapshot aktif. |
+| `ambiguous` | Tidak | Dua atau lebih kandidat node memiliki skor terlalu dekat dalam ambang batas ambiguitas (mencegah klik salah target). |
+| `invalid_bounds` | Tidak | Bounding box node target bernilai negatif, 0x0, atau berada sepenuhnya di luar layar. |
+| `stale_snapshot` | Ya | Snapshot ID yang dirujuk request sudah usang (layar telah berubah atau snapshot baru telah dibuat). |
+| `wrong_package` | Tidak | Foreground package saat eksekusi berbeda dari paket aplikasi target yang disyaratkan. |
+| `unstable_tree` | Ya | Hierarki pohon aksesibilitas berubah-ubah di tengah pembacaan (animasi atau loading). |
+| `action_not_supported` | Tidak | Node view tidak mendukung aksi aksesibilitas yang diminta (misal: mencoba setText pada node non-editable). |
+| `action_rejected` | Tidak | Sistem UI view menolak eksekusi `performAction()`. |
+| `gesture_cancelled` | Ya | Injeksi gesture aksesibilitas dibatalkan oleh WindowManager. |
+| `screen_not_changed` | Ya | Aksi telah dijalankan namun tampilan layar dan fingerprint tidak berubah pasca settle window. |
+| `unexpected_screen` | Tidak | Layar berpindah ke activity atau dialog checkpoint yang tidak diharapkan. |
+| `blocked_dialog` | Tidak | Interaksi terhalang oleh dialog sistem OS, izin runtime, atau overlay keamanan. |
+| `timeout` | Ya | Batas waktu operasi (deadline) terlampaui sebelum kondisi terpenuhi. |
+| `cancelled` | Tidak | Operasi dibatalkan secara eksplisit oleh server melalui perintah `cancelAction`. |
+| `device_busy` | Ya | Perangkat sedang menjalankan operasi kritis lain atau gesture playback concurrently. |
+| `submit_barrier` | Tidak | Aksi destruktif/finansial ditahan oleh kebijakan barrier dan memerlukan otorisasi eksplisit. |
+| `screenshot_failed` | Ya | Pengambilan tangkapan layar bitmap display gagal pada tingkat sistem. |
+| `protocol_mismatch` | Tidak | Versi protokol yang diminta tidak didukung oleh runtime APK. |
+
+
+### 10.6 SnapshotRegistry Lifecycle & Stale Snapshot Invariant
+
+1. **Kapasitas & Retensi (LRU):** Snapshot disimpan dalam cache memori berkapasitas 5 entri dengan TTL 30 detik (`SnapshotRegistry`).
+2. **Pendaftaran Otomatis:** Setiap eksekusi `observe` secara otomatis mendaftarkan snapshot baru dan memperbarui `latestSnapshotId`.
+3. **Penolakan Snapshot Kadaluarsa:** Perintah mutasi (`actNode`, `actAndVerify`) mewajibkan `snapshot_id`. Bila ID tidak ditemukan atau telah berumur lebih dari 30 detik, perintah ditolak seketika dengan `reason_code: "stale_snapshot"` (`retryable: true`).
+4. **Verifikasi Integritas Pohon (`expectedTreeHash`):** Perintah `actNode` memvalidasi `treeHash` sebelum aksi dieksekusi terhadap hash snapshot yang didaftarkan. Bila layar telah bergeser/berubah sebelum klik dieksekusi, perintah ditolak dengan `stale_snapshot`.
+
+### 10.7 Durable Submit Barrier & Idempotency Key
+
+1. **Barrier Operasi Finansial / Destruktif:** Untuk aksi submit formulir atau pos publikasi, request menyertakan `operation_id` (atau `idempotency_key`) dan/atau `is_submit: true`.
+2. **Pencegahan Replay Lintas Request ID:** `MutationGuard` mencatat `operation_id` ke dalam tabel in-memory dengan retensi TTL 10 menit (`SUBMIT_TTL_MS = 600000`).
+3. **Penolakan Duplikasi:** Jika client mengulang permintaan yang sama menggunakan `request_id` baru tetapi membawa `operation_id` yang sama, perintah kedua ditolak seketika dengan `reason_code: "submit_barrier"` (`retryable: false`).
+4. **Single Mutation Lock:** Maksimal hanya satu aksi mutasi aktif diperbolehkan per perangkat. Request mutasi konkuren yang datang bersamaan ditolak dengan `reason_code: "device_busy"` (`retryable: true`).
+### 10.8 Handshake Kapabilitas Protokol
+
+APK melaporkan dukungan protokol secara eksplisit kepada server melalui array `protocol_versions`:
+- **WebSocket Hello (`register`):** Pesan registrasi menyertakan field `"protocol_versions": [1, 2]`.
+- **Command `capabilities`:** Snapshot kapabilitas menyertakan field `"protocol_versions": [1, 2]`.
+
+### 10.9 Rujukan Fixture Netral (JSON Contracts)
+
+Spesifikasi data lengkap, payload request/response, dan skenario pengujian disimpan secara netral di:
+- `docs/contracts/v1-fixtures.json` : Fixture lengkap command legacy v1 (termasuk kasus kegagalan dan envelope kontradiktif).
+- `docs/contracts/v2-fixtures.json` : Fixture lengkap Protocol Version 2 untuk seluruh command baru dan ke-18 canonical reason codes.
+- `docs/contracts/capability-fixture.json` : Snapshot referensi respon `capabilities` aktual dengan `protocol_versions: [1, 2]`.

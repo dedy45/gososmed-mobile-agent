@@ -40,31 +40,37 @@ class AgentReceiver : BroadcastReceiver() {
             Log.w("GoAgent", "CMD broadcast ditolak: build release tidak menerima broadcast lokal (P0-2)")
             return
         }
-        val cmd = intent.getStringExtra("cmd") ?: return
-        val req = JSONObject().put("cmd", cmd)
-        intent.getStringExtra("text")?.let { req.put("text", it) }
-        intent.getStringExtra("package")?.let { req.put("package", it) }
-        if (intent.hasExtra("x")) req.put("x", intent.getIntExtra("x", -1))
-        if (intent.hasExtra("y")) req.put("y", intent.getIntExtra("y", -1))
+        val req = if (intent.hasExtra("json_file")) {
+            val path = intent.getStringExtra("json_file")!!
+            JSONObject(java.io.File(path).readText(Charsets.UTF_8))
+        } else if (intent.hasExtra("json")) {
+            JSONObject(intent.getStringExtra("json")!!)
+        } else {
+            val cmd = intent.getStringExtra("cmd") ?: return
+            val r = JSONObject().put("cmd", cmd)
+            intent.getStringExtra("text")?.let { r.put("text", it) }
+            intent.getStringExtra("package")?.let { r.put("package", it) }
+            if (intent.hasExtra("x")) r.put("x", intent.getIntExtra("x", -1))
+            if (intent.hasExtra("y")) r.put("y", intent.getIntExtra("y", -1))
+            r
+        }
+        val cmdTag = req.optString("cmd", if (req.has("protocol_version")) "v2_${req.optString("cmd")}" else "unknown")
 
         // onReceive is limited to ~10s; run the (possibly slow) dump on a
         // background thread and finish() via goAsync. The service may still
         // be binding, so wait until it is ready (up to ~3s).
         val pending = goAsync()
+        pending.finish()
         Thread {
-            try {
-                var ready = AgentAccessibilityService.instance?.isServiceReady() == true
-                var attempts = 0
-                while (!ready && attempts < 6) {
-                    Thread.sleep(500)
-                    attempts++
-                    ready = AgentAccessibilityService.instance?.isServiceReady() == true
-                }
-                val resp = AgentCommand.execute(req)
-                ResultStore.write(context, cmd, resp.toString())
-            } finally {
-                pending.finish()
+            var ready = AgentAccessibilityService.instance?.isServiceReady() == true
+            var attempts = 0
+            while (!ready && attempts < 6) {
+                Thread.sleep(500)
+                attempts++
+                ready = AgentAccessibilityService.instance?.isServiceReady() == true
             }
+            val resp = AgentCommand.execute(req)
+            ResultStore.write(context, cmdTag, resp.toString())
         }.start()
     }
 

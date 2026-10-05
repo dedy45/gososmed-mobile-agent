@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -24,7 +25,7 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-
+import okio.ByteString.Companion.toByteString
 /**
  * Outbound WebSocket client to the GoSosmed agenthub.
  *
@@ -76,6 +77,59 @@ class AgentWsClient(
     private var ws: WebSocket? = null
     private var reconnectJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var debugStreamingJob: Job? = null
+    private var debugSessionId: String? = null
+
+    private fun stopDebugStreaming() {
+        debugStreamingJob?.cancel()
+        debugStreamingJob = null
+        debugSessionId = null
+    }
+
+    private fun startDebugStreaming(webSocket: WebSocket, args: JSONObject, requestId: String) {
+        val fps = args.optInt("fps", 3).coerceIn(1, 10)
+        val quality = args.optInt("quality", 70).coerceIn(10, 100)
+        val scale = args.optDouble("scale", 0.5).toFloat().coerceIn(0.2f, 1.0f)
+        val format = args.optString("format", "jpeg")
+        val sessionId = args.optString("session_id", requestId.ifEmpty { "debug-stream" })
+
+        stopDebugStreaming()
+        debugSessionId = sessionId
+
+        var frameSeq = 1L
+        debugStreamingJob = scope.launch {
+            while (isActive) {
+                AgentCommand.debugFrameQueue.evictExpiredAcks()
+                val svc = AgentAccessibilityService.instance
+                if (svc != null) {
+                    val (bytes, width, height) = svc.takeScreenshotRawBytes(scale, format, quality)
+                    if (bytes != null) {
+                        val binMsgId = "debug-$sessionId-$frameSeq"
+                        val meta = DebugFrameEncoder.FrameMetadata(
+                            binaryMessageId = binMsgId,
+                            frameSeq = frameSeq++,
+                            timestampMs = System.currentTimeMillis(),
+                            format = format,
+                            width = width,
+                            height = height,
+                            quality = quality,
+                            byteLength = bytes.size
+                        )
+                        AgentCommand.debugFrameQueue.enqueue(bytes, meta)
+                        val polled = AgentCommand.debugFrameQueue.poll()
+                        if (polled != null) {
+                            try {
+                                webSocket.send(polled.data.toByteString())
+                            } catch (t: Throwable) {
+                                Log.w(TAG, "send debug frame error: ${t.message}", t)
+                            }
+                        }
+                    }
+                }
+                delay(1000L / fps)
+            }
+        }
+    }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var closed = false
     private var rejected = false // M2: pairing ditolak → stop reconnect loop
@@ -104,6 +158,8 @@ class AgentWsClient(
         rejected = false
         connecting = false
         unregisterNetwork()
+        stopDebugStreaming()
+        AgentCommand.debugFrameQueue.clear()
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
         ws?.close(1000, "client stop")
@@ -178,12 +234,50 @@ class AgentWsClient(
                         }
                         return
                     }
+                    // Server frame acknowledgment handling
+                    if (obj.optString("type") == "ack_frame" || obj.optString("cmd") == "ack_frame") {
+                        val binId = obj.optString("binary_message_id", obj.optString("id", ""))
+                        if (binId.isNotEmpty()) {
+                            AgentCommand.debugFrameQueue.acknowledge(binId)
+                        }
+                        return
+                    }
                     connected = true
                     // Inbound command from the agenthub (has a cmd field): this
                     // is the server demanding we act (dump/tap/setText/back/...).
                     // Execute it and reply — this is the whole point of P1.
                     // Accessibility API must run on the main thread, so we post
                     // the execution there (webSocket.send is thread-safe).
+                    // Protocol V2 routing: execute in coroutine background scope to avoid blocking main looper
+                    if (obj.has("protocol_version") && obj.optInt("protocol_version") == 2) {
+                        scope.launch {
+                            try {
+                                val resp = AgentCommand.executeV2(obj)
+                                webSocket.send(resp.toString())
+
+                                val cmdName = obj.optString("cmd", "")
+                                val args = obj.optJSONObject("args") ?: JSONObject()
+                                val reqId = obj.optString("request_id", "")
+
+                                if (cmdName == ProtocolV2.Commands.START_DEBUG_FRAMES) {
+                                    startDebugStreaming(webSocket, args, reqId)
+                                } else if (cmdName == ProtocolV2.Commands.STOP_DEBUG_FRAMES) {
+                                    stopDebugStreaming()
+                                } else if (cmdName == ProtocolV2.Commands.OBSERVE) {
+                                    var queued = AgentCommand.debugFrameQueue.poll()
+                                    while (queued != null) {
+                                        webSocket.send(queued.data.toByteString())
+                                        AgentCommand.debugFrameQueue.acknowledge(queued.metadata.binaryMessageId)
+                                        queued = AgentCommand.debugFrameQueue.poll()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "cmd exec (v2) error", e)
+                            }
+                        }
+                        return
+                    }
+
                     if (obj.has("cmd")) {
                         val cmdName = obj.optString("cmd", "")
                         if (cmdName in AgentCommand.SERVICE_FREE_COMMANDS) {
@@ -251,11 +345,14 @@ class AgentWsClient(
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                stopDebugStreaming()
                 webSocket.close(code, reason)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "ws failure: ${t.message}")
+                stopDebugStreaming()
+                AgentCommand.debugFrameQueue.clear()
                 connecting = false
                 connected = false
                 onStatus("disconnected (${t.message ?: "?"})")
@@ -264,6 +361,8 @@ class AgentWsClient(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                stopDebugStreaming()
+                AgentCommand.debugFrameQueue.clear()
                 connecting = false
                 connected = false
                 onStatus("closed")
@@ -287,6 +386,7 @@ class AgentWsClient(
             .put("id", id)
             .put("device_id", deviceId)
             .put("pairing_code", pairingCode)
+            .put("protocol_versions", org.json.JSONArray(listOf(1, 2)))
             .put("device_info", JSONObject()
                 .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
                 .put("android_ver", Build.VERSION.RELEASE ?: "")

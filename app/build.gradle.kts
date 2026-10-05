@@ -36,11 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 28 = v0.9.10 (STABIL) — stabilisasi deteksi Langkah 1 & 2,
-        // auto-update GitHub Release fetcher & SemVer fix, ASYNC background automation,
-        // drop broken setup-android di release.yml, capabilities SERVICE_FREE.
-        versionCode = 28
-        versionName = "0.9.10"
+        // versionCode 30 = v1.0.0 (STABIL) — Deterministic Android Portal (Protocol v2),
+        // dual-engine hybrid architecture, strict safety barriers, production release.
+        versionCode = 30
+        versionName = "1.0.0"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

@@ -6,6 +6,8 @@ import com.gososmed.agent.privileged.AdbPairingController
 import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 
 /**
  * Command protocol between the GoSosmed agenthub (server) and the agent.
@@ -24,6 +26,8 @@ import org.json.JSONObject
  *          : { "id": 1, "ok": false, "error": "..." }
  */
 object AgentCommand {
+    val debugFrameQueue = DebugFrameEncoder.BoundedFrameQueue(maxCapacity = 5)
+
 
     const val CMD_DUMP = "dump"
     const val CMD_TAP = "tap"
@@ -104,6 +108,24 @@ object AgentCommand {
 
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
+        // Protocol V2 routing
+        if (req.has("protocol_version")) {
+            val version = req.optInt("protocol_version", ProtocolV2.LEGACY_VERSION)
+            val requestId = req.optString("request_id", "")
+            if (version > ProtocolV2.CURRENT_VERSION || version < ProtocolV2.LEGACY_VERSION) {
+                return ProtocolV2.Response.protocolMismatch(requestId, version).toJson()
+            }
+            if (version == ProtocolV2.CURRENT_VERSION && requestId.isBlank()) {
+                return ProtocolV2.Response.error(
+                    requestId = "",
+                    reasonCode = ProtocolV2.ReasonCodes.ACTION_REJECTED,
+                    result = JSONObject().apply { put("error", "missing_or_blank_request_id") }
+                ).toJson()
+            }
+            if (version == ProtocolV2.CURRENT_VERSION) {
+                return runBlocking { executeV2(req) }
+            }
+        }
         val id = req.optInt("id", -1)
         val cmd = req.optString("cmd", "")
         val resp = JSONObject()
@@ -179,6 +201,433 @@ object AgentCommand {
         }
         AgentLog.add(cmd, ok, ms, dataDetail(cmd, result))
         return result
+    }
+
+    /**
+     * Dispatches Protocol V2 commands (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
+     */
+    suspend fun executeV2(req: JSONObject): JSONObject {
+        val startTime = System.currentTimeMillis()
+        val v2Req = ProtocolV2.Request.fromJson(req)
+        val requestId = v2Req.requestId
+        val cmd = v2Req.cmd
+        val args = v2Req.args
+        if (requestId.isBlank()) {
+            val timing = ProtocolV2.Timing.create(startTime)
+            return ProtocolV2.Response.error(
+                requestId = "",
+                reasonCode = ProtocolV2.ReasonCodes.ACTION_REJECTED,
+                result = JSONObject().apply { put("error", "missing_or_blank_request_id") },
+                timing = timing
+            ).toJson()
+        }
+
+        val registered = CommandCancellationRegistry.register(requestId, v2Req.deadlineMs, startTime)
+        if (!registered) {
+            val timing = ProtocolV2.Timing.create(startTime)
+            return ProtocolV2.Response.error(
+                requestId = requestId,
+                reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                result = JSONObject().apply { put("error", "duplicate_request_id_in_flight") },
+                timing = timing
+            ).toJson()
+        }
+
+        try {
+            return when (cmd) {
+                ProtocolV2.Commands.CANCEL_ACTION -> {
+                    val targetId = args.optString("target_request_id", requestId).ifBlank { requestId }
+                    val cancelled = CommandCancellationRegistry.cancel(targetId)
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    ProtocolV2.Response.success(
+                        requestId = requestId,
+                        result = JSONObject().apply { put("cancelled", cancelled) },
+                        timing = timing
+                    ).toJson()
+                }
+
+                ProtocolV2.Commands.START_DEBUG_FRAMES, ProtocolV2.Commands.STOP_DEBUG_FRAMES -> {
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    ProtocolV2.Response.success(
+                        requestId = requestId,
+                        result = JSONObject().apply {
+                            put("status", if (cmd == ProtocolV2.Commands.START_DEBUG_FRAMES) "started" else "stopped")
+                            put("queue_stats", debugFrameQueue.stats().toJson())
+                        },
+                        timing = timing
+                    ).toJson()
+                }
+
+
+                ProtocolV2.Commands.OBSERVE -> {
+                    val svc = AgentAccessibilityService.instance
+                    if (svc == null) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                            result = JSONObject().apply { put("error", "accessibility_not_ready") },
+                            timing = timing
+                        ).toJson()
+                    }
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+                    val includeScreenshot = args.optBoolean("screenshot", false)
+                    var image: SnapshotImage? = null
+                    if (includeScreenshot) {
+                        val scale = args.optDouble("scale", 0.5).toFloat()
+                        val format = args.optString("format", "jpeg")
+                        val quality = args.optInt("quality", 75)
+                        val (bytes, width, height) = svc.takeScreenshotRawBytes(scale, format, quality)
+                        if (bytes != null) {
+                            val binMsgId = "snap-img-$requestId"
+                            image = SnapshotImage(
+                                format = format,
+                                width = width,
+                                height = height,
+                                quality = quality,
+                                binaryMessageId = binMsgId
+                            )
+                            // Stage frame in bounded queue if needed
+                            val meta = DebugFrameEncoder.FrameMetadata(
+                                binaryMessageId = binMsgId,
+                                frameSeq = 1L,
+                                timestampMs = System.currentTimeMillis(),
+                                format = format,
+                                width = width,
+                                height = height,
+                                quality = quality,
+                                byteLength = bytes.size
+                            )
+                            debugFrameQueue.enqueue(bytes, meta)
+                        }
+                    }
+                    val snapshot = SnapshotCollector.capture(
+                        displayProvider = displayProvider,
+                        treeSource = treeSource,
+                        image = image
+                    )
+                    SnapshotRegistry.register(snapshot)
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    ProtocolV2.Response.success(
+                        requestId = requestId,
+                        result = snapshot.toJson(),
+                        timing = timing
+                    ).toJson()
+                }
+
+                ProtocolV2.Commands.RESOLVE -> {
+                    val snapshotId = if (args.has("snapshot_id")) args.getString("snapshot_id") else null
+                    val registeredSnapshot = if (snapshotId != null) {
+                        val snap = SnapshotRegistry.get(snapshotId)
+                        if (snap == null) {
+                            val timing = ProtocolV2.Timing.create(startTime)
+                            return ProtocolV2.Response.error(
+                                requestId = requestId,
+                                reasonCode = ProtocolV2.ReasonCodes.STALE_SNAPSHOT,
+                                result = JSONObject().apply {
+                                    put("error", "snapshot_not_found_or_expired")
+                                    put("snapshot_id", snapshotId)
+                                },
+                                timing = timing
+                            ).toJson()
+                        }
+                        snap
+                    } else null
+
+                    val query = if (args.has("selector")) SelectorQuery.fromJson(args.getJSONObject("selector")) else SelectorQuery.fromJson(args)
+                    val nodesList = mutableListOf<SnapshotNode>()
+                    if (args.has("nodes")) {
+                        val rawNodesArr = args.optJSONArray("nodes") ?: org.json.JSONArray()
+                        for (i in 0 until rawNodesArr.length()) {
+                            nodesList.add(SnapshotNode.fromJson(rawNodesArr.getJSONObject(i)))
+                        }
+                    } else if (registeredSnapshot != null) {
+                        nodesList.addAll(registeredSnapshot.nodes)
+                    } else {
+                        val latest = SnapshotRegistry.getLatest()
+                        if (latest != null) {
+                            nodesList.addAll(latest.nodes)
+                        }
+                    }
+
+                    val displayW = registeredSnapshot?.display?.width ?: 1080
+                    val displayH = registeredSnapshot?.display?.height ?: 2400
+                    val resolveResult = DeterministicResolver.resolve(
+                        query = query,
+                        nodes = nodesList,
+                        displayWidth = displayW,
+                        displayHeight = displayH
+                    )
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    if (resolveResult.reasonCode != null) {
+                        ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = resolveResult.reasonCode,
+                            result = JSONObject().apply { put("resolve_result", resolveResult.toJson()) },
+                            timing = timing
+                        ).toJson()
+                    } else {
+                        ProtocolV2.Response.success(
+                            requestId = requestId,
+                            result = JSONObject().apply { put("resolve_result", resolveResult.toJson()) },
+                            timing = timing
+                        ).toJson()
+                    }
+                }
+
+                ProtocolV2.Commands.ACT_NODE, ProtocolV2.Commands.ACT_AND_VERIFY -> {
+                    val snapshotId = if (args.has("snapshot_id")) args.getString("snapshot_id") else null
+                    if (snapshotId.isNullOrEmpty()) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.STALE_SNAPSHOT,
+                            result = JSONObject().apply { put("error", "missing_mandatory_snapshot_id") },
+                            timing = timing
+                        ).toJson()
+                    }
+                    val refSnapshot = SnapshotRegistry.get(snapshotId)
+                    if (refSnapshot == null) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.STALE_SNAPSHOT,
+                            result = JSONObject().apply {
+                                put("error", "snapshot_not_found_or_expired")
+                                put("snapshot_id", snapshotId)
+                            },
+                            timing = timing
+                        ).toJson()
+                    }
+
+                    val isSubmit = args.optBoolean("is_submit", false)
+                    val opId = if (args.has("operation_id")) {
+                        args.getString("operation_id")
+                    } else if (args.has("idempotency_key")) {
+                        args.getString("idempotency_key")
+                    } else {
+                        null
+                    }
+                    val acquire = MutationGuard.tryAcquireMutation(
+                        requestId = requestId,
+                        isSubmitAction = isSubmit,
+                        operationId = opId
+                    )
+                    if (!acquire.acquired) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = acquire.reasonCode ?: ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                            timing = timing
+                        ).toJson()
+                    }
+                    try {
+                        val svc = AgentAccessibilityService.instance
+                        if (svc == null) {
+                            val timing = ProtocolV2.Timing.create(startTime)
+                            return ProtocolV2.Response.error(
+                                requestId = requestId,
+                                reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                                result = JSONObject().apply { put("error", "accessibility_not_ready") },
+                                timing = timing
+                            ).toJson()
+                        }
+
+                        val selector = if (args.has("selector")) SelectorQuery.fromJson(args.getJSONObject("selector")) else SelectorQuery()
+                        val postQuery = if (args.has("postcondition")) SelectorQuery.fromJson(args.getJSONObject("postcondition")) else null
+                        val allowGesture = args.optBoolean("allow_gesture_fallback", true)
+                        val requireScreenChange = if (cmd == ProtocolV2.Commands.ACT_AND_VERIFY) true else args.optBoolean("require_screen_change", true)
+                        val expectedPackage = if (args.has("expected_package")) args.getString("expected_package") else null
+
+                        val actionReq = NodeActionExecutor.ActionRequest(
+                            requestId = requestId,
+                            selector = selector,
+                            action = args.optInt("action", NodeActionExecutor.ACTION_CLICK),
+                            actionArgs = if (args.has("action_args")) {
+                                val m = mutableMapOf<String, Any>()
+                                val jsonArgs = args.getJSONObject("action_args")
+                                val keys = jsonArgs.keys()
+                                while (keys.hasNext()) {
+                                    val k = keys.next()
+                                    m[k] = jsonArgs.get(k)
+                                }
+                                m
+                            } else null,
+                            expectedPackage = expectedPackage,
+                            postconditionQuery = postQuery,
+                            allowGestureFallback = allowGesture,
+                            requireScreenChange = requireScreenChange,
+                            timeoutMs = args.optLong("timeout_ms", 3000L),
+                            deadlineMs = v2Req.deadlineMs,
+                            expectedTreeHash = refSnapshot.treeHash
+                        )
+
+                        val dispatcher = NodeActionExecutor.AndroidActionDispatcher(svc)
+                        val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                        val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+
+                        val snapshotProvider: suspend () -> SnapshotResult = {
+                            SnapshotCollector.capture(
+                                displayProvider = displayProvider,
+                                treeSource = treeSource
+                            )
+                        }
+
+                        val response = NodeActionExecutor.executeAsync(
+                            request = actionReq,
+                            dispatcher = dispatcher,
+                            currentSnapshotProvider = snapshotProvider
+                        )
+                        response.toJson()
+                    } finally {
+                        MutationGuard.releaseMutation(requestId)
+                    }
+                }
+
+                ProtocolV2.Commands.WAIT_FOR_NODE -> {
+                    val svc = AgentAccessibilityService.instance
+                    if (svc == null) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                            result = JSONObject().apply { put("error", "accessibility_not_ready") },
+                            timing = timing
+                        ).toJson()
+                    }
+                    val selector = if (args.has("selector")) SelectorQuery.fromJson(args.getJSONObject("selector")) else SelectorQuery()
+                    val timeoutMs = args.optLong("timeout_ms", 5000L)
+                    val pollIntervalMs = args.optLong("poll_interval_ms", 100L)
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+
+                    var matchedNode: SnapshotNode? = null
+                    val loopDeadline = startTime + timeoutMs.coerceAtMost(v2Req.deadlineMs)
+
+                    while (System.currentTimeMillis() < loopDeadline) {
+                        if (CommandCancellationRegistry.isCancelled(requestId)) {
+                            val timing = ProtocolV2.Timing.create(startTime)
+                            return ProtocolV2.Response.error(
+                                requestId = requestId,
+                                reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                                timing = timing
+                            ).toJson()
+                        }
+                        val snap = SnapshotCollector.capture(displayProvider, treeSource)
+                        val resolveResult = DeterministicResolver.resolve(
+                            query = selector,
+                            nodes = snap.nodes,
+                            displayWidth = snap.display.width,
+                            displayHeight = snap.display.height
+                        )
+                        if (resolveResult.selectedNode != null && !resolveResult.isAmbiguous) {
+                            matchedNode = resolveResult.selectedNode
+                            break
+                        }
+                        if (CommandCancellationRegistry.isCancelled(requestId)) {
+                            val timing = ProtocolV2.Timing.create(startTime)
+                            return ProtocolV2.Response.error(
+                                requestId = requestId,
+                                reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                                timing = timing
+                            ).toJson()
+                        }
+                        if (pollIntervalMs > 0) {
+                            delay(pollIntervalMs)
+                        }
+                    }
+
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    if (matchedNode != null) {
+                        ProtocolV2.Response.success(
+                            requestId = requestId,
+                            result = JSONObject().apply {
+                                put("found", true)
+                                put("node", matchedNode.toJson())
+                            },
+                            timing = timing
+                        ).toJson()
+                    } else {
+                        ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+                            result = JSONObject().apply { put("found", false) },
+                            timing = timing
+                        ).toJson()
+                    }
+                }
+
+                ProtocolV2.Commands.WAIT_FOR_SCREEN -> {
+                    val svc = AgentAccessibilityService.instance
+                    if (svc == null) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                            result = JSONObject().apply { put("error", "accessibility_not_ready") },
+                            timing = timing
+                        ).toJson()
+                    }
+                    val timeoutMs = args.optLong("timeout_ms", 5000L)
+                    val pollIntervalMs = args.optLong("poll_interval_ms", 100L)
+                    val expectedPackage = if (args.has("expected_package")) args.getString("expected_package") else null
+                    val postQuery = if (args.has("postcondition")) SelectorQuery.fromJson(args.getJSONObject("postcondition")) else null
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+
+                    val beforeSnap = SnapshotCollector.capture(displayProvider, treeSource)
+                    val transition = ScreenTransitionVerifier.verifyTransitionAsync(
+                        beforeSnapshot = beforeSnap,
+                        expectedPackage = expectedPackage,
+                        postconditionQuery = postQuery,
+                        requireScreenChange = args.optBoolean("require_screen_change", false),
+                        timeoutMs = timeoutMs.coerceAtMost(v2Req.deadlineMs),
+                        pollIntervalMs = pollIntervalMs,
+                        isCancelled = { CommandCancellationRegistry.isCancelled(requestId) },
+                        snapshotProvider = {
+                            if (CommandCancellationRegistry.isCancelled(requestId)) {
+                                throw kotlinx.coroutines.CancellationException("cancelled")
+                            }
+                            SnapshotCollector.capture(displayProvider, treeSource)
+                        }
+                    )
+
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    if (transition.isSettled) {
+                        ProtocolV2.Response.success(
+                            requestId = requestId,
+                            result = JSONObject().apply {
+                                put("settled", true)
+                                if (transition.afterSnapshot != null) {
+                                    put("snapshot", transition.afterSnapshot.toJson())
+                                }
+                            },
+                            timing = timing
+                        ).toJson()
+                    } else {
+                        ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = transition.reasonCode ?: ProtocolV2.ReasonCodes.TIMEOUT,
+                            result = JSONObject().apply { put("settled", false) },
+                            timing = timing
+                        ).toJson()
+                    }
+                }
+
+                else -> {
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    ProtocolV2.Response.error(
+                        requestId = requestId,
+                        reasonCode = ProtocolV2.ReasonCodes.ACTION_NOT_SUPPORTED,
+                        result = JSONObject().apply { put("unknown_cmd", cmd) },
+                        timing = timing
+                    ).toJson()
+                }
+            }
+        } finally {
+            CommandCancellationRegistry.unregister(requestId)
+        }
     }
 
     private var lastScreenshotLogAt = 0L

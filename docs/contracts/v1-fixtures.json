@@ -1,0 +1,488 @@
+{
+  "version": 1,
+  "description": "Legacy Protocol v1 Request & Response Fixtures (Contract Freeze for M0/M1)",
+  "fixtures": {
+    "tap": [
+      {
+        "scenario": "tap_success",
+        "description": "Successful coordinate tap via accessibility or shell transport",
+        "request": {
+          "id": 1001,
+          "cmd": "tap",
+          "x": 540,
+          "y": 960
+        },
+        "response": {
+          "id": 1001,
+          "ok": true,
+          "result": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "scenario": "tap_invalid_coords",
+        "description": "Tap rejected due to negative coordinates when service connected",
+        "request": {
+          "id": 1002,
+          "cmd": "tap",
+          "x": -1,
+          "y": -1
+        },
+        "response": {
+          "id": 1002,
+          "ok": false,
+          "error": "tap requires x,y"
+        }
+      },
+      {
+        "scenario": "tap_service_disconnected",
+        "description": "Tap rejected when accessibility service is dead or disabled",
+        "request": {
+          "id": 1003,
+          "cmd": "tap",
+          "x": 540,
+          "y": 960
+        },
+        "response": {
+          "id": 1003,
+          "ok": false,
+          "error": "accessibility service not connected/ready",
+          "reason": "a11y_disabled: service belum diaktifkan di Accessibility Settings",
+          "health": {
+            "a11y_alive": false,
+            "adb_available": false
+          }
+        }
+      }
+    ],
+    "setText": [
+      {
+        "scenario": "setText_success",
+        "description": "Set text into currently focused editable accessibility node",
+        "request": {
+          "id": 1004,
+          "cmd": "setText",
+          "text": "sample text entry"
+        },
+        "response": {
+          "id": 1004,
+          "ok": true,
+          "result": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "scenario": "setText_service_disconnected",
+        "description": "Set text rejected when accessibility service is disconnected",
+        "request": {
+          "id": 1005,
+          "cmd": "setText",
+          "text": "sample text entry"
+        },
+        "response": {
+          "id": 1005,
+          "ok": false,
+          "error": "accessibility service not connected/ready",
+          "reason": "a11y_dead: service terdaftar aktif di OS tapi prosesnya mati — perlu Off/On manual di Accessibility Settings",
+          "health": {
+            "a11y_alive": false,
+            "adb_available": true
+          }
+        }
+      }
+    ],
+    "tapByText": [
+      {
+        "scenario": "tapByText_success",
+        "description": "Find node containing text and perform click",
+        "request": {
+          "id": 1006,
+          "cmd": "tapByText",
+          "text": "Log In"
+        },
+        "response": {
+          "id": 1006,
+          "ok": true,
+          "result": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "scenario": "tapByText_missing_text",
+        "description": "tapByText rejected when text argument is missing or empty",
+        "request": {
+          "id": 1007,
+          "cmd": "tapByText",
+          "text": ""
+        },
+        "response": {
+          "id": 1007,
+          "ok": false,
+          "error": "tapByText requires text"
+        }
+      }
+    ],
+    "screenshot": [
+      {
+        "scenario": "screenshot_success",
+        "description": "Capture screen as base64 PNG or JPEG",
+        "request": {
+          "id": 1008,
+          "cmd": "screenshot",
+          "scale": 1.0,
+          "format": "png",
+          "quality": 85
+        },
+        "response": {
+          "id": 1008,
+          "ok": true,
+          "result": {
+            "format": "png",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          }
+        }
+      },
+      {
+        "scenario": "screenshot_error",
+        "description": "Screenshot capture failure or timeout",
+        "request": {
+          "id": 1009,
+          "cmd": "screenshot"
+        },
+        "response": {
+          "id": 1009,
+          "ok": false,
+          "error": "screenshot: capture failed on display"
+        }
+      }
+    ],
+    "dump": [
+      {
+        "scenario": "dump_success",
+        "description": "Serialize accessibility node hierarchy to XML",
+        "request": {
+          "id": 1010,
+          "cmd": "dump"
+        },
+        "response": {
+          "id": 1010,
+          "ok": true,
+          "result": {
+            "xml": "<hierarchy rotation=\"0\"><node text=\"Log In\" resource-id=\"com.facebook.katana:id/login\" bounds=\"[100,200][400,300]\"/></hierarchy>",
+            "package": "com.facebook.katana"
+          }
+        }
+      }
+    ],
+    "dumpWindows": [
+      {
+        "scenario": "dumpWindows_success",
+        "description": "Enumerate all accessibility window layers and titles",
+        "request": {
+          "id": 1011,
+          "cmd": "dumpWindows"
+        },
+        "response": {
+          "id": 1011,
+          "ok": true,
+          "result": {
+            "windows": [
+              {
+                "id": 1,
+                "title": "MainActivity",
+                "layer": 0,
+                "focused": true,
+                "bounds": "[0,0][1080,1920]"
+              }
+            ],
+            "activePackage": "com.facebook.katana"
+          }
+        }
+      }
+    ],
+    "capabilities": [
+      {
+        "scenario": "capabilities_success",
+        "description": "Query comprehensive device capabilities snapshot",
+        "request": {
+          "id": 1012,
+          "cmd": "capabilities"
+        },
+        "response": {
+          "id": 1012,
+          "ok": true,
+          "result": {
+            "protocol_versions": [
+              1,
+              2
+            ],
+            "agent_version": "0.9.10",
+            "api_level": 34,
+            "manufacturer": "Xiaomi",
+            "model": "2201117PG",
+            "a11y_enabled": true,
+            "a11y_ready": true,
+            "can_draw_overlay": true,
+            "overlay_attached": true,
+            "transport_tier": "shell_adb",
+            "last_launch_transport": "shell_adb",
+            "adb_paired": true,
+            "adb_connected": true,
+            "adb_uid": 2000,
+            "adb_error": "",
+            "can_shell": true,
+            "can_launch_app": true,
+            "can_force_stop": true,
+            "can_inject_input": true,
+            "can_screenshot": true,
+            "battery_unrestricted": true,
+            "screen_interactive": true
+          }
+        }
+      }
+    ],
+    "shell": [
+      {
+        "scenario": "shell_success",
+        "description": "Execute privileged shell command under uid 2000 via local ADB",
+        "request": {
+          "id": 1013,
+          "cmd": "shell",
+          "command": "input tap 540 960",
+          "timeoutMs": 15000
+        },
+        "response": {
+          "id": 1013,
+          "ok": true,
+          "result": {
+            "ok": true,
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "transport": "shell_adb"
+          }
+        }
+      },
+      {
+        "scenario": "shell_execution_failure",
+        "description": "v1 contradictory envelope: outer ok=true, inner result.ok=false with failure reason",
+        "request": {
+          "id": 1014,
+          "cmd": "shell",
+          "command": "input tap 540 960"
+        },
+        "response": {
+          "id": 1014,
+          "ok": true,
+          "result": {
+            "ok": false,
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": "adb_not_available: transport ADB belum aktif / belum pairing",
+            "transport": "shell_adb",
+            "reason": "adb_not_available: transport ADB belum aktif / belum pairing"
+          }
+        }
+      },
+      {
+        "scenario": "shell_missing_command",
+        "description": "Missing command argument returns outer ok=false",
+        "request": {
+          "id": 1015,
+          "cmd": "shell"
+        },
+        "response": {
+          "id": 1015,
+          "ok": false,
+          "error": "shell requires command"
+        }
+      }
+    ],
+    "adbPair": [
+      {
+        "scenario": "adbPair_status_query_disconnected",
+        "description": "Query pairing status when transport is not yet connected",
+        "request": {
+          "id": 1016,
+          "cmd": "adbPair"
+        },
+        "response": {
+          "id": 1016,
+          "ok": true,
+          "result": {
+            "ok": false,
+            "paired": false,
+            "adb_connected": false,
+            "reason": "adb_not_paired: belum dihubungkan"
+          }
+        }
+      },
+      {
+        "scenario": "adbPair_status_query_connected",
+        "description": "Query pairing status when transport is already connected",
+        "request": {
+          "id": 1017,
+          "cmd": "adbPair"
+        },
+        "response": {
+          "id": 1017,
+          "ok": true,
+          "result": {
+            "ok": true,
+            "paired": true,
+            "adb_connected": true
+          }
+        }
+      },
+      {
+        "scenario": "adbPair_action_success",
+        "description": "Initiate SPAKE2 pairing handshake with port and pairing code",
+        "request": {
+          "id": 1018,
+          "cmd": "adbPair",
+          "host": "127.0.0.1",
+          "port": 37123,
+          "code": "123456"
+        },
+        "response": {
+          "id": 1018,
+          "ok": true,
+          "result": {
+            "ok": true,
+            "paired": true,
+            "adb_connected": true
+          }
+        }
+      },
+      {
+        "scenario": "adbPair_action_failure",
+        "description": "Pairing attempt failed due to invalid code or port timeout",
+        "request": {
+          "id": 1019,
+          "cmd": "adbPair",
+          "host": "127.0.0.1",
+          "port": 37123,
+          "code": "000000"
+        },
+        "response": {
+          "id": 1019,
+          "ok": true,
+          "result": {
+            "ok": false,
+            "paired": false,
+            "adb_connected": false,
+            "reason": "adb_pair_failed: kode pairing salah atau waktu habis"
+          }
+        }
+      }
+    ],
+    "startApp": [
+      {
+        "scenario": "startApp_success",
+        "description": "Launch application package verified in foreground",
+        "request": {
+          "id": 1020,
+          "cmd": "startApp",
+          "package": "com.facebook.katana",
+          "activity": ".LoginActivity"
+        },
+        "response": {
+          "id": 1020,
+          "ok": true,
+          "result": {
+            "ok": true,
+            "package": "com.facebook.katana",
+            "foreground": "com.facebook.katana",
+            "transport": "shell_adb"
+          }
+        }
+      },
+      {
+        "scenario": "startApp_bal_blocked",
+        "description": "v1 contradictory envelope: outer ok=true, inner result.ok=false with bal_blocked reason",
+        "request": {
+          "id": 1021,
+          "cmd": "startApp",
+          "package": "com.facebook.katana"
+        },
+        "response": {
+          "id": 1021,
+          "ok": true,
+          "result": {
+            "ok": false,
+            "package": "com.facebook.katana",
+            "foreground": "com.android.launcher",
+            "transport": "accessibility",
+            "reason": "bal_blocked: Background Activity Launch ditolak sistem"
+          }
+        }
+      },
+      {
+        "scenario": "startApp_missing_package",
+        "description": "Missing package argument returns outer ok=false",
+        "request": {
+          "id": 1022,
+          "cmd": "startApp"
+        },
+        "response": {
+          "id": 1022,
+          "ok": false,
+          "error": "startApp requires package"
+        }
+      }
+    ],
+    "killApp": [
+      {
+        "scenario": "killApp_success",
+        "description": "Force-stop target package via privileged shell transport",
+        "request": {
+          "id": 1023,
+          "cmd": "killApp",
+          "package": "com.facebook.katana"
+        },
+        "response": {
+          "id": 1023,
+          "ok": true,
+          "result": {
+            "ok": true,
+            "mode": "force_stop",
+            "transport": "shell_adb"
+          }
+        }
+      },
+      {
+        "scenario": "killApp_missing_package",
+        "description": "Missing package argument returns outer ok=false",
+        "request": {
+          "id": 1024,
+          "cmd": "killApp"
+        },
+        "response": {
+          "id": 1024,
+          "ok": false,
+          "error": "killApp requires package"
+        }
+      }
+    ],
+    "wake": [
+      {
+        "scenario": "wake_success",
+        "description": "Turn on interactive screen before executing automation",
+        "request": {
+          "id": 1025,
+          "cmd": "wake"
+        },
+        "response": {
+          "id": 1025,
+          "ok": true,
+          "result": {
+            "ok": true
+          }
+        }
+      }
+    ]
+  }
+}
