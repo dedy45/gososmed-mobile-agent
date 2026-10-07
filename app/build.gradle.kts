@@ -41,13 +41,22 @@ android {
         // dynamic ongoing notification with IMPORTANCE_DEFAULT for Xiaomi HyperOS.
         versionCode = 31
         versionName = "1.0.1-dev.1"
-        // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
-        // URL server. Bisa dioverride di mode debug. Deep link
-        // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).
-        buildConfigField("String", "DEFAULT_WS_URL", "\"wss://api.bamsbung.id/v1/agent/ws\"")
+        val isDevVersion = versionName?.contains("-dev") == true
+        val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
+        val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
+        buildConfigField("String", "PROD_WS_URL", prodWsUrl)
+        buildConfigField("String", "DEV_WS_URL", devWsUrl)
+        // Otomatis memakai DEV_WS_URL bila versionName mengandung "-dev",
+        // dan PROD_WS_URL saat dinaikkan ke versi rilis stabil (tanpa "-dev").
+        buildConfigField("String", "DEFAULT_WS_URL", if (isDevVersion) devWsUrl else prodWsUrl)
+        buildConfigField("String", "FALLBACK_WS_URL", if (isDevVersion) prodWsUrl else devWsUrl)
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "DEFAULT_WS_URL", "\"wss://dev-api.bamsbung.id/v1/agent/ws\"")
+            buildConfigField("String", "FALLBACK_WS_URL", "\"wss://api.bamsbung.id/v1/agent/ws\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

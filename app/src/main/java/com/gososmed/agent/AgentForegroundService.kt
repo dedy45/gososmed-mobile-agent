@@ -267,7 +267,7 @@ class AgentForegroundService : Service() {
         }
     }
 
-    private fun startWs(url: String, code: String) {
+    private fun startWs(url: String, code: String, allowEnvFallback: Boolean = true) {
         ws?.destroy()
         ws = AgentWsClient(
             context = this,
@@ -275,17 +275,32 @@ class AgentForegroundService : Service() {
             deviceId = prefs().getString("device_id", "") ?: "",
             pairingCode = code,
             onStatus = { status ->
-                Log.i(TAG, "ws status: $status")
+                Log.i(TAG, "ws status ($url): $status")
                 lastWsStatus = status
+                if (status.contains("paired")) {
+                    prefs().edit().putString("ws_url", url).apply()
+                }
                 broadcastStatus(status, rejected = false)
                 updateNotification(status)
             },
             onPairingRejected = { reason ->
-                // M2: pairing ditolak (kode salah/kedaluwarsa/terpakai) → hapus
-                // kode tersimpan agar reconnect berikutnya tidak memakai kode
-                // busuk, dan tandai status untuk UI.
-                prefs().edit().remove("pairing_code").apply()
-                broadcastStatus("pairing ditolak: $reason", rejected = true)
+                val altUrl = when (url) {
+                    BuildConfig.DEV_WS_URL -> BuildConfig.PROD_WS_URL
+                    BuildConfig.PROD_WS_URL -> BuildConfig.DEV_WS_URL
+                    else -> ""
+                }
+                if (allowEnvFallback && altUrl.isNotEmpty() && altUrl != url) {
+                    Log.i(TAG, "Kode ditolak di $url ($reason), mencoba fallback otomatis ke $altUrl")
+                    AgentLog.event("mencoba server alternatif ($altUrl)…")
+                    prefs().edit().putString("ws_url", altUrl).apply()
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        startWs(altUrl, code, allowEnvFallback = false)
+                    }
+                } else {
+                    // M2: pairing ditolak di kedua server → hapus kode tersimpan
+                    prefs().edit().remove("pairing_code").apply()
+                    broadcastStatus("pairing ditolak: $reason", rejected = true)
+                }
             }
         ).also { it.start() }
     }

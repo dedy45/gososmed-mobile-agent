@@ -1263,10 +1263,10 @@ class MainActivity : AppCompatActivity() {
         if (trimmed.startsWith("gososmed://pair")) {
             handlePairIntent(Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)))
         } else {
-            val code = if (trimmed.length > 8) trimmed.take(8) else trimmed
+            val code = if (trimmed.length > 8) trimmed.take(8) else trimmed.uppercase()
             pairCodeEt.setText(code)
             toast("Kode pairing terisi: $code")
-            doConnect(wsUrlEt.text.toString().trim(), code)
+            connectWs()
         }
     }
 
@@ -1318,11 +1318,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectWs() {
-        // Mode produksi: URL tidak diketik user. Override hanya dari field
-        // debug (tersembunyi). Kosong → default produksi.
+        // Prioritas URL:
+        // 1) Override manual di debugSection (jika sedang dibuka)
+        // 2) URL tersimpan sebelumnya (mis. dari deep link dev/prod terakhir)
+        // 3) Default sesuai kanal build (DEV_WS_URL di dev/debug, PROD_WS_URL di release stabil)
         val overrideUrl = if (debugSection.visibility == View.VISIBLE)
             wsUrlEt.text.toString().trim() else ""
-        val url = overrideUrl.ifEmpty { BuildConfig.DEFAULT_WS_URL }
+        val url = overrideUrl
+            .ifEmpty { loadWsUrl() }
+            .ifEmpty { BuildConfig.DEFAULT_WS_URL }
         val code = pairCodeEt.text.toString().trim().uppercase()
         if (code.isEmpty()) {
             toast("Ketik kode 8 karakter dari dasbor, atau gunakan tombol Hubungkan HP ini di dasbor")
