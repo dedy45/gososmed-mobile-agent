@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- GoSosmed Agent — English Translations (Mirroring marketing/src/i18n.ts) -->
 <resources>
-    <string name="app_name">GoSosmed Agent</string>
-    <string name="accessibility_service_label">GoSosmed Agent Controller</string>
+    <string name="app_name">Agent GoSosmed</string>
+    <string name="accessibility_service_label">Agent GoSosmed</string>
     <string name="accessibility_service_description">Connects this smartphone to GoSosmed automation server to control social media apps (Facebook, TikTok, Instagram) upon your consent.</string>
     
     <!-- Bottom Navigation Tabs -->

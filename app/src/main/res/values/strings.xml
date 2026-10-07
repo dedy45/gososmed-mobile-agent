@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- GoSosmed Agent — Sumber Teks Bahasa Indonesia (Default) -->
 <resources>
-    <string name="app_name">GoSosmed Agent</string>
-    <string name="accessibility_service_label">GoSosmed Agent Controller</string>
+    <string name="app_name">Agent GoSosmed</string>
+    <string name="accessibility_service_label">Agent GoSosmed</string>
     <string name="accessibility_service_description">Menghubungkan smartphone ini ke server otomasi GoSosmed untuk mengontrol aplikasi sosial (Facebook, TikTok, Instagram) atas persetujuan Anda.</string>
     
     <!-- Tab Navigasi Bawah -->

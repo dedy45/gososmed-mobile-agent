@@ -950,7 +950,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             } catch (e2: Exception) {
-                toast("Buka Setelan → Baterai → bebaskan GoSosmed Agent")
+                toast("Buka Setelan → Baterai → bebaskan Agent GoSosmed")
             }
         }
     }
@@ -977,7 +977,7 @@ class MainActivity : AppCompatActivity() {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Satu izin lagi agar otomasi bisa jalan")
             .setMessage(
-                "GoSosmed Agent butuh izin \"Tampilkan di atas aplikasi lain\".\n\n" +
+                "Agent GoSosmed butuh izin \"Tampilkan di atas aplikasi lain\".\n\n" +
                     "Tanpa izin ini Android memblokir agent saat membuka " +
                     "Instagram/TikTok/Facebook/Threads/YouTube, sehingga cek sesi " +
                     "selalu gagal." +
@@ -1005,7 +1005,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
             } catch (e2: Exception) {
-                toast("Buka Setelan → Aplikasi → GoSosmed Agent → Tampilkan di atas aplikasi lain")
+                toast("Buka Setelan → Aplikasi → Agent GoSosmed → Tampilkan di atas aplikasi lain")
             }
         }
     }

@@ -115,10 +115,10 @@ class AgentForegroundService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "GoSosmed Agent Service",
+            "Agent GoSosmed Service",
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Status liveness otomasi GoSosmed Agent (A11y, Wireless ADB, Server)"
+            description = "Status liveness otomasi Agent GoSosmed (A11y, Wireless ADB, Server)"
             setShowBadge(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
@@ -166,7 +166,7 @@ class AgentForegroundService : Service() {
         val detail = if (!hint.isNullOrEmpty()) "$summary\n$wsText\nStatus: $hint" else "$summary\n$wsText"
 
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("GoSosmed Agent • Server Mode")
+            .setContentTitle("Agent GoSosmed • Server Mode")
             .setContentText(summary)
             .setStyle(Notification.BigTextStyle().bigText(detail))
             .setSmallIcon(R.drawable.ic_launcher_foreground)

@@ -21,6 +21,13 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_logo_gososmed" />
+
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
