@@ -365,37 +365,32 @@
                     android:layout_marginTop="6dp"
                     android:orientation="vertical">
 
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/tvTelemetryBattery"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:fontFamily="monospace"
+                        android:text="🔋 Baterai     : --%"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
-                        <TextView
-                            android:id="@+id/tvTelemetryBattery"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:fontFamily="monospace"
-                            android:text="Baterai: --%"
-                            android:textColor="@color/text_primary"
-                            android:textSize="12sp" />
-
-                        <TextView
-                            android:id="@+id/tvTelemetryTemp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="monospace"
-                            android:text="Suhu: --°C"
-                            android:textColor="@color/text_primary"
-                            android:textSize="12sp" />
-                    </LinearLayout>
+                    <TextView
+                        android:id="@+id/tvTelemetryTemp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="monospace"
+                        android:text="🌡️ Suhu HP     : --°C"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/tvTelemetryBatteryAlert"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="6dp"
                         android:text="@string/telemetry_battery_warn"
                         android:textColor="@color/status_warn"
                         android:textSize="11sp"
@@ -404,7 +399,7 @@
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:layout_marginVertical="8dp"
+                        android:layout_marginVertical="10dp"
                         android:background="@color/card_border" />
 
                     <TextView
@@ -412,26 +407,33 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:fontFamily="monospace"
-                        android:text="Jaringan: Memeriksa…"
+                        android:lineSpacingExtra="5dp"
+                        android:text="📶 Jaringan    : Memeriksa…"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="10dp"
+                        android:background="@color/card_border" />
 
                     <TextView
                         android:id="@+id/tvTelemetryApps"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
                         android:fontFamily="monospace"
-                        android:text="Platform: Memeriksa…"
+                        android:lineSpacingExtra="5dp"
+                        android:text="📱 Platform Terpasang: Memeriksa…"
                         android:textColor="@color/ember"
-                        android:textSize="11sp" />
+                        android:textSize="12sp" />
 
                     <Button
                         android:id="@+id/btnEchoTest"
                         style="@style/Widget.Material3.Button.TonalButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="14dp"
                         android:text="@string/btn_echo_test"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -947,36 +949,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Item 2: Diagnostik -->
-        <LinearLayout
-            android:id="@+id/btnNavDiag"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingVertical="6dp">
-
-            <ImageView
-                android:id="@+id/ivNavDiag"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
-                android:alpha="0.5"
-                android:src="@drawable/ic_3d_diagnostic" />
-
-            <TextView
-                android:id="@+id/tvNavDiag"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:fontFamily="monospace"
-                android:text="@string/tab_diagnostik"
-                android:textColor="@color/text_secondary"
-                android:textSize="11sp" />
-        </LinearLayout>
-
         <!-- Item 2: Setup -->
         <LinearLayout
             android:id="@+id/btnNavSetup"
@@ -1007,6 +979,35 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
+        <!-- Item 3: Diagnostik (setelah Setup) -->
+        <LinearLayout
+            android:id="@+id/btnNavDiag"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/ivNavDiag"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:alpha="0.5"
+                android:src="@drawable/ic_3d_diagnostic" />
+
+            <TextView
+                android:id="@+id/tvNavDiag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:fontFamily="monospace"
+                android:text="@string/tab_diagnostik"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
         <!-- Item 3: Log -->
         <LinearLayout
             android:id="@+id/btnNavLog"

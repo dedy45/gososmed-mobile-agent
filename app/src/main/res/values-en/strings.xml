@@ -52,15 +52,15 @@
     <string name="status_a11y_off">✗ Automation access inactive — open Setup tab</string>
     <string name="status_code_saved">✓ Code saved — agent will auto-connect</string>
     <string name="device_id_format">Device ID: %1$s</string>
-    <string name="telemetry_battery_charging"> ⚡ Charging</string>
-    <string name="telemetry_battery_discharging"> (Battery)</string>
-    <string name="telemetry_battery_format">Battery: %1$s</string>
+    <string name="telemetry_battery_charging"> • Charging ⚡</string>
+    <string name="telemetry_battery_discharging"> • Discharging</string>
+    <string name="telemetry_battery_format">🔋 Battery     : %1$s</string>
     <string name="telemetry_temp_hot">Hot [WARN]</string>
     <string name="telemetry_temp_normal">Normal ✓</string>
-    <string name="telemetry_temp_format">Temp: %1$s°C (%2$s)</string>
+    <string name="telemetry_temp_format">🌡️ Device Temp : %1$s°C (%2$s)</string>
     <string name="telemetry_network_waiting">Waiting for ping…</string>
-    <string name="telemetry_network_format">Network: %1$s • Latency: %2$s</string>
-    <string name="telemetry_target_prefix">Targets: </string>
+    <string name="telemetry_network_format">📶 Network     : %1$s\n⏱️ RTT Latency : %2$s</string>
+    <string name="telemetry_target_prefix">📱 Installed Platforms:\n</string>
     <string name="server_overlay_info_format">Battery: %1$d%% • Temp: %2$s°C • Latency: %3$s</string>
 
     <!-- 3-Step Setup -->

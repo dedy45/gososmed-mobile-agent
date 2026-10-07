@@ -248,8 +248,8 @@ class MainActivity : AppCompatActivity() {
         tvNavLog = findViewById(R.id.tvNavLog)
 
         btnNavHome.setOnClickListener { showPanel(0) }
-        btnNavDiag.setOnClickListener { showPanel(1) }
-        btnNavSetup.setOnClickListener { showPanel(2) }
+        btnNavSetup.setOnClickListener { showPanel(1) }
+        btnNavDiag.setOnClickListener { showPanel(2) }
         btnNavLog.setOnClickListener { showPanel(3) }
 
         // In-App Theme Switcher (Ember 2048 Dark ↔ Glacier Glass Light)
@@ -530,8 +530,8 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         tabLayout.removeAllTabs()
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_beranda))
-        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_diagnostik))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_setup))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_diagnostik))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_log))
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) = showPanel(tab.position)
@@ -545,32 +545,32 @@ class MainActivity : AppCompatActivity() {
     private fun showPanel(index: Int) {
         prefs().edit().putInt("active_tab", index).apply()
         panelBeranda.visibility = if (index == 0) View.VISIBLE else View.GONE
-        panelDiagnostik.visibility = if (index == 1) View.VISIBLE else View.GONE
-        panelSetup.visibility = if (index == 2) View.VISIBLE else View.GONE
+        panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
+        panelDiagnostik.visibility = if (index == 2) View.VISIBLE else View.GONE
         panelLog.visibility = if (index == 3) View.VISIBLE else View.GONE
 
-        // Update Bottom Nav Bar Visual State (Ember 2048 / Glacier Glass Theme)
+        // Update Bottom Nav Bar Visual State (1: Beranda, 2: Setup, 3: Diagnostik, 4: Log)
         val primaryColor = ContextCompat.getColor(this, R.color.primary)
         val mutedColor = ContextCompat.getColor(this, R.color.text_secondary)
 
         btnNavHome.setBackgroundResource(if (index == 0) R.drawable.bg_bottom_nav_item_active else 0)
-        btnNavDiag.setBackgroundResource(if (index == 1) R.drawable.bg_bottom_nav_item_active else 0)
-        btnNavSetup.setBackgroundResource(if (index == 2) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavSetup.setBackgroundResource(if (index == 1) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavDiag.setBackgroundResource(if (index == 2) R.drawable.bg_bottom_nav_item_active else 0)
         btnNavLog.setBackgroundResource(if (index == 3) R.drawable.bg_bottom_nav_item_active else 0)
 
         ivNavHome.alpha = if (index == 0) 1.0f else 0.5f
-        ivNavDiag.alpha = if (index == 1) 1.0f else 0.5f
-        ivNavSetup.alpha = if (index == 2) 1.0f else 0.5f
+        ivNavSetup.alpha = if (index == 1) 1.0f else 0.5f
+        ivNavDiag.alpha = if (index == 2) 1.0f else 0.5f
         ivNavLog.alpha = if (index == 3) 1.0f else 0.5f
 
         tvNavHome.setTextColor(if (index == 0) primaryColor else mutedColor)
-        tvNavDiag.setTextColor(if (index == 1) primaryColor else mutedColor)
-        tvNavSetup.setTextColor(if (index == 2) primaryColor else mutedColor)
+        tvNavSetup.setTextColor(if (index == 1) primaryColor else mutedColor)
+        tvNavDiag.setTextColor(if (index == 2) primaryColor else mutedColor)
         tvNavLog.setTextColor(if (index == 3) primaryColor else mutedColor)
 
         tvNavHome.paint.isFakeBoldText = (index == 0)
-        tvNavDiag.paint.isFakeBoldText = (index == 1)
-        tvNavSetup.paint.isFakeBoldText = (index == 2)
+        tvNavSetup.paint.isFakeBoldText = (index == 1)
+        tvNavDiag.paint.isFakeBoldText = (index == 2)
         tvNavLog.paint.isFakeBoldText = (index == 3)
 
         if (index == 0 || index == 1 || index == 2) {
@@ -1088,15 +1088,15 @@ class MainActivity : AppCompatActivity() {
         val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else getString(R.string.telemetry_network_waiting)
         tvTelemetryNetwork.text = getString(R.string.telemetry_network_format, snap.wifiSsid, latencyStr)
 
-        // Status platform aplikasi terpasang
+        // Status platform aplikasi terpasang (terstruktur 2 baris rapi)
         fun statusIcon(installed: Boolean): String = if (installed) "✓" else "—"
         tvTelemetryApps.text = buildString {
             append(getString(R.string.telemetry_target_prefix))
-            append("TikTok ${statusIcon(snap.isTiktokInstalled)}  ")
-            append("IG ${statusIcon(snap.isInstagramInstalled)}  ")
-            append("FB ${statusIcon(snap.isFacebookInstalled)}  ")
-            append("Threads ${statusIcon(snap.isThreadsInstalled)}  ")
-            append("YT ${statusIcon(snap.isYoutubeInstalled)}")
+            append("• TikTok [${statusIcon(snap.isTiktokInstalled)}]   ")
+            append("• IG [${statusIcon(snap.isInstagramInstalled)}]   ")
+            append("• FB [${statusIcon(snap.isFacebookInstalled)}]\n")
+            append("• Threads [${statusIcon(snap.isThreadsInstalled)}]   ")
+            append("• YouTube [${statusIcon(snap.isYoutubeInstalled)}]")
         }
 
         // Sinkronisasi data ke Server Mode Overlay jika sedang aktif

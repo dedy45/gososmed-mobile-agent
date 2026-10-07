@@ -52,15 +52,15 @@
     <string name="status_a11y_off">✗ Akses otomatisasi belum aktif — buka tab Setup</string>
     <string name="status_code_saved">✓ Kode tersimpan — agent akan menyambung otomatis</string>
     <string name="device_id_format">ID perangkat: %1$s</string>
-    <string name="telemetry_battery_charging"> ⚡ Mengisi daya</string>
-    <string name="telemetry_battery_discharging"> (Baterai)</string>
-    <string name="telemetry_battery_format">Baterai: %1$s</string>
+    <string name="telemetry_battery_charging"> • Mengisi daya ⚡</string>
+    <string name="telemetry_battery_discharging"> • Baterai</string>
+    <string name="telemetry_battery_format">🔋 Baterai     : %1$s</string>
     <string name="telemetry_temp_hot">Panas [WARN]</string>
     <string name="telemetry_temp_normal">Normal ✓</string>
-    <string name="telemetry_temp_format">Suhu: %1$s°C (%2$s)</string>
+    <string name="telemetry_temp_format">🌡️ Suhu HP     : %1$s°C (%2$s)</string>
     <string name="telemetry_network_waiting">Menunggu ping…</string>
-    <string name="telemetry_network_format">Jaringan: %1$s • Latensi: %2$s</string>
-    <string name="telemetry_target_prefix">Target: </string>
+    <string name="telemetry_network_format">📶 Jaringan    : %1$s\n⏱️ Latensi RTT : %2$s</string>
+    <string name="telemetry_target_prefix">📱 Platform Terpasang:\n</string>
     <string name="server_overlay_info_format">Baterai: %1$d%% • Suhu: %2$s°C • Latensi: %3$s</string>
 
     <!-- Langkah 3-Langkah Setup -->
