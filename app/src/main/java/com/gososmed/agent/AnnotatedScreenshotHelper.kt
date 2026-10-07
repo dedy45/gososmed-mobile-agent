@@ -27,7 +27,12 @@ object AnnotatedScreenshotHelper {
         val centerY: Int
     )
 
-    fun annotate(bitmap: Bitmap, rootNode: AccessibilityNodeInfo?): Pair<String, JSONArray> {
+    fun annotate(
+        bitmap: Bitmap,
+        rootNode: AccessibilityNodeInfo?,
+        scale: Float = 0.6f,
+        quality: Int = 75
+    ): Pair<String, JSONArray> {
         val elements = mutableListOf<MarkedElement>()
         if (rootNode != null) {
             collectInteractiveNodes(rootNode, elements, 1, 0)
@@ -98,11 +103,22 @@ object AnnotatedScreenshotHelper {
             elementsJson.put(item)
         }
 
+        // Downscale untuk menghemat token LLM Vision jika scale < 1.0f (koordinat elements tetap koordinat fisik asli)
+        val finalBitmap = if (scale in 0.2f..0.99f) {
+            val scaledW = (bitmap.width * scale).toInt().coerceAtLeast(100)
+            val scaledH = (bitmap.height * scale).toInt().coerceAtLeast(100)
+            val scaled = Bitmap.createScaledBitmap(mutableBitmap, scaledW, scaledH, true)
+            mutableBitmap.recycle()
+            scaled
+        } else {
+            mutableBitmap
+        }
+
         // Kompresi JPEG
         val baos = ByteArrayOutputStream()
-        mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos)
+        finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 95), baos)
         val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-        mutableBitmap.recycle()
+        finalBitmap.recycle()
 
         return base64 to elementsJson
     }

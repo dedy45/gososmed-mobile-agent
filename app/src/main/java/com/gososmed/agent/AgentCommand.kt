@@ -1013,14 +1013,16 @@ object AgentCommand {
                 })
             }
             CMD_ANNOTATED_SCREENSHOT -> {
-                // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar
+                val scale = req.optDouble("scale", 0.6).toFloat().coerceIn(0.2f, 1.0f)
+                val quality = req.optInt("quality", 75).coerceIn(30, 95)
+                // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik
                 val (bytes, width, height) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
                 if (bytes == null) {
                     resp.put("ok", false).put("error", "gagal mengambil screenshot")
                 } else {
                     val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     val root = svc.rootInActiveWindow
-                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root)
+                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality)
                     root?.recycle()
                     bmp.recycle()
 
@@ -1030,6 +1032,8 @@ object AgentCommand {
                         put("elements", elements)
                         put("width", width)
                         put("height", height)
+                        put("scale", scale)
+                        put("quality", quality)
                     })
                 }
             }
