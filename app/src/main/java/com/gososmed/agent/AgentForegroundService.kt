@@ -227,10 +227,17 @@ class AgentForegroundService : Service() {
                 stopWs()
             }
             intent?.hasExtra("cmd") == true -> {
+                if (!BuildConfig.DEBUG) {
+                    Log.w(TAG, "cmd extra ditolak pada build release")
+                    return START_STICKY
+                }
                 // Command request: run it (possibly waiting for the accessibility
                 // service to bind) then write the result. Runs off the main thread.
                 val cmd = intent.getStringExtra("cmd")
                 val text = intent.getStringExtra("text")
+                val contentDesc = intent.getStringExtra("content_desc")
+                val resourceId = intent.getStringExtra("resource_id")
+                val timeoutMs = readIntExtra(intent, "timeout_ms")?.toLong()
                 val x = readIntExtra(intent, "x")
                 val y = readIntExtra(intent, "y")
                 Thread {
@@ -244,6 +251,9 @@ class AgentForegroundService : Service() {
                         }
                         val req = JSONObject().put("cmd", cmd)
                         text?.let { req.put("text", it) }
+                        contentDesc?.let { req.put("content_desc", it) }
+                        resourceId?.let { req.put("resource_id", it) }
+                        timeoutMs?.let { req.put("timeout_ms", it) }
                         x?.let { req.put("x", it) }
                         y?.let { req.put("y", it) }
                         val resp = AgentCommand.execute(req)

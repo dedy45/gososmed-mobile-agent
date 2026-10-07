@@ -130,7 +130,7 @@
              shape: the agent is a persistent service, not an Activity. -->
         <service
             android:name=".AgentForegroundService"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

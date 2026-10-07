@@ -49,6 +49,9 @@ class AgentReceiver : BroadcastReceiver() {
             val cmd = intent.getStringExtra("cmd") ?: return
             val r = JSONObject().put("cmd", cmd)
             intent.getStringExtra("text")?.let { r.put("text", it) }
+            intent.getStringExtra("content_desc")?.let { r.put("content_desc", it) }
+            intent.getStringExtra("resource_id")?.let { r.put("resource_id", it) }
+            if (intent.hasExtra("timeout_ms")) r.put("timeout_ms", intent.getLongExtra("timeout_ms", 4000L))
             intent.getStringExtra("package")?.let { r.put("package", it) }
             if (intent.hasExtra("x")) r.put("x", intent.getIntExtra("x", -1))
             if (intent.hasExtra("y")) r.put("y", intent.getIntExtra("y", -1))

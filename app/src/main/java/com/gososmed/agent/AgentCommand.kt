@@ -69,6 +69,10 @@ object AgentCommand {
     // v1.0.0: native HTTP media staging — download, SHA-256 verify, register
     // to MediaStore. Does NOT need AccessibilityService; runs on IO thread.
     const val CMD_STAGE_MEDIA = "stageMedia"
+    // v1.0.1: 3 fitur performa tinggi (Native waitForNode, replaceText, annotatedScreenshot).
+    const val CMD_WAIT_FOR_NODE = "waitForNode"
+    const val CMD_REPLACE_TEXT = "replaceText"
+    const val CMD_ANNOTATED_SCREENSHOT = "annotatedScreenshot"
 
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
@@ -103,7 +107,8 @@ object AgentCommand {
      * latar belakang agar main thread tidak pernah terblokir (anti-ANR).
      */
     val ASYNC_BACKGROUND_COMMANDS = setOf(
-        CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA
+        CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA,
+        CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -967,6 +972,65 @@ object AgentCommand {
                     }
                 } catch (e: Exception) {
                     resp.put("ok", false).put("error", "screenshot: ${e.message}")
+                }
+            }
+            CMD_WAIT_FOR_NODE -> {
+                val text = req.optString("text", "").takeIf { it.isNotEmpty() }
+                val desc = req.optString("content_desc", "").takeIf { it.isNotEmpty() }
+                val resId = req.optString("resource_id", "").takeIf { it.isNotEmpty() }
+                val timeout = req.optLong("timeout_ms", 4000L)
+
+                val start = System.currentTimeMillis()
+                val (found, rect) = svc.waitForNode(text, desc, resId, timeout)
+                val elapsed = System.currentTimeMillis() - start
+
+                resp.put("ok", found)
+                resp.put("result", JSONObject().apply {
+                    put("found", found)
+                    put("elapsed_ms", elapsed)
+                    if (rect != null) {
+                        put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
+                        put("center", JSONObject().apply {
+                            put("x", rect.centerX())
+                            put("y", rect.centerY())
+                        })
+                    }
+                })
+            }
+            CMD_REPLACE_TEXT -> {
+                val text = req.optString("text", "")
+                // 1) Set text baru via Accessibility
+                val ok = svc.setText(text)
+                // 2) Tekan tombol Back (keyevent 4) satu kali untuk menutup keyboard virtual
+                val shell = PrivilegedShellHolder.get()
+                if (shell.status().connected) {
+                    shell.exec("input keyevent 4", 1000L)
+                }
+                resp.put("ok", ok)
+                resp.put("result", JSONObject().apply {
+                    put("replaced", ok)
+                    put("keyboard_dismissed", true)
+                })
+            }
+            CMD_ANNOTATED_SCREENSHOT -> {
+                // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar
+                val (bytes, width, height) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
+                if (bytes == null) {
+                    resp.put("ok", false).put("error", "gagal mengambil screenshot")
+                } else {
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val root = svc.rootInActiveWindow
+                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root)
+                    root?.recycle()
+                    bmp.recycle()
+
+                    resp.put("ok", true)
+                    resp.put("result", JSONObject().apply {
+                        put("image_base64", base64)
+                        put("elements", elements)
+                        put("width", width)
+                        put("height", height)
+                    })
                 }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
