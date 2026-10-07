@@ -86,7 +86,8 @@ class AgentForegroundService : Service() {
     // Keduanya di-release di onDestroy() — tidak bocor.
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
-    private var lastWsStatus: String = "menghubungkan..."
+    @Volatile
+    private var lastWsStatus: String = ""
     private var watchdogExecutor: ScheduledExecutorService? = null
     private val adbStateListener: () -> Unit = { updateNotification() }
     private val a11yStateListener: () -> Unit = { updateNotification() }
@@ -94,6 +95,7 @@ class AgentForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     fun getWsClient(): AgentWsClient? = ws
+    fun getLastWsStatus(): String = lastWsStatus
 
     override fun onCreate() {
         super.onCreate()

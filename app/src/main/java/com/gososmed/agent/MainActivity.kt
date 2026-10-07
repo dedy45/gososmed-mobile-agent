@@ -1038,16 +1038,20 @@ class MainActivity : AppCompatActivity() {
         AgentAccessibilityService.reconcileFromSettings(this)
         val a11yReady = AgentAccessibilityService.isEnabled()
         val paired = loadPairingCode().isNotEmpty()
+        val svc = AgentForegroundService.instance
+        val wsConnected = svc?.getWsClient()?.isConnected() == true
+        val effectiveStatus = lastStatus.ifEmpty { svc?.getLastWsStatus().orEmpty() }
         when {
-            lastStatus.contains("paired") -> {
+            wsConnected || effectiveStatus.contains("paired") || effectiveStatus == "connected" -> {
                 statusBigTv.text = getString(R.string.status_connected)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
             }
-            lastStatus.contains("connecting") -> {
+            effectiveStatus.contains("connecting") || effectiveStatus.contains("menghubungkan") -> {
                 statusBigTv.text = getString(R.string.status_connecting)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_warn))
             }
-            lastStatus.contains("ditolak") || lastStatus.contains("stopped") -> {
+            effectiveStatus.contains("ditolak") || effectiveStatus.contains("stopped") ||
+                effectiveStatus.contains("disconnected") || effectiveStatus.contains("closed") -> {
                 statusBigTv.text = getString(R.string.status_disconnected)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_err))
             }
