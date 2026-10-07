@@ -1277,13 +1277,23 @@ class AgentAccessibilityService : AccessibilityService() {
         val targetResId = resIdMatch?.lowercase()?.trim()
 
         while (System.currentTimeMillis() < deadline) {
+            var found: android.graphics.Rect? = null
             val root = rootInActiveWindow
             if (root != null) {
-                val found = searchNodeRecursive(root, targetText, targetDesc, targetResId, 0)
+                found = searchNodeRecursive(root, targetText, targetDesc, targetResId, 0)
                 root.recycle()
-                if (found != null) {
-                    return true to found
+            }
+            if (found == null) {
+                val winList = windows
+                for (w in winList) {
+                    val wRoot = w.root ?: continue
+                    found = searchNodeRecursive(wRoot, targetText, targetDesc, targetResId, 0)
+                    wRoot.recycle()
+                    if (found != null) break
                 }
+            }
+            if (found != null) {
+                return true to found
             }
             try {
                 Thread.sleep(80L)
@@ -1301,7 +1311,7 @@ class AgentAccessibilityService : AccessibilityService() {
         resIdTarget: String?,
         depth: Int = 0
     ): android.graphics.Rect? {
-        if (depth > 20) return null
+        if (depth > 50) return null
         val t = node.text?.toString()?.lowercase()?.trim().orEmpty()
         val cd = node.contentDescription?.toString()?.lowercase()?.trim().orEmpty()
         val id = node.viewIdResourceName?.lowercase()?.trim().orEmpty()

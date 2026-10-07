@@ -984,7 +984,7 @@ object AgentCommand {
                 val (found, rect) = svc.waitForNode(text, desc, resId, timeout)
                 val elapsed = System.currentTimeMillis() - start
 
-                resp.put("ok", found)
+                resp.put("ok", true)
                 resp.put("result", JSONObject().apply {
                     put("found", found)
                     put("elapsed_ms", elapsed)
