@@ -79,6 +79,8 @@ dependencies {
     // OkHttp for outbound WebSocket to the GoSosmed agenthub.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // In-App Google QR Code Scanner (ML Kit / Play Services) untuk scan QR dasbor 1-tap.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // v0.9.0 TRANSPORT TIER 1 — ADB lokal (menggantikan Shizuku).
     // Dependency dev.rikka.shizuku:* sudah DIHAPUS TOTAL. Transport shell kini
     // klien ADB di dalam APK sendiri: pairing ke adbd lokal lewat Debug

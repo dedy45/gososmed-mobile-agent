@@ -1150,29 +1150,108 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startQrScan() {
-        val intents = listOf(
-            Intent("com.google.zxing.client.android.SCAN").apply { putExtra("SCAN_MODE", "QR_CODE_MODE") },
-            Intent("com.google.android.gms.actions.SCAN_QR_CODE")
-        )
-        for (intent in intents) {
-            try {
-                qrScanLauncher.launch(intent)
-                return
-            } catch (_: Exception) {}
+        val isEn = (prefs().getString("app_lang", "id") ?: "id").startsWith("en")
+        val options = if (isEn) {
+            arrayOf(
+                "⚡ In-App Auto QR Scanner (Recommended)",
+                "🔍 Open Google Lens Camera",
+                "📱 Open Native QR Scanner / AI Camera"
+            )
+        } else {
+            arrayOf(
+                "⚡ Scan QR Otomatis di Aplikasi (Disarankan)",
+                "🔍 Buka Kamera Google Lens",
+                "📱 Buka Pemindai QR Bawaan HP / Kamera AI"
+            )
         }
-        // Fallback petunjuk jika pemindai terpisah tidak ada
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Scan QR Code Dasbor")
-            .setMessage("Buka kamera bawaan HP Anda atau Google Lens, lalu arahkan ke QR Code di dasbor GoSosmed. Tautan gososmed://pair akan otomatis membuka dan memasangkan HP ini.")
-            .setPositiveButton("Buka Kamera") { _, _ ->
-                try {
-                    startActivity(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE))
-                } catch (_: Exception) {
-                    toast("Gunakan aplikasi kamera bawaan HP untuk memindai QR code")
+            .setTitle(if (isEn) "Select QR Code Scanner" else "Pilih Metode Scan QR Code")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> startInAppGmsQrScan()
+                    1 -> openGoogleLensCamera()
+                    2 -> openNativeQrScannerOrFullCamera()
                 }
             }
-            .setNegativeButton("Tutup", null)
+            .setNegativeButton(if (isEn) "Cancel" else "Batal", null)
             .show()
+    }
+
+    private fun startInAppGmsQrScan() {
+        try {
+            val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                .enableAutoZoom()
+                .build()
+            val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this, options)
+            scanner.startScan()
+                .addOnSuccessListener { barcode ->
+                    val raw = barcode.rawValue?.trim().orEmpty()
+                    if (raw.isNotEmpty()) {
+                        handleScannedPairCode(raw)
+                    }
+                }
+                .addOnFailureListener {
+                    // Jika modul Play Services belum siap, otomatis alihkan ke Google Lens / Pemindai Bawaan
+                    openGoogleLensCamera()
+                }
+        } catch (_: Throwable) {
+            openGoogleLensCamera()
+        }
+    }
+
+    private fun openGoogleLensCamera() {
+        val candidates = listOf(
+            Intent(Intent.ACTION_VIEW, Uri.parse("googleapp://lens")).apply {
+                setPackage("com.google.android.googlequicksearchbox")
+            },
+            Intent(Intent.ACTION_VIEW, Uri.parse("googleapp://lens")),
+            packageManager.getLaunchIntentForPackage("com.google.ar.lens")
+        ).filterNotNull()
+
+        for (intent in candidates) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                toast("Arahkan Google Lens ke QR Code di dasbor GoSosmed")
+                return
+            } catch (_: Throwable) {}
+        }
+        openNativeQrScannerOrFullCamera()
+    }
+
+    private fun openNativeQrScannerOrFullCamera() {
+        // 1) Prioritaskan aplikasi pemindai QR resmi bawaan OEM (mis. Xiaomi Scanner)
+        val scannerPackages = listOf(
+            "com.xiaomi.scanner",
+            "com.miui.qr",
+            "com.coloros.ocrscanner",
+            "com.oplus.scanner",
+            "com.sec.android.app.qragent"
+        )
+        for (pkg in scannerPackages) {
+            try {
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(launchIntent)
+                    toast("Arahkan pemindai QR ke dasbor GoSosmed")
+                    return
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // 2) Gunakan INTENT_ACTION_STILL_IMAGE_CAMERA (mode kamera penuh dengan AI/QR aktif),
+        //    BUKAN ACTION_IMAGE_CAPTURE (yang mematikan fitur deteksi QR & Google Lens!).
+        try {
+            val fullCam = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(fullCam)
+            toast("Arahkan kamera ke QR Code di dasbor GoSosmed")
+        } catch (_: Throwable) {
+            toast("Buka Google Lens atau Pemindai QR bawaan HP Anda")
+        }
     }
 
     private fun handleScannedPairCode(raw: String) {
