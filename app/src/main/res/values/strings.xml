@@ -7,6 +7,7 @@
     
     <!-- Tab Navigasi Bawah -->
     <string name="tab_beranda">Beranda</string>
+    <string name="tab_diagnostik">Diagnostik</string>
     <string name="tab_setup">Setup</string>
     <string name="tab_log">Log</string>
 
@@ -23,6 +24,44 @@
     <string name="btn_connect">Hubungkan</string>
     <string name="btn_reconnect">Hubungkan Ulang</string>
     <string name="btn_disconnect">Putuskan Sambungan</string>
+    <string name="btn_scan_qr">📷 Scan QR</string>
+    <string name="server_mode_section_label">Mode Operasi Server</string>
+    <string name="server_mode_title">Mode Layar Server (Redup Tanpa Mengunci)</string>
+    <string name="server_mode_desc">Mencegah lockscreen Android memblokir otomatisasi. Layar tetap aktif tapi redup total (hemat baterai &amp; dingin).</string>
+    <string name="server_overlay_status">● MODE SERVER AKTIF (ANTI-LOCKSCREEN)</string>
+    <string name="server_overlay_hint">Ketuk layar 2× untuk kembali ke antarmuka normal</string>
+
+    <!-- Diagnostik & Telemetri -->
+    <string name="telemetry_section_label">Kesehatan &amp; Telemetri Perangkat</string>
+    <string name="telemetry_battery_warn">⚠️ HP tidak terhubung ke charger (risiko kehabisan baterai)</string>
+    <string name="btn_echo_test">⚡ Tes Koneksi &amp; Ukur Latensi</string>
+    <string name="btn_echo_testing">Menguji koneksi…</string>
+    <string name="oem_section_label">Optimasi Pabrikan (OEM)</string>
+    <string name="oem_title_default">Optimasi Latar Belakang Pabrikan</string>
+    <string name="oem_title_format">Optimasi Khusus %1$s</string>
+    <string name="oem_desc">Pintasan cepat untuk membuka menu perizinan pop-up dan autostart khusus sistem HP Anda.</string>
+    <string name="btn_oem_default">Buka Setelan Khusus HP</string>
+    <string name="btn_oem_format">Buka Setelan Khusus %1$s</string>
+
+    <!-- Status Dinamis -->
+    <string name="status_connected">● TERSAMBUNG</string>
+    <string name="status_connecting">● MENGHUBUNGKAN…</string>
+    <string name="status_disconnected">● TERPUTUS</string>
+    <string name="status_not_connected">● BELUM TERHUBUNG</string>
+    <string name="status_a11y_ok">✓ Akses otomatisasi aktif</string>
+    <string name="status_a11y_off">✗ Akses otomatisasi belum aktif — buka tab Setup</string>
+    <string name="status_code_saved">✓ Kode tersimpan — agent akan menyambung otomatis</string>
+    <string name="device_id_format">ID perangkat: %1$s</string>
+    <string name="telemetry_battery_charging"> ⚡ Mengisi daya</string>
+    <string name="telemetry_battery_discharging"> (Baterai)</string>
+    <string name="telemetry_battery_format">Baterai: %1$s</string>
+    <string name="telemetry_temp_hot">Panas [WARN]</string>
+    <string name="telemetry_temp_normal">Normal ✓</string>
+    <string name="telemetry_temp_format">Suhu: %1$s°C (%2$s)</string>
+    <string name="telemetry_network_waiting">Menunggu ping…</string>
+    <string name="telemetry_network_format">Jaringan: %1$s • Latensi: %2$s</string>
+    <string name="telemetry_target_prefix">Target: </string>
+    <string name="server_overlay_info_format">Baterai: %1$d%% • Suhu: %2$s°C • Latensi: %3$s</string>
 
     <!-- Langkah 3-Langkah Setup -->
     <string name="setup_header_label">Setup Perangkat BYOD</string>

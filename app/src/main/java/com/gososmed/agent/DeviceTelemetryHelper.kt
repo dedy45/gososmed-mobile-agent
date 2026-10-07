@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 
@@ -39,12 +41,24 @@ object DeviceTelemetryHelper {
         val tempRaw = batteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
         val tempCelsius = tempRaw / 10.0f
 
-        // 2. Info Wi-Fi
-        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val wifiInfo = wm?.connectionInfo
-        val rawSsid = wifiInfo?.ssid?.replace("\"", "").orEmpty()
-        val wifiSsid = if (rawSsid.isEmpty() || rawSsid == "<unknown ssid>") "Terhubung Wi-Fi" else rawSsid
-
+        // 2. Info Jaringan & Wi-Fi (defensif terhadap SecurityException / OEM)
+        val wifiSsid = try {
+            val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+            when {
+                caps == null -> "Offline"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
+                    val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                    @Suppress("DEPRECATION")
+                    val rawSsid = wm?.connectionInfo?.ssid?.replace("\"", "").orEmpty()
+                    if (rawSsid.isEmpty() || rawSsid == "<unknown ssid>") "Terhubung Wi-Fi" else rawSsid
+                }
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Data Seluler"
+                else -> "Terhubung"
+            }
+        } catch (_: Throwable) {
+            "Terhubung Wi-Fi"
+        }
         // 3. Latensi Ping real-time
         val pingLatency = AgentWsClient.lastPingLatencyMs
 

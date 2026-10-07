@@ -26,7 +26,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
+import androidx.core.os.LocaleListCompat
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.gososmed.agent.privileged.AdbPairingController
@@ -53,6 +55,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusBigTv: TextView
     private lateinit var statusTv: TextView
     private lateinit var versionTv: TextView
+    private lateinit var btnLangToggle: TextView
+    private lateinit var btnThemeToggle: TextView
     private lateinit var deviceInfoTv: TextView
     private lateinit var pairTv: TextView
     private lateinit var permA11yTv: TextView
@@ -64,15 +68,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adbForgetBtn: Button
     private lateinit var tabLayout: TabLayout
     private lateinit var panelBeranda: View
+    private lateinit var panelDiagnostik: View
     private lateinit var panelSetup: View
     private lateinit var panelLog: View
     private lateinit var btnNavHome: View
+    private lateinit var btnNavDiag: View
     private lateinit var btnNavSetup: View
     private lateinit var btnNavLog: View
     private lateinit var ivNavHome: ImageView
+    private lateinit var ivNavDiag: ImageView
     private lateinit var ivNavSetup: ImageView
     private lateinit var ivNavLog: ImageView
     private lateinit var tvNavHome: TextView
+    private lateinit var tvNavDiag: TextView
     private lateinit var tvNavSetup: TextView
     private lateinit var tvNavLog: TextView
     private lateinit var logTv: TextView
@@ -149,9 +157,14 @@ class MainActivity : AppCompatActivity() {
     private val logSb = SpannableStringBuilder()
     private val a11yStateChangeListener =
         android.view.accessibility.AccessibilityManager.AccessibilityStateChangeListener {
-            runOnUiThread { refreshStatus() }
+            if (!isFinishing && !isDestroyed) runOnUiThread { refreshStatus() }
         }
-
+    private val a11yUiListener: () -> Unit = {
+        if (!isFinishing && !isDestroyed) runOnUiThread { refreshStatus() }
+    }
+    private val adbUiListener: () -> Unit = {
+        if (!isFinishing && !isDestroyed) runOnUiThread { refreshAdbStatus() }
+    }
 
     private val updateHttpClient: okhttp3.OkHttpClient by lazy {
         okhttp3.OkHttpClient.Builder()
@@ -179,8 +192,22 @@ class MainActivity : AppCompatActivity() {
     private fun loadWsUrl(): String = prefs().getString("ws_url", "") ?: ""
 
     private fun loadPairingCode(): String = prefs().getString("pairing_code", "") ?: ""
+    override fun attachBaseContext(newBase: Context) {
+        val savedLang = newBase.getSharedPreferences("agent", MODE_PRIVATE)
+            .getString("app_lang", "id") ?: "id"
+        val locale = Locale(savedLang)
+        Locale.setDefault(locale)
+        val config = android.content.res.Configuration(newBase.resources.configuration)
+        config.setLocales(android.os.LocaleList(locale))
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val isDark = prefs().getBoolean("theme_dark", true)
+        AppCompatDelegate.setDefaultNightMode(
+            if (isDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        )
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -191,6 +218,8 @@ class MainActivity : AppCompatActivity() {
         statusBigTv = findViewById(R.id.statusBigTv)
         statusTv = findViewById(R.id.statusTv)
         versionTv = findViewById(R.id.versionTv)
+        btnLangToggle = findViewById(R.id.btnLangToggle)
+        btnThemeToggle = findViewById(R.id.btnThemeToggle)
         deviceInfoTv = findViewById(R.id.deviceInfoTv)
         pairTv = findViewById(R.id.pairTv)
         permA11yTv = findViewById(R.id.permA11yTv)
@@ -202,21 +231,54 @@ class MainActivity : AppCompatActivity() {
         adbForgetBtn = findViewById(R.id.adbForgetBtn)
         tabLayout = findViewById(R.id.tabLayout)
         panelBeranda = findViewById(R.id.panelBeranda)
+        panelDiagnostik = findViewById(R.id.panelDiagnostik)
         panelSetup = findViewById(R.id.panelSetup)
         panelLog = findViewById(R.id.panelLog)
         btnNavHome = findViewById(R.id.btnNavHome)
+        btnNavDiag = findViewById(R.id.btnNavDiag)
         btnNavSetup = findViewById(R.id.btnNavSetup)
         btnNavLog = findViewById(R.id.btnNavLog)
         ivNavHome = findViewById(R.id.ivNavHome)
+        ivNavDiag = findViewById(R.id.ivNavDiag)
         ivNavSetup = findViewById(R.id.ivNavSetup)
         ivNavLog = findViewById(R.id.ivNavLog)
         tvNavHome = findViewById(R.id.tvNavHome)
+        tvNavDiag = findViewById(R.id.tvNavDiag)
         tvNavSetup = findViewById(R.id.tvNavSetup)
         tvNavLog = findViewById(R.id.tvNavLog)
 
         btnNavHome.setOnClickListener { showPanel(0) }
-        btnNavSetup.setOnClickListener { showPanel(1) }
-        btnNavLog.setOnClickListener { showPanel(2) }
+        btnNavDiag.setOnClickListener { showPanel(1) }
+        btnNavSetup.setOnClickListener { showPanel(2) }
+        btnNavLog.setOnClickListener { showPanel(3) }
+
+        // In-App Theme Switcher (Ember 2048 Dark ↔ Glacier Glass Light)
+        btnThemeToggle.text = if (isDark) "🌙" else "☀️"
+        btnThemeToggle.setOnClickListener {
+            val currentDark = prefs().getBoolean("theme_dark", true)
+            val newDark = !currentDark
+            prefs().edit()
+                .putBoolean("theme_dark", newDark)
+                .putString("theme_mode", if (newDark) "dark" else "light")
+                .apply()
+            btnThemeToggle.text = if (newDark) "🌙" else "☀️"
+            AppCompatDelegate.setDefaultNightMode(
+                if (newDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+            )
+        }
+
+        // In-App Language Switcher (i18n ID ↔ EN 1-Tap)
+        val activeLang = prefs().getString("app_lang", "id") ?: "id"
+        val isEn = activeLang.startsWith("en")
+        btnLangToggle.text = if (isEn) "ID" else "EN"
+        btnLangToggle.setOnClickListener {
+            val nextLang = if (isEn) "id" else "en"
+            prefs().edit().putString("app_lang", nextLang).apply()
+            AppCompatDelegate.setApplicationLocales(
+                LocaleListCompat.forLanguageTags(nextLang)
+            )
+            recreate()
+        }
         logTv = findViewById(R.id.logTv)
         logScroll = findViewById(R.id.logScroll)
         logCountTv = findViewById(R.id.logCountTv)
@@ -288,7 +350,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        pairTv.text = "ID perangkat: $deviceId"
+        pairTv.text = getString(R.string.device_id_format, deviceId)
         loadPairingCode().takeIf { it.isNotEmpty() }?.let { pairCodeEt.setText(it) }
         renderDeviceInfo()
 
@@ -324,12 +386,8 @@ class MainActivity : AppCompatActivity() {
         }
         rerenderLog()
         // Dengarkan perubahan status langsung dari service di proses ini (realtime)
-        AgentAccessibilityService.addStateListener {
-            runOnUiThread { refreshStatus() }
-        }
-        AdbPairingController.registerStateListener {
-            runOnUiThread { refreshAdbStatus() }
-        }
+        AgentAccessibilityService.addStateListener(a11yUiListener)
+        AdbPairingController.addStateListener(adbUiListener)
 
 
         // Auto-pairing via deep link (bila activity dibuka dari tautan dasbor).
@@ -472,6 +530,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         tabLayout.removeAllTabs()
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_beranda))
+        tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_diagnostik))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_setup))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_log))
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
@@ -479,35 +538,42 @@ class MainActivity : AppCompatActivity() {
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
-        showPanel(0)
+        val savedTab = prefs().getInt("active_tab", 0).coerceIn(0, 3)
+        showPanel(savedTab)
     }
 
     private fun showPanel(index: Int) {
+        prefs().edit().putInt("active_tab", index).apply()
         panelBeranda.visibility = if (index == 0) View.VISIBLE else View.GONE
-        panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
-        panelLog.visibility = if (index == 2) View.VISIBLE else View.GONE
+        panelDiagnostik.visibility = if (index == 1) View.VISIBLE else View.GONE
+        panelSetup.visibility = if (index == 2) View.VISIBLE else View.GONE
+        panelLog.visibility = if (index == 3) View.VISIBLE else View.GONE
 
         // Update Bottom Nav Bar Visual State (Ember 2048 / Glacier Glass Theme)
         val primaryColor = ContextCompat.getColor(this, R.color.primary)
         val mutedColor = ContextCompat.getColor(this, R.color.text_secondary)
 
         btnNavHome.setBackgroundResource(if (index == 0) R.drawable.bg_bottom_nav_item_active else 0)
-        btnNavSetup.setBackgroundResource(if (index == 1) R.drawable.bg_bottom_nav_item_active else 0)
-        btnNavLog.setBackgroundResource(if (index == 2) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavDiag.setBackgroundResource(if (index == 1) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavSetup.setBackgroundResource(if (index == 2) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavLog.setBackgroundResource(if (index == 3) R.drawable.bg_bottom_nav_item_active else 0)
 
         ivNavHome.alpha = if (index == 0) 1.0f else 0.5f
-        ivNavSetup.alpha = if (index == 1) 1.0f else 0.5f
-        ivNavLog.alpha = if (index == 2) 1.0f else 0.5f
+        ivNavDiag.alpha = if (index == 1) 1.0f else 0.5f
+        ivNavSetup.alpha = if (index == 2) 1.0f else 0.5f
+        ivNavLog.alpha = if (index == 3) 1.0f else 0.5f
 
         tvNavHome.setTextColor(if (index == 0) primaryColor else mutedColor)
-        tvNavSetup.setTextColor(if (index == 1) primaryColor else mutedColor)
-        tvNavLog.setTextColor(if (index == 2) primaryColor else mutedColor)
+        tvNavDiag.setTextColor(if (index == 1) primaryColor else mutedColor)
+        tvNavSetup.setTextColor(if (index == 2) primaryColor else mutedColor)
+        tvNavLog.setTextColor(if (index == 3) primaryColor else mutedColor)
 
         tvNavHome.paint.isFakeBoldText = (index == 0)
-        tvNavSetup.paint.isFakeBoldText = (index == 1)
-        tvNavLog.paint.isFakeBoldText = (index == 2)
+        tvNavDiag.paint.isFakeBoldText = (index == 1)
+        tvNavSetup.paint.isFakeBoldText = (index == 2)
+        tvNavLog.paint.isFakeBoldText = (index == 3)
 
-        if (index == 0 || index == 1) {
+        if (index == 0 || index == 1 || index == 2) {
             refreshStatus()
         }
     }
@@ -555,7 +621,7 @@ class MainActivity : AppCompatActivity() {
             pausedDirty = false
             rerenderLog()
         }
-        logPauseBtn.text = if (logPaused) "Lanjut" else "Jeda"
+        logPauseBtn.text = getString(if (logPaused) R.string.log_resume else R.string.log_pause)
         updateLogCount()
     }
 
@@ -563,7 +629,7 @@ class MainActivity : AppCompatActivity() {
         AgentLog.clear()
         logPaused = false
         pausedDirty = false
-        logPauseBtn.text = "Jeda"
+        logPauseBtn.text = getString(R.string.log_pause)
         logSb.clear()
         logTv.text = logSb
         updateLogCount()
@@ -583,7 +649,7 @@ class MainActivity : AppCompatActivity() {
             logPaused -> " · DIJEDA"
             else -> ""
         }
-        logCountTv.text = "${AgentLog.size()} baris$suffix"
+        logCountTv.text = getString(R.string.log_lines_format, AgentLog.size()) + suffix
     }
 
     private fun scrollLogToBottom() {
@@ -619,34 +685,29 @@ class MainActivity : AppCompatActivity() {
         // sini; ia tetap dipakai internal oleh perintah dump/tap.
         AgentAccessibilityService.reconcileFromSettings(this)
         val a11y = AgentAccessibilityService.isEnabled()
-        permA11yTv.text = "Akses otomatisasi (Aksesibilitas) — ${if (a11y) "AKTIF ✓" else "BELUM AKTIF"}"
+        permA11yTv.text = "${getString(R.string.step_1_title)} — ${if (a11y) "AKTIF ✓" else "BELUM AKTIF"}"
         openA11yBtn.isEnabled = !a11y
-        openA11yBtn.text = if (a11y) "Sudah Aktif" else "Aktifkan"
+        openA11yBtn.text = getString(if (a11y) R.string.btn_already_active else R.string.btn_activate)
 
         // Baterai: cek nyata ke sistem (bukan tebakan).
         val pm = getSystemService(PowerManager::class.java)
         val batteryFree = pm?.isIgnoringBatteryOptimizations(packageName) == true
-        permBatteryTv.text = "Bebas hemat baterai — ${if (batteryFree) "AKTIF ✓" else "BELUM"}"
+        permBatteryTv.text = "${getString(R.string.battery_title)} — ${if (batteryFree) "AKTIF ✓" else "BELUM"}"
         batteryBtn.isEnabled = !batteryFree
-        batteryBtn.text = if (batteryFree) "Sudah Bebas" else "Bebaskan"
+        batteryBtn.text = getString(if (batteryFree) R.string.btn_already_exempt else R.string.btn_exempt)
 
         // Notifikasi: wajib hanya di Android 13+.
         val notifGranted = Build.VERSION.SDK_INT < 33 ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        permNotifTv.text = "Notifikasi — ${if (notifGranted) "AKTIF ✓" else "BELUM"}"
+        permNotifTv.text = "${getString(R.string.notif_title)} — ${if (notifGranted) "AKTIF ✓" else "BELUM"}"
         notifBtn.isEnabled = !notifGranted
-        notifBtn.text = if (notifGranted) "Sudah Aktif" else "Izinkan"
+        notifBtn.text = getString(if (notifGranted) R.string.btn_already_active else R.string.btn_allow)
 
         // v0.9.0 — Langkah 2 (WAJIB): izin overlay / Background Activity Launch.
-        // Sebelum v0.9.0 kartu ini TIDAK ADA di UI, padahal tanpa izin ini
-        // Android menelan permintaan buka aplikasi tanpa error apa pun —
-        // pemilik HP bisa merasa "sudah mengaktifkan semuanya" tetapi otomasi
-        // tetap gagal tanpa petunjuk.
         val overlayOk = AgentOverlay.canDraw(this)
-        permOverlayTv.text = "Tampilkan di atas aplikasi lain — ${if (overlayOk) "AKTIF ✓" else "BELUM AKTIF"}"
+        permOverlayTv.text = "${getString(R.string.step_2_title)} — ${if (overlayOk) "AKTIF ✓" else "BELUM AKTIF"}"
         openOverlayBtn.isEnabled = !overlayOk
-        openOverlayBtn.text = if (overlayOk) "Sudah Aktif" else "Aktifkan"
-
+        openOverlayBtn.text = getString(if (overlayOk) R.string.btn_already_active else R.string.btn_activate)
         refreshAdbStatus()
     }
 
@@ -660,13 +721,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun refreshAdbStatus() {
         val st = AdbPairingController.status()
+        val step3Title = getString(R.string.step_3_title)
         val label = when {
-            st.connected -> "Otomasi Lanjutan (ADB) — TERSAMBUNG ✓"
-            st.paired -> "Otomasi Lanjutan (ADB) — TERPUTUS"
-            else -> "Otomasi Lanjutan (ADB) — BELUM DIHUBUNGKAN"
+            st.connected -> "$step3Title — TERSAMBUNG ✓"
+            st.paired -> "$step3Title — TERPUTUS"
+            else -> "$step3Title — BELUM DIHUBUNGKAN"
         }
         adbStatusTv.text = label
-        adbPairBtn.text = if (st.connected) "Hubungkan Ulang" else "Hubungkan"
+        adbPairBtn.text = getString(if (st.connected) R.string.btn_reconnect else R.string.btn_connect)
         // Tombol "Putuskan" hanya berguna bila sudah pernah dipasangkan,
         // karena itulah yang menghapus identitas tersimpan.
         adbForgetBtn.visibility = if (st.paired) View.VISIBLE else View.GONE
@@ -978,25 +1040,25 @@ class MainActivity : AppCompatActivity() {
         val paired = loadPairingCode().isNotEmpty()
         when {
             lastStatus.contains("paired") -> {
-                statusBigTv.text = "● TERSAMBUNG"
+                statusBigTv.text = getString(R.string.status_connected)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
             }
             lastStatus.contains("connecting") -> {
-                statusBigTv.text = "● MENGHUBUNGKAN…"
+                statusBigTv.text = getString(R.string.status_connecting)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_warn))
             }
             lastStatus.contains("ditolak") || lastStatus.contains("stopped") -> {
-                statusBigTv.text = "● TERPUTUS"
+                statusBigTv.text = getString(R.string.status_disconnected)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_err))
             }
             else -> {
-                statusBigTv.text = "● BELUM TERHUBUNG"
+                statusBigTv.text = getString(R.string.status_not_connected)
                 statusBigTv.setTextColor(ContextCompat.getColor(this, R.color.status_idle))
             }
         }
         statusTv.text = buildString {
-            append(if (a11yReady) "✓ Akses otomatisasi aktif" else "✗ Akses otomatisasi belum aktif — buka tab Setup")
-            if (paired) append("\n✓ Kode tersimpan — agent akan menyambung otomatis")
+            append(getString(if (a11yReady) R.string.status_a11y_ok else R.string.status_a11y_off))
+            if (paired) append("\n").append(getString(R.string.status_code_saved))
         }
         refreshPerms()
         refreshTelemetry()
@@ -1006,8 +1068,9 @@ class MainActivity : AppCompatActivity() {
         val snap = DeviceTelemetryHelper.getSnapshot(this)
 
         // Baterai & status charging
-        val chargingStr = if (snap.isCharging) " ⚡ Mengisi daya" else " (Baterai)"
-        tvTelemetryBattery.text = "Baterai: ${if (snap.batteryPct >= 0) "${snap.batteryPct}%$chargingStr" else "N/A"}"
+        val chargingStr = getString(if (snap.isCharging) R.string.telemetry_battery_charging else R.string.telemetry_battery_discharging)
+        val batteryVal = if (snap.batteryPct >= 0) "${snap.batteryPct}%$chargingStr" else "N/A"
+        tvTelemetryBattery.text = getString(R.string.telemetry_battery_format, batteryVal)
         tvTelemetryBatteryAlert.visibility = if (!snap.isCharging && snap.batteryPct in 0..20) View.VISIBLE else View.GONE
 
         // Suhu perangkat
@@ -1016,18 +1079,19 @@ class MainActivity : AppCompatActivity() {
         } else {
             ContextCompat.getColor(this, R.color.text_primary)
         }
-        val tempState = if (snap.temperatureCelsius >= 40.0f) "Panas ⚠️" else "Normal ✓"
-        tvTelemetryTemp.text = "Suhu: ${String.format(Locale.US, "%.1f", snap.temperatureCelsius)}°C ($tempState)"
+        val tempState = getString(if (snap.temperatureCelsius >= 40.0f) R.string.telemetry_temp_hot else R.string.telemetry_temp_normal)
+        val tempStr = String.format(Locale.US, "%.1f", snap.temperatureCelsius)
+        tvTelemetryTemp.text = getString(R.string.telemetry_temp_format, tempStr, tempState)
         tvTelemetryTemp.setTextColor(tempColor)
 
         // Jaringan & latensi
-        val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else "Menunggu ping…"
-        tvTelemetryNetwork.text = "Jaringan: ${snap.wifiSsid} • Latensi: $latencyStr"
+        val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else getString(R.string.telemetry_network_waiting)
+        tvTelemetryNetwork.text = getString(R.string.telemetry_network_format, snap.wifiSsid, latencyStr)
 
         // Status platform aplikasi terpasang
         fun statusIcon(installed: Boolean): String = if (installed) "✓" else "—"
         tvTelemetryApps.text = buildString {
-            append("Target: ")
+            append(getString(R.string.telemetry_target_prefix))
             append("TikTok ${statusIcon(snap.isTiktokInstalled)}  ")
             append("IG ${statusIcon(snap.isInstagramInstalled)}  ")
             append("FB ${statusIcon(snap.isFacebookInstalled)}  ")
@@ -1038,24 +1102,24 @@ class MainActivity : AppCompatActivity() {
         // Sinkronisasi data ke Server Mode Overlay jika sedang aktif
         if (serverModeOverlay.visibility == View.VISIBLE) {
             serverClockTv.text = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
-            serverInfoTv.text = "Baterai: ${snap.batteryPct}% • Suhu: ${String.format(Locale.US, "%.1f", snap.temperatureCelsius)}°C • Latensi: $latencyStr"
+            serverInfoTv.text = getString(R.string.server_overlay_info_format, snap.batteryPct, tempStr, latencyStr)
         }
     }
 
     private fun performEchoTest() {
         btnEchoTest.isEnabled = false
-        btnEchoTest.text = "Menguji koneksi…"
+        btnEchoTest.text = getString(R.string.btn_echo_testing)
         val client = AgentForegroundService.instance?.getWsClient()
         if (client == null || !client.isConnected()) {
             btnEchoTest.isEnabled = true
-            btnEchoTest.text = "⚡ Tes Koneksi & Ukur Latensi"
+            btnEchoTest.text = getString(R.string.btn_echo_test)
             toast("Perangkat belum terhubung ke server GoSosmed")
             return
         }
         client.sendEchoPing { rttMs ->
             runOnUiThread {
                 btnEchoTest.isEnabled = true
-                btnEchoTest.text = "⚡ Tes Koneksi & Ukur Latensi"
+                btnEchoTest.text = getString(R.string.btn_echo_test)
                 vibrateFeedback()
                 if (rttMs >= 0) {
                     toast("✓ Koneksi Server Berhasil! Latensi: ${rttMs}ms")
@@ -1163,8 +1227,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupOemCard() {
         val oemName = OemOptimizationHelper.getOemName()
-        tvOemTitle.text = "Optimasi Khusus $oemName"
-        btnOemSettings.text = "Buka Setelan Khusus $oemName"
+        tvOemTitle.text = getString(R.string.oem_title_format, oemName)
+        btnOemSettings.text = getString(R.string.btn_oem_format, oemName)
         btnOemSettings.setOnClickListener {
             OemOptimizationHelper.openOemBackgroundSettings(this)
         }
@@ -1279,7 +1343,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         window.decorView.removeCallbacks(liveStatusTicker)
-        AdbPairingController.registerStateListener(null)
+        AgentAccessibilityService.removeStateListener(a11yUiListener)
+        AdbPairingController.removeStateListener(adbUiListener)
         AgentLog.listener = null
         super.onDestroy()
     }

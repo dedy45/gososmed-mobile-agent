@@ -88,6 +88,8 @@ class AgentForegroundService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var lastWsStatus: String = "menghubungkan..."
     private var watchdogExecutor: ScheduledExecutorService? = null
+    private val adbStateListener: () -> Unit = { updateNotification() }
+    private val a11yStateListener: () -> Unit = { updateNotification() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -102,12 +104,8 @@ class AgentForegroundService : Service() {
         // thread IO sendiri, jadi aman dipanggil dari onCreate; generate kunci
         // RSA 2048 tidak boleh menghambat main thread.
         AdbPairingController.bootstrap(this)
-        AdbPairingController.registerStateListener {
-            updateNotification()
-        }
-        AgentAccessibilityService.addStateListener {
-            updateNotification()
-        }
+        AdbPairingController.addStateListener(adbStateListener)
+        AgentAccessibilityService.addStateListener(a11yStateListener)
 
         // v0.9.11 — acquire CPU + Wi-Fi locks SEBELUM startForeground.
         acquireWakeLocks()
@@ -320,7 +318,8 @@ class AgentForegroundService : Service() {
         instance = null
         watchdogExecutor?.shutdownNow()
         watchdogExecutor = null
-        AdbPairingController.registerStateListener(null)
+        AdbPairingController.removeStateListener(adbStateListener)
+        AgentAccessibilityService.removeStateListener(a11yStateListener)
         ws?.destroy()
         ws = null
         // v0.9.11 — release locks. Tanpa ini, CPU dan Wi-Fi tetap nyala

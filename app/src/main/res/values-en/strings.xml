@@ -7,6 +7,7 @@
     
     <!-- Bottom Navigation Tabs -->
     <string name="tab_beranda">Home</string>
+    <string name="tab_diagnostik">Diagnostics</string>
     <string name="tab_setup">Setup</string>
     <string name="tab_log">Logs</string>
 
@@ -23,6 +24,44 @@
     <string name="btn_connect">Connect</string>
     <string name="btn_reconnect">Reconnect</string>
     <string name="btn_disconnect">Disconnect</string>
+    <string name="btn_scan_qr">📷 Scan QR</string>
+    <string name="server_mode_section_label">Server Operation Mode</string>
+    <string name="server_mode_title">Server Screen Mode (Dimmed &amp; Anti-Lock)</string>
+    <string name="server_mode_desc">Prevents Android lockscreen from blocking automation. Screen stays awake at minimum brightness (battery &amp; thermal saver).</string>
+    <string name="server_overlay_status">● SERVER MODE ACTIVE (ANTI-LOCKSCREEN)</string>
+    <string name="server_overlay_hint">Double-tap screen to return to normal interface</string>
+
+    <!-- Diagnostics & Telemetry -->
+    <string name="telemetry_section_label">Device Health &amp; Live Telemetry</string>
+    <string name="telemetry_battery_warn">⚠️ Phone not connected to charger (battery drain risk)</string>
+    <string name="btn_echo_test">⚡ Test Connection &amp; Measure Latency</string>
+    <string name="btn_echo_testing">Testing connection…</string>
+    <string name="oem_section_label">OEM Background Optimization</string>
+    <string name="oem_title_default">OEM Background Optimization</string>
+    <string name="oem_title_format">%1$s Special Optimization</string>
+    <string name="oem_desc">Quick shortcut to open background pop-up and autostart permissions for your device OS.</string>
+    <string name="btn_oem_default">Open Device Special Settings</string>
+    <string name="btn_oem_format">Open %1$s Special Settings</string>
+
+    <!-- Dynamic Status -->
+    <string name="status_connected">● CONNECTED</string>
+    <string name="status_connecting">● CONNECTING…</string>
+    <string name="status_disconnected">● DISCONNECTED</string>
+    <string name="status_not_connected">● NOT CONNECTED</string>
+    <string name="status_a11y_ok">✓ Automation access active</string>
+    <string name="status_a11y_off">✗ Automation access inactive — open Setup tab</string>
+    <string name="status_code_saved">✓ Code saved — agent will auto-connect</string>
+    <string name="device_id_format">Device ID: %1$s</string>
+    <string name="telemetry_battery_charging"> ⚡ Charging</string>
+    <string name="telemetry_battery_discharging"> (Battery)</string>
+    <string name="telemetry_battery_format">Battery: %1$s</string>
+    <string name="telemetry_temp_hot">Hot [WARN]</string>
+    <string name="telemetry_temp_normal">Normal ✓</string>
+    <string name="telemetry_temp_format">Temp: %1$s°C (%2$s)</string>
+    <string name="telemetry_network_waiting">Waiting for ping…</string>
+    <string name="telemetry_network_format">Network: %1$s • Latency: %2$s</string>
+    <string name="telemetry_target_prefix">Targets: </string>
+    <string name="server_overlay_info_format">Battery: %1$d%% • Temp: %2$s°C • Latency: %3$s</string>
 
     <!-- 3-Step Setup -->
     <string name="setup_header_label">BYOD Device Setup</string>

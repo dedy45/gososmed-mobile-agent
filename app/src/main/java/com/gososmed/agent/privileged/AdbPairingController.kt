@@ -55,14 +55,40 @@ object AdbPairingController {
 
     var onStateChanged: (() -> Unit)? = null
 
+    private val stateListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
     @Volatile
     private var autoReconnecting = false
 
+    fun addStateListener(listener: () -> Unit) {
+        if (!stateListeners.contains(listener)) {
+            stateListeners.add(listener)
+        }
+        shell?.onStateChanged = { notifyStateChanged() }
+    }
+
+    fun removeStateListener(listener: () -> Unit) {
+        stateListeners.remove(listener)
+    }
+
+    private fun notifyStateChanged() {
+        try {
+            onStateChanged?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "onStateChanged error: ${t.message}")
+        }
+        for (l in stateListeners) {
+            try {
+                l.invoke()
+            } catch (t: Throwable) {
+                Log.w(TAG, "stateListener error: ${t.message}")
+            }
+        }
+    }
+
     fun registerStateListener(listener: (() -> Unit)?) {
         onStateChanged = listener
-        shell?.onStateChanged = {
-            listener?.invoke()
-        }
+        shell?.onStateChanged = { notifyStateChanged() }
     }
 
     // ------------------------------------------------------------------ bootstrap
@@ -83,7 +109,7 @@ object AdbPairingController {
                 // 1) Kunci ADB. LAMBAT saat pertama kali → wajib di thread IO.
                 val keys = AdbKeyStore.loadOrCreate(app)
                 val instance = AdbLocalShell(app, keys)
-                instance.onStateChanged = { onStateChanged?.invoke() }
+                instance.onStateChanged = { notifyStateChanged() }
                 // 2) Pulihkan status "pernah dipasangkan" supaya UI bisa
                 //    membedakan "belum pernah" vs "terputus".
                 instance.markPaired(prefs(app).getBoolean(KEY_PAIRED_ONCE, false))
