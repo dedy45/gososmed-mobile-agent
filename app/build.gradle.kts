@@ -36,11 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 31 = v1.0.1-dev.1 — Realtime liveness watchdog ticker,
-        // persistent Wireless ADB auto-reconnect (server mode cable-free 100%),
-        // dynamic ongoing notification with IMPORTANCE_DEFAULT for Xiaomi HyperOS.
+        // versionCode 31 = v1.1.0 (STABIL) — Extreme Stability, Sticky 3D Dock,
+        // In-App Theme & Lang Switcher, Sub-10ms Native waitForNode, Annotated Screenshots.
         versionCode = 31
-        versionName = "1.0.1-dev.1"
+        versionName = "1.1.0"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

@@ -9,11 +9,11 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.0.1-dev.1] - 2026-10-07
+## [1.1.0] - 2026-10-08
 
-### Added — Extreme Stability, Sticky 3D Dock, Server Mode & Live Telemetry
+### Added — Extreme Stability, Sticky 3D Dock, Sub-10ms Native Performance & Production Release (Stabil)
 
-Rilis **DEV** `v1.0.1-dev.1` (versionCode 31) menghadirkan paritas 100% Wireless Debugging dengan koneksi kabel USB fisik untuk server mode (headless/tanpa kabel), peningkatan stabilitas ekstrem 24/7, perombakan desain UI bertema Nexus 2048 / Glacier Glass, dan fitur keramahan pengguna (UX):
+Rilis **STABIL** `v1.1.0` (versionCode 31) menghadirkan arsitektur performa tinggi remote control sub-10ms, perombakan desain UI modern bertema Nexus 2048 / Glacier Glass, navigasi 4-menu sticky dock, dan stabilitas 24/7:
 
 1. **Auto-Start on Boot (`BootReceiver`)**:
    - Menambahkan receiver `android.intent.action.BOOT_COMPLETED` dan `QUICKBOOT_POWERON` yang otomatis menjalankan `AgentForegroundService` seketika HP dinyalakan/reboot, memulihkan koneksi WebSocket dan ADB nirkabel tanpa sentuhan manual.
