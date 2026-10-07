@@ -10,7 +10,7 @@ import java.util.Locale
  * ke mana DATA perintah pergi (mis. screenshot = dikirim ke server, bukan
  * disimpan di HP).
  *
- * Ring buffer 300 baris, thread-safe, listener opsional untuk UI.
+ * Ring buffer 30 baris, thread-safe, listener opsional untuk UI.
  */
 object AgentLog {
 
@@ -22,7 +22,7 @@ object AgentLog {
         override fun toString(): String = "$time  $text"
     }
 
-    private const val MAX_LINES = 300
+    private const val MAX_LINES = 30
     private val entries = ArrayDeque<Entry>()
     private val lock = Any()
     private val fmt = SimpleDateFormat("HH:mm:ss", Locale.US)

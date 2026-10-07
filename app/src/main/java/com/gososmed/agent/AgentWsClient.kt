@@ -60,9 +60,17 @@ class AgentWsClient(
         private const val TAG = "GoAgentWS"
         private const val RECONNECT_BASE_MS = 2000L
         private const val RECONNECT_MAX_MS = 30000L
-        private const val HEARTBEAT_MS = 15000L
-        private const val PING_INTERVAL_MS = 20000L
+        private const val HEARTBEAT_MS = 10000L // Dinamis 10 detik
+        private const val PING_INTERVAL_MS = 15000L
+        private const val MAX_MISSED_PONGS = 2
+
+        @Volatile var lastPingLatencyMs: Long = -1L
+        @Volatile var lastPongTimestamp: Long = 0L
     }
+
+    @Volatile private var missedPongs = 0
+    @Volatile private var lastPingSentTime = 0L
+    @Volatile private var awaitingHeartbeatPong = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Accessibility API (rootInActiveWindow / performAction / dispatchGesture)
@@ -245,6 +253,8 @@ class AgentWsClient(
                         return
                     }
                     connected = true
+                    missedPongs = 0
+                    lastPongTimestamp = System.currentTimeMillis()
                     // Inbound command from the agenthub (has a cmd field): this
                     // is the server demanding we act (dump/tap/setText/back/...).
                     // Execute it and reply — this is the whole point of P1.
@@ -446,45 +456,44 @@ class AgentWsClient(
 
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
+        missedPongs = 0
+        awaitingHeartbeatPong = false
         heartbeatJob = scope.launch {
             while (!closed && !rejected) {
                 delay(HEARTBEAT_MS)
+                if (!connected) continue
 
-                // v0.9.11 — ADB KEEP-ALIVE PROBE: jalankan `echo ok` via
-                // transport ADB SETIAP heartbeat (15 dtk). Jika koneksi ADB
-                // sudah mati (misalnya karena Doze mode mematikan wireless
-                // debugging, atau adbd restart), probe ini MENDETEKSINYA 15
-                // detik setelah putus — bukan saat command harvest pertama
-                // gagal (yang bisa 5-10 menit kemudian).
-                //
-                // Efek samping POSITIF: OkHttp WebSocket ping (20 dtk) +
-                // probe ADB (15 dtk) bersama-sama menjaga KEDUA transport
-                // tetap hidup di sebagian besar Android Doze implementation
-                // (yang mengizinkan foreground service traffic).
-                //
-                // Jika probe gagal, AdbLocalShell.autoConnect() akan mencoba
-                // reconnect otomatis pada EXEC berikutnya. Kita tidak reconnect
-                // di sini karena autoConnect sudah menangani itu, dan probe
-                // di heartbeat loop hanya untuk DETEKSI DINI + keep-alive.
+                // Zombie Socket Detection (TCP Half-Open):
+                // Jika ping sebelumnya belum dijawab pong saat ping berikutnya jatuh tempo
+                if (awaitingHeartbeatPong) {
+                    missedPongs++
+                    Log.w(TAG, "Heartbeat pong belum diterima (missed: $missedPongs/$MAX_MISSED_PONGS)")
+                    if (missedPongs >= MAX_MISSED_PONGS) {
+                        Log.e(TAG, "Zombie Socket terdeteksi (TCP Half-Open)! Memaksa reset socket dan reconnect segera (~3s)")
+                        forceReconnect()
+                        continue
+                    }
+                }
+
+                // Probe ADB nirkabel lokal
                 val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
                 val shellStatus = shell.status()
                 if (shellStatus.connected) {
-                    // Probe ringan: hanya untuk menjaga koneksi TCP tetap hidup.
-                    // Memakai `settings get global device_name` — ada di whitelist,
-                    // ringan (<10ms), dan tidak mengubah state apapun.
-                    // Timeout pendek (3 dtk) karena command ini seharusnya < 100ms.
                     shell.exec("settings get global device_name", 3_000L)
                 }
 
                 val id = nextId()
-                pending[id] = { }
-                // v0.9.11 — heartbeat yang INFORMATIF: sertakan snapshot
-                // kesehatan semua subsistem (accessibility, ADB, WS) agar
-                // server tahu keadaan nyata perangkat SETIAP 15 detik, bukan
-                // hanya saat command gagal. Dasbor bisa menampilkan status
-                // real-time per-subsistem dan menolak job yang pasti gagal
-                // SEBELUM mengirimnya ke device — menghilangkan error
-                // "accessibility service not connected/ready" yang terlambat.
+                lastPingSentTime = System.currentTimeMillis()
+                awaitingHeartbeatPong = true
+                pending[id] = { _ ->
+                    val now = System.currentTimeMillis()
+                    lastPingLatencyMs = now - lastPingSentTime
+                    lastPongTimestamp = now
+                    missedPongs = 0
+                    awaitingHeartbeatPong = false
+                    Log.d(TAG, "Heartbeat pong diterima, RTT: ${lastPingLatencyMs}ms")
+                }
+
                 val heartbeat = JSONObject()
                     .put("id", id)
                     .put("cmd", AgentCommand.CMD_PING)
@@ -492,6 +501,45 @@ class AgentWsClient(
                 send(heartbeat)
             }
         }
+    }
+
+    /**
+     * Memaksa reset soket WebSocket (OkHttp cancel) dan memicu reconnect segera (~2-3s)
+     * saat terdeteksi dead-socket / TCP Half-Open.
+     */
+    fun forceReconnect() {
+        missedPongs = 0
+        awaitingHeartbeatPong = false
+        connected = false
+        connecting = false
+        try {
+            ws?.cancel()
+        } catch (_: Throwable) {}
+        ws = null
+        scheduleReconnect()
+    }
+
+    /**
+     * Mengirim echo ping satu-klik untuk tes latensi dan konfirmasi liveness koneksi.
+     */
+    fun sendEchoPing(onComplete: (Long) -> Unit) {
+        val webSocket = ws
+        if (webSocket == null || !connected) {
+            onComplete(-1L)
+            return
+        }
+        val id = nextId()
+        val start = System.currentTimeMillis()
+        pending[id] = {
+            val rtt = System.currentTimeMillis() - start
+            lastPingLatencyMs = rtt
+            onComplete(rtt)
+        }
+        val req = JSONObject()
+            .put("id", id)
+            .put("cmd", AgentCommand.CMD_PING)
+            .put("echo", true)
+        send(req)
     }
 
     private fun scheduleReconnect() {

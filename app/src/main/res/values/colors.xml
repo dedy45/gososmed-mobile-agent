@@ -1,31 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Palet semantik GoSosmed Agent.
-  Prinsip: semua warna UI merujuk NAMA di sini (bukan hex statis di layout)
-  agar light/dark mode konsisten. Nilai night ada di values-night/colors.xml.
-  Log panel sengaja selalu gelap (console) di kedua mode — kontras maksimum.
+  Palet Semantik GoSosmed Agent — Mode Terang (Glacier Glass).
+  Berdasarkan design tokens app.css: [data-theme='light']
 -->
 <resources>
-    <!-- Brand / tema -->
-    <color name="primary">#0EA5E9</color>
+    <!-- Brand / Tema Glacier Glass -->
+    <color name="primary">#0B5FFF</color>
+    <color name="primary_2">#0050C8</color>
     <color name="on_primary">#FFFFFF</color>
+    <color name="ember">#0B8FFF</color>
+    <color name="volt">#B97A12</color>
+    <color name="pink">#8B3FD9</color>
 
-    <!-- Permukaan kartu & banner -->
-    <color name="card_bg">#F2F5F9</color>
-    <color name="banner_bg">#E7F0FA</color>
-    <color name="divider">#1E101823</color>
+    <!-- Background & Permukaan (Glacier Ice & Glass) -->
+    <color name="window_bg">#DFE9F6</color>
+    <color name="window_bg_soft">#CFDFF2</color>
+    <color name="card_bg">#F3F8FF</color>
+    <color name="card_border">#B4D1F7</color>
+    <color name="banner_bg">#E2EEFC</color>
+    <color name="divider">#2E0B5FFF</color>
 
-    <!-- Status banner -->
-    <color name="status_ok">#1B7F3B</color>
-    <color name="status_warn">#9A6B00</color>
-    <color name="status_err">#B3261E</color>
-    <color name="status_idle">#6B7280</color>
+    <!-- Teks -->
+    <color name="text_primary">#0A1830</color>
+    <color name="text_secondary">#4A5F7D</color>
+    <color name="text_faint">#8BA0BB</color>
 
-    <!-- Log panel (console gelap konstan, light & dark sama) -->
-    <color name="log_bg">#10151D</color>
-    <color name="log_fg">#D7DEE8</color>
-    <color name="log_ok">#7BD88F</color>
-    <color name="log_err">#FF7B72</color>
-    <color name="log_info">#6FB7FF</color>
-    <color name="log_dim">#8A93A6</color>
+    <!-- Status banner & badges -->
+    <color name="status_ok">#059669</color>
+    <color name="status_warn">#B97A12</color>
+    <color name="status_err">#DC2626</color>
+    <color name="status_idle">#8BA0BB</color>
+
+    <!-- Step badge 01 02 03 -->
+    <color name="step_badge_bg">#E8F2FF</color>
+    <color name="step_badge_border">#0B5FFF</color>
+
+    <!-- Log panel (console terang bersih) -->
+    <color name="log_bg">#EDF4FC</color>
+    <color name="log_fg">#0A1830</color>
+    <color name="log_ok">#059669</color>
+    <color name="log_err">#DC2626</color>
+    <color name="log_info">#0B5FFF</color>
+    <color name="log_dim">#8BA0BB</color>
 </resources>

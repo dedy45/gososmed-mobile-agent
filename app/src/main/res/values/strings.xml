@@ -1,11 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- GoSosmed Agent — Sumber Teks Bahasa Indonesia (Default) -->
 <resources>
     <string name="app_name">GoSosmed Agent</string>
     <string name="accessibility_service_label">GoSosmed Agent Controller</string>
     <string name="accessibility_service_description">Menghubungkan smartphone ini ke server otomasi GoSosmed untuk mengontrol aplikasi sosial (Facebook, TikTok, Instagram) atas persetujuan Anda.</string>
-    <string name="pair_hint">Cara termudah: buka dasbor GoSosmed di browser HP ini → HP Pengguna (BYOD) → Terbitkan kode → Hubungkan HP ini. Aplikasi terbuka dan tersambung otomatis.</string>
-    <string name="pair_code_hint">Atau ketik kode 8 karakter dari dasbor</string>
+    
+    <!-- Tab Navigasi Bawah -->
     <string name="tab_beranda">Beranda</string>
     <string name="tab_setup">Setup</string>
     <string name="tab_log">Log</string>
+
+    <!-- Header & Banner -->
+    <string name="byod_workflow_header">ALUR KERJA BYOD</string>
+    <string name="checking_status">● MEMERIKSA…</string>
+    <string name="workflow_concept_note">Diagram konsep alur kerja, bukan tangkapan layar dasbor.</string>
+
+    <!-- Beranda -->
+    <string name="this_device_label">Perangkat ini</string>
+    <string name="connect_section_label">Hubungkan ke GoSosmed</string>
+    <string name="pair_hint">Cara termudah: buka dasbor GoSosmed di browser HP ini → HP Pengguna (BYOD) → Terbitkan kode → Hubungkan HP ini. Aplikasi terbuka dan tersambung otomatis.</string>
+    <string name="pair_code_hint">Atau ketik kode 8 karakter dari dasbor</string>
+    <string name="btn_connect">Hubungkan</string>
+    <string name="btn_reconnect">Hubungkan Ulang</string>
+    <string name="btn_disconnect">Putuskan Sambungan</string>
+
+    <!-- Langkah 3-Langkah Setup -->
+    <string name="setup_header_label">Setup Perangkat BYOD</string>
+    <string name="step_1_sub">LANGKAH 1 — WAJIB</string>
+    <string name="step_1_title">Akses otomatisasi (Aksesibilitas)</string>
+    <string name="step_1_desc">Inti otomatisasi: membaca layar dan mengetuk atas persetujuan Anda.</string>
+
+    <string name="step_2_sub">LANGKAH 2 — WAJIB</string>
+    <string name="step_2_title">Tampilkan di atas aplikasi lain</string>
+    <string name="step_2_desc">Sejak Android 10, tanpa izin ini sistem membatalkan permintaan membuka Instagram/TikTok/Facebook/Threads/YouTube TANPA pesan error apa pun.</string>
+
+    <string name="step_3_sub">LANGKAH 3 — OPSIONAL</string>
+    <string name="step_3_title">Otomasi Lanjutan (ADB)</string>
+    <string name="step_3_desc">Opsional. Membuat pembukaan aplikasi lebih andal (terutama TikTok). Cukup untuk sebagian besar pemakaian tanpa langkah ini. Perlu diulang setiap HP selesai di-restart — itu perilaku Android, bukan aplikasi ini.</string>
+
+    <!-- Dukungan -->
+    <string name="support_section_label">Dukungan</string>
+    <string name="battery_title">Bebas hemat baterai</string>
+    <string name="battery_desc">Mencegah Android mematikan agent di latar belakang (penting di Xiaomi/Oppo/Vivo).</string>
+
+    <string name="notif_title">Notifikasi</string>
+    <string name="notif_desc">Menampilkan status koneksi agent yang sedang berjalan.</string>
+
+    <string name="update_title">Pembaruan aplikasi</string>
+    <string name="update_desc">Versi terbaru dicek otomatis setiap tersambung ke server. Tahan teks versi di atas untuk cek manual.</string>
+
+    <!-- Tombol Aksi -->
+    <string name="btn_activate">Aktifkan</string>
+    <string name="btn_already_active">Sudah Aktif</string>
+    <string name="btn_exempt">Bebaskan</string>
+    <string name="btn_already_exempt">Sudah Bebas</string>
+    <string name="btn_allow">Izinkan</string>
+    <string name="btn_check_update">Cek Update</string>
+    <string name="btn_download_update">Unduh APK</string>
+    <string name="btn_forget_adb">Putuskan</string>
+
+    <!-- Log Panel -->
+    <string name="log_pause">Jeda</string>
+    <string name="log_resume">Lanjut</string>
+    <string name="log_copy">Salin</string>
+    <string name="log_clear">Bersihkan</string>
+    <string name="log_lines_format">%d baris</string>
 </resources>

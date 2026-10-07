@@ -20,6 +20,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -27,8 +28,12 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.gososmed.agent.privileged.AdbPairingController
 import com.gososmed.agent.privileged.AdbPairingService
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 /**
  * UI produksi agent (v0.5.0) — tab-based, TANPA scroll halaman panjang.
@@ -61,6 +66,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var panelBeranda: View
     private lateinit var panelSetup: View
     private lateinit var panelLog: View
+    private lateinit var btnNavHome: View
+    private lateinit var btnNavSetup: View
+    private lateinit var btnNavLog: View
+    private lateinit var ivNavHome: ImageView
+    private lateinit var ivNavSetup: ImageView
+    private lateinit var ivNavLog: ImageView
+    private lateinit var tvNavHome: TextView
+    private lateinit var tvNavSetup: TextView
+    private lateinit var tvNavLog: TextView
     private lateinit var logTv: TextView
     private lateinit var logScroll: ScrollView
     private lateinit var logCountTv: TextView
@@ -84,6 +98,38 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updateInfoTv: TextView
     private lateinit var checkUpdateBtn: Button
     private lateinit var downloadUpdateBtn: Button
+
+    // Telemetri Live & Kontrol Ekstrem
+    private lateinit var tvTelemetryBattery: TextView
+    private lateinit var tvTelemetryTemp: TextView
+    private lateinit var tvTelemetryBatteryAlert: TextView
+    private lateinit var tvTelemetryNetwork: TextView
+    private lateinit var tvTelemetryApps: TextView
+    private lateinit var btnEchoTest: Button
+    private lateinit var btnScanQr: Button
+
+    // Mode Server (Layar Redup & Anti-Lockscreen)
+    private lateinit var switchServerMode: MaterialSwitch
+    private lateinit var serverModeOverlay: View
+    private lateinit var serverClockTv: TextView
+    private lateinit var serverStatusTv: TextView
+    private lateinit var serverInfoTv: TextView
+
+    // Optimasi Pabrikan HP (OEM)
+    private lateinit var tvOemTitle: TextView
+    private lateinit var tvOemDesc: TextView
+    private lateinit var btnOemSettings: Button
+
+    private val qrScanLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val contents = result.data?.getStringExtra("SCAN_RESULT")?.trim().orEmpty()
+            if (contents.isNotEmpty()) {
+                handleScannedPairCode(contents)
+            }
+        }
+    }
 
     private val deviceId: String by lazy { loadOrCreateDeviceId() }
     private var versionTapCount = 0
@@ -158,6 +204,19 @@ class MainActivity : AppCompatActivity() {
         panelBeranda = findViewById(R.id.panelBeranda)
         panelSetup = findViewById(R.id.panelSetup)
         panelLog = findViewById(R.id.panelLog)
+        btnNavHome = findViewById(R.id.btnNavHome)
+        btnNavSetup = findViewById(R.id.btnNavSetup)
+        btnNavLog = findViewById(R.id.btnNavLog)
+        ivNavHome = findViewById(R.id.ivNavHome)
+        ivNavSetup = findViewById(R.id.ivNavSetup)
+        ivNavLog = findViewById(R.id.ivNavLog)
+        tvNavHome = findViewById(R.id.tvNavHome)
+        tvNavSetup = findViewById(R.id.tvNavSetup)
+        tvNavLog = findViewById(R.id.tvNavLog)
+
+        btnNavHome.setOnClickListener { showPanel(0) }
+        btnNavSetup.setOnClickListener { showPanel(1) }
+        btnNavLog.setOnClickListener { showPanel(2) }
         logTv = findViewById(R.id.logTv)
         logScroll = findViewById(R.id.logScroll)
         logCountTv = findViewById(R.id.logCountTv)
@@ -181,6 +240,32 @@ class MainActivity : AppCompatActivity() {
         updateInfoTv = findViewById(R.id.updateInfoTv)
         checkUpdateBtn = findViewById(R.id.checkUpdateBtn)
         downloadUpdateBtn = findViewById(R.id.downloadUpdateBtn)
+
+        // Telemetri
+        tvTelemetryBattery = findViewById(R.id.tvTelemetryBattery)
+        tvTelemetryTemp = findViewById(R.id.tvTelemetryTemp)
+        tvTelemetryBatteryAlert = findViewById(R.id.tvTelemetryBatteryAlert)
+        tvTelemetryNetwork = findViewById(R.id.tvTelemetryNetwork)
+        tvTelemetryApps = findViewById(R.id.tvTelemetryApps)
+        btnEchoTest = findViewById(R.id.btnEchoTest)
+        btnScanQr = findViewById(R.id.btnScanQr)
+
+        // Mode Server
+        switchServerMode = findViewById(R.id.switchServerMode)
+        serverModeOverlay = findViewById(R.id.serverModeOverlay)
+        serverClockTv = findViewById(R.id.serverClockTv)
+        serverStatusTv = findViewById(R.id.serverStatusTv)
+        serverInfoTv = findViewById(R.id.serverInfoTv)
+
+        // OEM
+        tvOemTitle = findViewById(R.id.tvOemTitle)
+        tvOemDesc = findViewById(R.id.tvOemDesc)
+        btnOemSettings = findViewById(R.id.btnOemSettings)
+
+        btnEchoTest.setOnClickListener { performEchoTest() }
+        btnScanQr.setOnClickListener { startQrScan() }
+        setupServerMode()
+        setupOemCard()
         checkUpdateBtn.setOnClickListener { checkUpdateNow() }
         downloadUpdateBtn.setOnClickListener { openApkDownload() }
         // Jalur manual cadangan: tahan teks versi (tap biasa tetap mode debug).
@@ -382,9 +467,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Tab ----
+    // ---- Tab & Sticky Bottom Navigation ----
 
     private fun setupTabs() {
+        tabLayout.removeAllTabs()
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_beranda))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_setup))
         tabLayout.addTab(tabLayout.newTab().setText(R.string.tab_log))
@@ -400,6 +486,27 @@ class MainActivity : AppCompatActivity() {
         panelBeranda.visibility = if (index == 0) View.VISIBLE else View.GONE
         panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
         panelLog.visibility = if (index == 2) View.VISIBLE else View.GONE
+
+        // Update Bottom Nav Bar Visual State (Ember 2048 / Glacier Glass Theme)
+        val primaryColor = ContextCompat.getColor(this, R.color.primary)
+        val mutedColor = ContextCompat.getColor(this, R.color.text_secondary)
+
+        btnNavHome.setBackgroundResource(if (index == 0) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavSetup.setBackgroundResource(if (index == 1) R.drawable.bg_bottom_nav_item_active else 0)
+        btnNavLog.setBackgroundResource(if (index == 2) R.drawable.bg_bottom_nav_item_active else 0)
+
+        ivNavHome.alpha = if (index == 0) 1.0f else 0.5f
+        ivNavSetup.alpha = if (index == 1) 1.0f else 0.5f
+        ivNavLog.alpha = if (index == 2) 1.0f else 0.5f
+
+        tvNavHome.setTextColor(if (index == 0) primaryColor else mutedColor)
+        tvNavSetup.setTextColor(if (index == 1) primaryColor else mutedColor)
+        tvNavLog.setTextColor(if (index == 2) primaryColor else mutedColor)
+
+        tvNavHome.paint.isFakeBoldText = (index == 0)
+        tvNavSetup.paint.isFakeBoldText = (index == 1)
+        tvNavLog.paint.isFakeBoldText = (index == 2)
+
         if (index == 0 || index == 1) {
             refreshStatus()
         }
@@ -892,6 +999,175 @@ class MainActivity : AppCompatActivity() {
             if (paired) append("\n✓ Kode tersimpan — agent akan menyambung otomatis")
         }
         refreshPerms()
+        refreshTelemetry()
+    }
+
+    private fun refreshTelemetry() {
+        val snap = DeviceTelemetryHelper.getSnapshot(this)
+
+        // Baterai & status charging
+        val chargingStr = if (snap.isCharging) " ⚡ Mengisi daya" else " (Baterai)"
+        tvTelemetryBattery.text = "Baterai: ${if (snap.batteryPct >= 0) "${snap.batteryPct}%$chargingStr" else "N/A"}"
+        tvTelemetryBatteryAlert.visibility = if (!snap.isCharging && snap.batteryPct in 0..20) View.VISIBLE else View.GONE
+
+        // Suhu perangkat
+        val tempColor = if (snap.temperatureCelsius >= 40.0f) {
+            ContextCompat.getColor(this, R.color.status_err)
+        } else {
+            ContextCompat.getColor(this, R.color.text_primary)
+        }
+        val tempState = if (snap.temperatureCelsius >= 40.0f) "Panas ⚠️" else "Normal ✓"
+        tvTelemetryTemp.text = "Suhu: ${String.format(Locale.US, "%.1f", snap.temperatureCelsius)}°C ($tempState)"
+        tvTelemetryTemp.setTextColor(tempColor)
+
+        // Jaringan & latensi
+        val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else "Menunggu ping…"
+        tvTelemetryNetwork.text = "Jaringan: ${snap.wifiSsid} • Latensi: $latencyStr"
+
+        // Status platform aplikasi terpasang
+        fun statusIcon(installed: Boolean): String = if (installed) "✓" else "—"
+        tvTelemetryApps.text = buildString {
+            append("Target: ")
+            append("TikTok ${statusIcon(snap.isTiktokInstalled)}  ")
+            append("IG ${statusIcon(snap.isInstagramInstalled)}  ")
+            append("FB ${statusIcon(snap.isFacebookInstalled)}  ")
+            append("Threads ${statusIcon(snap.isThreadsInstalled)}  ")
+            append("YT ${statusIcon(snap.isYoutubeInstalled)}")
+        }
+
+        // Sinkronisasi data ke Server Mode Overlay jika sedang aktif
+        if (serverModeOverlay.visibility == View.VISIBLE) {
+            serverClockTv.text = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+            serverInfoTv.text = "Baterai: ${snap.batteryPct}% • Suhu: ${String.format(Locale.US, "%.1f", snap.temperatureCelsius)}°C • Latensi: $latencyStr"
+        }
+    }
+
+    private fun performEchoTest() {
+        btnEchoTest.isEnabled = false
+        btnEchoTest.text = "Menguji koneksi…"
+        val client = AgentForegroundService.instance?.getWsClient()
+        if (client == null || !client.isConnected()) {
+            btnEchoTest.isEnabled = true
+            btnEchoTest.text = "⚡ Tes Koneksi & Ukur Latensi"
+            toast("Perangkat belum terhubung ke server GoSosmed")
+            return
+        }
+        client.sendEchoPing { rttMs ->
+            runOnUiThread {
+                btnEchoTest.isEnabled = true
+                btnEchoTest.text = "⚡ Tes Koneksi & Ukur Latensi"
+                vibrateFeedback()
+                if (rttMs >= 0) {
+                    toast("✓ Koneksi Server Berhasil! Latensi: ${rttMs}ms")
+                } else {
+                    toast("Gagal mendapatkan respons echo dari server")
+                }
+                refreshTelemetry()
+            }
+        }
+    }
+
+    private fun vibrateFeedback() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vm?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(45, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(45)
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun startQrScan() {
+        val intents = listOf(
+            Intent("com.google.zxing.client.android.SCAN").apply { putExtra("SCAN_MODE", "QR_CODE_MODE") },
+            Intent("com.google.android.gms.actions.SCAN_QR_CODE")
+        )
+        for (intent in intents) {
+            try {
+                qrScanLauncher.launch(intent)
+                return
+            } catch (_: Exception) {}
+        }
+        // Fallback petunjuk jika pemindai terpisah tidak ada
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Scan QR Code Dasbor")
+            .setMessage("Buka kamera bawaan HP Anda atau Google Lens, lalu arahkan ke QR Code di dasbor GoSosmed. Tautan gososmed://pair akan otomatis membuka dan memasangkan HP ini.")
+            .setPositiveButton("Buka Kamera") { _, _ ->
+                try {
+                    startActivity(Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE))
+                } catch (_: Exception) {
+                    toast("Gunakan aplikasi kamera bawaan HP untuk memindai QR code")
+                }
+            }
+            .setNegativeButton("Tutup", null)
+            .show()
+    }
+
+    private fun handleScannedPairCode(raw: String) {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("gososmed://pair")) {
+            handlePairIntent(Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)))
+        } else {
+            val code = if (trimmed.length > 8) trimmed.take(8) else trimmed
+            pairCodeEt.setText(code)
+            toast("Kode pairing terisi: $code")
+            doConnect(wsUrlEt.text.toString().trim(), code)
+        }
+    }
+
+    private fun setupServerMode() {
+        val isServerMode = prefs().getBoolean("server_mode", false)
+        switchServerMode.isChecked = isServerMode
+        applyServerMode(isServerMode)
+
+        switchServerMode.setOnCheckedChangeListener { _, isChecked ->
+            applyServerMode(isChecked)
+        }
+
+        var lastTapTime = 0L
+        serverModeOverlay.setOnClickListener {
+            val now = System.currentTimeMillis()
+            if (now - lastTapTime < 400L) {
+                applyServerMode(false)
+                switchServerMode.isChecked = false
+            } else {
+                lastTapTime = now
+            }
+        }
+    }
+
+    private fun applyServerMode(enabled: Boolean) {
+        prefs().edit().putBoolean("server_mode", enabled).apply()
+        val lp = window.attributes
+        if (enabled) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            lp.screenBrightness = 0.01f
+            window.attributes = lp
+            serverModeOverlay.visibility = View.VISIBLE
+            refreshTelemetry()
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            window.attributes = lp
+            serverModeOverlay.visibility = View.GONE
+        }
+    }
+
+    private fun setupOemCard() {
+        val oemName = OemOptimizationHelper.getOemName()
+        tvOemTitle.text = "Optimasi Khusus $oemName"
+        btnOemSettings.text = "Buka Setelan Khusus $oemName"
+        btnOemSettings.setOnClickListener {
+            OemOptimizationHelper.openOemBackgroundSettings(this)
+        }
     }
 
     private fun connectWs() {
@@ -945,7 +1221,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (!isFinishing && !isDestroyed) {
                 refreshStatus()
-                tabLayout.postDelayed(this, 1500L)
+                window.decorView.postDelayed(this, 1500L)
             }
         }
     }
@@ -954,8 +1230,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshStatus()
         refreshUpdateState()
-        tabLayout.removeCallbacks(liveStatusTicker)
-        tabLayout.postDelayed(liveStatusTicker, 1500L)
+        window.decorView.removeCallbacks(liveStatusTicker)
+        window.decorView.postDelayed(liveStatusTicker, 1500L)
         // v0.7.1: izin overlay = pengecualian Background Activity Launch.
         // Tanpa ini agent tidak pernah bisa membuka app target dari server.
         maybeAskOverlay()
@@ -975,7 +1251,7 @@ class MainActivity : AppCompatActivity() {
         // Sinkronisasi asinkron pasca kembali dari Setelan OS (binder service / AppOps delay)
         val delays = longArrayOf(300L, 800L, 1500L)
         for (d in delays) {
-            tabLayout.postDelayed({
+            window.decorView.postDelayed({
                 if (!isFinishing && !isDestroyed) {
                     refreshStatus()
                     if (AgentOverlay.canDraw(this)) AgentOverlay.ensure(this)
@@ -987,7 +1263,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        tabLayout.removeCallbacks(liveStatusTicker)
+        window.decorView.removeCallbacks(liveStatusTicker)
         try {
             unregisterReceiver(statusReceiver)
         } catch (_: Exception) {
@@ -1002,7 +1278,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        tabLayout.removeCallbacks(liveStatusTicker)
+        window.decorView.removeCallbacks(liveStatusTicker)
         AdbPairingController.registerStateListener(null)
         AgentLog.listener = null
         super.onDestroy()

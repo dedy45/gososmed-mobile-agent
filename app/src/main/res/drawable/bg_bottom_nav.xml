@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glassmorphic 3D Dock Sticky Bottom Bar (Nexus 2048 / Ember theme). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1. Background panel -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/card_bg" />
+            <corners android:topLeftRadius="16dp" android:topRightRadius="16dp" />
+        </shape>
+    </item>
+
+    <!-- 2. Top Highlight Bevel Hairline -->
+    <item android:gravity="top" android:height="1.5dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:startColor="#00FF7A2F"
+                android:centerColor="@color/ember"
+                android:endColor="#00FF7A2F"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

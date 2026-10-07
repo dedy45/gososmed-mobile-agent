@@ -1,0 +1,29 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <!-- 3D Isometric Terminal Console -->
+    <!-- Top Face / Screen -->
+    <path
+        android:pathData="M5,4 L23,4 L23,16 L5,16 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.75" />
+    <!-- 3D Stand Extrusion Bottom -->
+    <path
+        android:pathData="M5,16 L23,16 L20,24 L8,24 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.4" />
+    <!-- Console Prompt Cursor ">_" -->
+    <path
+        android:pathData="M8,8 L12,10 L8,12"
+        android:strokeColor="@color/text_primary"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M14,12 L19,12"
+        android:strokeColor="@color/text_primary"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+</vector>

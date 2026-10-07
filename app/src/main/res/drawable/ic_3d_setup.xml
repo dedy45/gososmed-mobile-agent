@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <!-- 3D Isometric Tool / Setup Node -->
+    <!-- Top Facet (Hex Prism) -->
+    <path
+        android:pathData="M14,3 L22,7.5 L22,13.5 L14,18 L6,13.5 L6,7.5 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.8" />
+    <!-- 3D Extrusion Side Left -->
+    <path
+        android:pathData="M6,13.5 L14,18 L14,24 L6,19.5 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.5" />
+    <!-- 3D Extrusion Side Right -->
+    <path
+        android:pathData="M14,18 L22,13.5 L22,19.5 L14,24 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.3" />
+    <!-- Inner Core Gear Wrench Accent -->
+    <path
+        android:pathData="M14,7 L17,9 L14,14 L11,12 Z"
+        android:fillColor="@color/text_primary"
+        android:fillAlpha="0.9" />
+</vector>

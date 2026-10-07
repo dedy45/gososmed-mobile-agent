@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <!-- 3D Isometric Home Node -->
+    <!-- Top Roof / Top Facet (Highlight) -->
+    <path
+        android:pathData="M14,2 L24,8 L14,14 L4,8 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.85" />
+    <!-- Left Facet (Mid tone) -->
+    <path
+        android:pathData="M4,8 L14,14 L14,24 L4,18 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.55" />
+    <!-- Right Facet (Deep tone) -->
+    <path
+        android:pathData="M14,14 L24,8 L24,18 L14,24 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.35" />
+    <!-- Center Core Portal Glow -->
+    <path
+        android:pathData="M11,15 L17,11.5 L17,17.5 L11,21 Z"
+        android:fillColor="@color/text_primary"
+        android:fillAlpha="0.9" />
+</vector>

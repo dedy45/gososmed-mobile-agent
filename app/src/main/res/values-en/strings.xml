@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GoSosmed Agent — English Translations (Mirroring marketing/src/i18n.ts) -->
+<resources>
+    <string name="app_name">GoSosmed Agent</string>
+    <string name="accessibility_service_label">GoSosmed Agent Controller</string>
+    <string name="accessibility_service_description">Connects this smartphone to GoSosmed automation server to control social media apps (Facebook, TikTok, Instagram) upon your consent.</string>
+    
+    <!-- Bottom Navigation Tabs -->
+    <string name="tab_beranda">Home</string>
+    <string name="tab_setup">Setup</string>
+    <string name="tab_log">Logs</string>
+
+    <!-- Header & Banner -->
+    <string name="byod_workflow_header">BYOD WORKFLOW</string>
+    <string name="checking_status">● CHECKING…</string>
+    <string name="workflow_concept_note">A concept diagram of the workflow, not a dashboard screenshot.</string>
+
+    <!-- Home Tab -->
+    <string name="this_device_label">This Device</string>
+    <string name="connect_section_label">Connect to GoSosmed</string>
+    <string name="pair_hint">Easiest method: open GoSosmed dashboard in this device browser → User Devices (BYOD) → Issue Pairing Code → Connect. App will open and pair automatically.</string>
+    <string name="pair_code_hint">Or type 8-character pairing code from dashboard</string>
+    <string name="btn_connect">Connect</string>
+    <string name="btn_reconnect">Reconnect</string>
+    <string name="btn_disconnect">Disconnect</string>
+
+    <!-- 3-Step Setup -->
+    <string name="setup_header_label">BYOD Device Setup</string>
+    <string name="step_1_sub">STEP 1 — REQUIRED</string>
+    <string name="step_1_title">Automation Access (Accessibility)</string>
+    <string name="step_1_desc">Core automation engine: reads screen hierarchy and simulates taps upon your consent.</string>
+
+    <string name="step_2_sub">STEP 2 — REQUIRED</string>
+    <string name="step_2_title">Display over other apps</string>
+    <string name="step_2_desc">Since Android 10, without this permission the system silently drops requests to launch target apps from background.</string>
+
+    <string name="step_3_sub">STEP 3 — OPTIONAL</string>
+    <string name="step_3_title">Advanced Automation (ADB)</string>
+    <string name="step_3_desc">Optional. Makes application launch deterministic and reliable (especially TikTok). Requires re-pairing on device restart.</string>
+
+    <!-- Support Section -->
+    <string name="support_section_label">Support</string>
+    <string name="battery_title">Ignore Battery Optimization</string>
+    <string name="battery_desc">Prevents Android from killing agent background processes (vital on Xiaomi/Oppo/Vivo).</string>
+
+    <string name="notif_title">Notifications</string>
+    <string name="notif_desc">Displays real-time agent connectivity status in the system status bar.</string>
+
+    <string name="update_title">App Updates</string>
+    <string name="update_desc">Latest version checked automatically when connected to server. Long-press version label above for manual check.</string>
+
+    <!-- Buttons -->
+    <string name="btn_activate">Activate</string>
+    <string name="btn_already_active">Active</string>
+    <string name="btn_exempt">Exempt</string>
+    <string name="btn_already_exempt">Exempted</string>
+    <string name="btn_allow">Allow</string>
+    <string name="btn_check_update">Check Update</string>
+    <string name="btn_download_update">Download APK</string>
+    <string name="btn_forget_adb">Disconnect</string>
+
+    <!-- Log Panel -->
+    <string name="log_pause">Pause</string>
+    <string name="log_resume">Resume</string>
+    <string name="log_copy">Copy</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_lines_format">%d lines</string>
+</resources>

@@ -40,6 +40,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Agent kembali online setelah HP reboot tanpa dibuka manual. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Umpan balik haptic untuk Echo Test koneksi satu-klik -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Kamera untuk pemindai QR Code pairing instan (opsional) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- v0.9.0 TRANSPORT TIER 1 (ADB lokal).
          v0.8.0 memakai aplikasi pihak ketiga Shizuku; mulai v0.9.0 Shizuku
@@ -95,6 +100,18 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.gososmed.agent.CMD" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Auto-start saat HP reboot / startup (Extreme Reliability) -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
 

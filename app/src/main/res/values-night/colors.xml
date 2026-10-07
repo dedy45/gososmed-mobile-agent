@@ -1,16 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Varian dark mode: permukaan gelap, warna status lebih terang agar kontras.
-     Warna log panel sengaja TIDAK dioverride — console tetap gelap di semua mode. -->
+<!--
+  Palet Semantik GoSosmed Agent — Mode Gelap (Nexus 2048 / Ember Dark).
+  Berdasarkan design tokens app.css dan Screenshot_5.png.
+-->
 <resources>
-    <color name="primary">#38BDF8</color>
-    <color name="on_primary">#0B1620</color>
+    <!-- Brand / Tema Ember 2048 -->
+    <color name="primary">#FF5A1F</color>
+    <color name="primary_2">#FFB08A</color>
+    <color name="on_primary">#1D0D02</color>
+    <color name="ember">#FF7A2F</color>
+    <color name="volt">#FFC46B</color>
+    <color name="pink">#D08BFF</color>
 
-    <color name="card_bg">#161C26</color>
-    <color name="banner_bg">#13202E</color>
-    <color name="divider">#24FFFFFF</color>
+    <!-- Background & Permukaan (Deep Obsidian Plum) -->
+    <color name="window_bg">#070409</color>
+    <color name="window_bg_soft">#0C0612</color>
+    <color name="card_bg">#130A1B</color>
+    <color name="card_border">#331E35</color>
+    <color name="banner_bg">#1A0D24</color>
+    <color name="divider">#26FFAA82</color>
 
-    <color name="status_ok">#6EE7A0</color>
-    <color name="status_warn">#FBBF5B</color>
-    <color name="status_err">#FF8A80</color>
-    <color name="status_idle">#9AA3B2</color>
+    <!-- Teks -->
+    <color name="text_primary">#FFF7F2</color>
+    <color name="text_secondary">#B6A6B0</color>
+    <color name="text_faint">#726878</color>
+
+    <!-- Status banner & badges -->
+    <color name="status_ok">#34D399</color>
+    <color name="status_warn">#FBBF24</color>
+    <color name="status_err">#FB7185</color>
+    <color name="status_idle">#726878</color>
+
+    <!-- Step badge 01 02 03 (Screenshot_5.png) -->
+    <color name="step_badge_bg">#20121A</color>
+    <color name="step_badge_border">#FF7A2F</color>
+
+    <!-- Log panel (console terdalam) -->
+    <color name="log_bg">#08030A</color>
+    <color name="log_fg">#FFF7F2</color>
+    <color name="log_ok">#34D399</color>
+    <color name="log_err">#FB7185</color>
+    <color name="log_info">#FF7A2F</color>
+    <color name="log_dim">#726878</color>
 </resources>

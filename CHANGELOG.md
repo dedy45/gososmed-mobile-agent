@@ -11,22 +11,42 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 
 ## [1.0.1-dev.1] - 2026-10-07
 
-### Added — Realtime Watchdog, Cable-Free Persistent Wireless ADB & HyperOS Notification
+### Added — Extreme Stability, Sticky 3D Dock, Server Mode & Live Telemetry
 
-Rilis **DEV** `v1.0.1-dev.1` (versionCode 31) menghadirkan paritas 100% Wireless Debugging dengan koneksi kabel USB fisik untuk server mode (headless/tanpa kabel), realtime liveness checking, dan perbaikan visibilitas notifikasi pada Xiaomi HyperOS/MIUI:
+Rilis **DEV** `v1.0.1-dev.1` (versionCode 31) menghadirkan paritas 100% Wireless Debugging dengan koneksi kabel USB fisik untuk server mode (headless/tanpa kabel), peningkatan stabilitas ekstrem 24/7, perombakan desain UI bertema Nexus 2048 / Glacier Glass, dan fitur keramahan pengguna (UX):
 
-1. **Realtime UI Liveness Watchdog (`MainActivity`)**:
-   - Menambahkan `liveStatusTicker` (polling periodik 1500ms) saat Activity dalam status foreground, sehingga status Aksesibilitas dan Wireless ADB langsung ter-update secara otomatis tanpa harus keluar-masuk aplikasi atau pindah tab.
-   - Mengintegrasikan listener multi-subscriber (`addStateListener` pada `AgentAccessibilityService` dan `registerStateListener` pada `AdbPairingController`) untuk pembaruan status instan (0 ms) saat terjadi event koneksi/pemutusan.
+1. **Auto-Start on Boot (`BootReceiver`)**:
+   - Menambahkan receiver `android.intent.action.BOOT_COMPLETED` dan `QUICKBOOT_POWERON` yang otomatis menjalankan `AgentForegroundService` seketika HP dinyalakan/reboot, memulihkan koneksi WebSocket dan ADB nirkabel tanpa sentuhan manual.
 
-2. **Persistent Wireless ADB Auto-Reconnect / Paritas USB Kabel (`AdbLocalShell`, `AdbPairingController`)**:
-   - Menambahkan kemampuan `maybeAutoReconnect` di thread IO: jika perangkat pernah dipasangkan (`paired == true`) namun koneksi soket terputus (karena Doze mode, restart `adbd`, atau perubahan port mDNS Wi-Fi), daemon agen otomatis mencoba menyambung ulang di latar belakang.
-   - Memastikan perangkat dalam mode server (headless, tanpa kabel USB) mempertahankan hak akses Shell UID 2000 secara otonom tanpa perlu intervensi manual klik "Hubungkan Ulang".
+2. **Server Mode / OLED Black Screen Saver (`MainActivity`)**:
+   - Menambahkan toggle "Mode Server (Tetap Menyala & Redup)" dengan `FLAG_KEEP_SCREEN_ON` dan kecerahan minimum (`0.01`).
+   - Menyediakan overlay hitam pekat OLED dengan jam dan status minimal untuk mencegah lockscreen / `FLAG_SECURE` Android memblokir otomatisasi Aksesibilitas, menjaga suhu HP tetap dingin dan hemat baterai.
+   - Ketuk layar 2× untuk kembali ke antarmuka normal.
 
-3. **Dynamic Ongoing Notification & Xiaomi HyperOS Visibility (`AgentForegroundService`)**:
-   - Menaikkan tingkat kepentingan notification channel dari `IMPORTANCE_LOW` ke `NotificationManager.IMPORTANCE_DEFAULT` dengan deskripsi jelas dan badge aktif, mencegah sistem HyperOS/MIUI menyembunyikan notifikasi ke area senyap.
-   - Konten notifikasi diperbarui secara dinamis menampilkan kondisi real-time: `A11y: AKTIF ✓`, `ADB: TERSAMBUNG ✓`, serta status koneksi WebSocket server, dengan aksi klik langsung membuka `MainActivity`.
-   - Menambahkan background watchdog 10 detik yang mengorkestrasi rekonsiliasi izin OS, auto-reconnect ADB, dan refresh notifikasi.
+3. **Zombie Socket Detection (TCP Half-Open) (`AgentWsClient`)**:
+   - Heartbeat dinamis 10 detik dengan pelacak missed pong berurutan.
+   - Jika 2 ping berturut-turut tidak menerima respons pong (`missedPongs >= 2`), soket di-reset paksa via `ws?.cancel()` dan koneksi ulang dipicu seketika dalam tempo ~3 detik.
+
+4. **Live Device Health Telemetry Card (`DeviceTelemetryHelper`, `activity_main.xml`)**:
+   - Menampilkan persentase baterai live, status pengisian daya, dan peringatan jika charger terlepas.
+   - Indikator suhu baterai (°C) dengan visual warning jika suhu melebihi 40°C.
+   - Info SSID Wi-Fi aktif dan latensi ping round-trip server (ms).
+   - Deteksi otomatis 5 platform target terpasang: TikTok, Instagram, Facebook, Threads, dan YouTube.
+
+5. **One-Click Echo Test & QR Scanner Pairing (`MainActivity`)**:
+   - Tombol "Tes Koneksi & Ukur Latensi" satu-klik dengan umpan balik getaran haptic dan konfirmasi waktu round-trip.
+   - Tombol "Scan QR" di samping kode 8 karakter untuk memindai kode pairing dasbor secara otomatis.
+
+6. **Pintasan Optimasi Khusus Pabrikan HP (`OemOptimizationHelper`)**:
+   - Deteksi cerdas pabrikan perangkat (Xiaomi/HyperOS, Samsung, Oppo/Realme, Vivo/iQOO) dengan tombol pintasan 1-klik ke menu perizinan latar belakang dan autostart OEM terkait.
+
+7. **Sistem 2-Tema (Ember 2048 & Glacier Glass) + i18n Dwibahasa (`strings.xml`)**:
+   - Dukungan mode Gelap (Ember 2048 Cyberpunk) dan Terang (Glacier Glass) berbasis token `app.css`.
+   - Dukungan bahasa ganda Bahasa Indonesia (`values/strings.xml`) dan English (`values-en/strings.xml`).
+
+8. **Sticky 3D Dock Bottom Navigation (`activity_main.xml`, `ic_3d_*`)**:
+   - Memindahkan menu navigasi Beranda, Setup, dan Log ke dermaga sticky bawah dengan simbol 3D isometrik (Home, Setup, Log).
+   - Panel log diringkas menjadi 30 baris dengan teks ringkas `miror layar ke server` dan `Terkoneksi (ping)`.
 
 ## [1.0.0] - 2026-10-05
 

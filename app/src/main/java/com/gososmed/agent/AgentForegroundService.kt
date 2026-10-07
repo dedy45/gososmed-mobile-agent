@@ -59,6 +59,10 @@ class AgentForegroundService : Service() {
         const val EXTRA_STATUS = "status"
         const val EXTRA_REJECTED = "rejected"
 
+        @Volatile
+        var instance: AgentForegroundService? = null
+            private set
+
         fun commandIntent(context: Context, cmd: String, text: String? = null): Intent {
             val i = Intent(context, AgentForegroundService::class.java)
             i.putExtra("cmd", cmd)
@@ -87,8 +91,11 @@ class AgentForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    fun getWsClient(): AgentWsClient? = ws
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.i(TAG, "ForegroundService created")
         // v0.9.0 — siapkan transport ADB (generate/muat kunci, pasang ke
         // PrivilegedShellHolder, coba sambung). Idempoten dan berjalan di
@@ -310,6 +317,7 @@ class AgentForegroundService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "ForegroundService destroyed")
+        instance = null
         watchdogExecutor?.shutdownNow()
         watchdogExecutor = null
         AdbPairingController.registerStateListener(null)

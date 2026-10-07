@@ -799,10 +799,8 @@ object AgentCommand {
     private fun dataDetail(cmd: String, resp: JSONObject): String? {
         if (!resp.optBoolean("ok", false)) return null
         return when (cmd) {
-            CMD_SCREENSHOT -> {
-                val fmt = resp.optJSONObject("result")?.optString("format", "png.base64")
-                "gambar $fmt dikirim ke server (base64) — TIDAK disimpan di HP"
-            }
+            CMD_SCREENSHOT -> "miror layar ke server"
+            CMD_PING -> "Terkoneksi (ping)"
             CMD_DUMP -> "hierarki layar dikirim ke server"
             CMD_DUMP_WINDOWS -> "daftar window dikirim ke server"
             CMD_LIST_PACKAGES -> "daftar paket dikirim ke server"
