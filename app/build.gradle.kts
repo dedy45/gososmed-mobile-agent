@@ -36,10 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 30 = v1.0.0 (STABIL) — Deterministic Android Portal (Protocol v2),
-        // dual-engine hybrid architecture, strict safety barriers, production release.
-        versionCode = 30
-        versionName = "1.0.0"
+        // versionCode 31 = v1.0.1-dev.1 — Realtime liveness watchdog ticker,
+        // persistent Wireless ADB auto-reconnect (server mode cable-free 100%),
+        // dynamic ongoing notification with IMPORTANCE_DEFAULT for Xiaomi HyperOS.
+        versionCode = 31
+        versionName = "1.0.1-dev.1"
         // URL agenthub produksi sebagai default — user TIDAK perlu mengetik
         // URL server. Bisa dioverride di mode debug. Deep link
         // gososmed://pair?ws=... tetap bisa membawa URL lain (dev/LAN).

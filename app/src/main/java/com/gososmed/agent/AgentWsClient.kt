@@ -134,6 +134,8 @@ class AgentWsClient(
     private var closed = false
     private var rejected = false // M2: pairing ditolak → stop reconnect loop
     private var connected = false
+
+    fun isConnected(): Boolean = connected
     // Single-flight guard: mencegah dua koneksi paralel saat reconnect-loop dan
     // network-callback saling memicu. Dua socket dengan device_id sama akan
     // saling menendang di server (duplicate registration → flap register/putus).

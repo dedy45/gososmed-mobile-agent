@@ -9,6 +9,25 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.0.1-dev.1] - 2026-10-07
+
+### Added — Realtime Watchdog, Cable-Free Persistent Wireless ADB & HyperOS Notification
+
+Rilis **DEV** `v1.0.1-dev.1` (versionCode 31) menghadirkan paritas 100% Wireless Debugging dengan koneksi kabel USB fisik untuk server mode (headless/tanpa kabel), realtime liveness checking, dan perbaikan visibilitas notifikasi pada Xiaomi HyperOS/MIUI:
+
+1. **Realtime UI Liveness Watchdog (`MainActivity`)**:
+   - Menambahkan `liveStatusTicker` (polling periodik 1500ms) saat Activity dalam status foreground, sehingga status Aksesibilitas dan Wireless ADB langsung ter-update secara otomatis tanpa harus keluar-masuk aplikasi atau pindah tab.
+   - Mengintegrasikan listener multi-subscriber (`addStateListener` pada `AgentAccessibilityService` dan `registerStateListener` pada `AdbPairingController`) untuk pembaruan status instan (0 ms) saat terjadi event koneksi/pemutusan.
+
+2. **Persistent Wireless ADB Auto-Reconnect / Paritas USB Kabel (`AdbLocalShell`, `AdbPairingController`)**:
+   - Menambahkan kemampuan `maybeAutoReconnect` di thread IO: jika perangkat pernah dipasangkan (`paired == true`) namun koneksi soket terputus (karena Doze mode, restart `adbd`, atau perubahan port mDNS Wi-Fi), daemon agen otomatis mencoba menyambung ulang di latar belakang.
+   - Memastikan perangkat dalam mode server (headless, tanpa kabel USB) mempertahankan hak akses Shell UID 2000 secara otonom tanpa perlu intervensi manual klik "Hubungkan Ulang".
+
+3. **Dynamic Ongoing Notification & Xiaomi HyperOS Visibility (`AgentForegroundService`)**:
+   - Menaikkan tingkat kepentingan notification channel dari `IMPORTANCE_LOW` ke `NotificationManager.IMPORTANCE_DEFAULT` dengan deskripsi jelas dan badge aktif, mencegah sistem HyperOS/MIUI menyembunyikan notifikasi ke area senyap.
+   - Konten notifikasi diperbarui secara dinamis menampilkan kondisi real-time: `A11y: AKTIF ✓`, `ADB: TERSAMBUNG ✓`, serta status koneksi WebSocket server, dengan aksi klik langsung membuka `MainActivity`.
+   - Menambahkan background watchdog 10 detik yang mengorkestrasi rekonsiliasi izin OS, auto-reconnect ADB, dan refresh notifikasi.
+
 ## [1.0.0] - 2026-10-05
 
 ### Added — Deterministic Android Portal & Protocol Version 2 Hardening (Stabil)

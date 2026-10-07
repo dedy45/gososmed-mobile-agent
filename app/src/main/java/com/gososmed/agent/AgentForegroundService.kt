@@ -3,6 +3,7 @@ package com.gososmed.agent
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -12,6 +13,9 @@ import android.os.PowerManager
 import android.util.Log
 import com.gososmed.agent.privileged.AdbPairingController
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Keeps the agent process in the FOREGROUND and OWNS the outbound WebSocket
@@ -78,6 +82,8 @@ class AgentForegroundService : Service() {
     // Keduanya di-release di onDestroy() — tidak bocor.
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var lastWsStatus: String = "menghubungkan..."
+    private var watchdogExecutor: ScheduledExecutorService? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -89,24 +95,112 @@ class AgentForegroundService : Service() {
         // thread IO sendiri, jadi aman dipanggil dari onCreate; generate kunci
         // RSA 2048 tidak boleh menghambat main thread.
         AdbPairingController.bootstrap(this)
+        AdbPairingController.registerStateListener {
+            updateNotification()
+        }
+        AgentAccessibilityService.addStateListener {
+            updateNotification()
+        }
 
         // v0.9.11 — acquire CPU + Wi-Fi locks SEBELUM startForeground.
         acquireWakeLocks()
 
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "GoSosmed Agent", NotificationManager.IMPORTANCE_LOW)
-        )
-        val notification: Notification = android.app.Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("GoSosmed Agent")
-            .setContentText("Perangkat siap di-drive dari server")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOngoing(true)
-            .build()
-        startForeground(NOTIF_ID, notification)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "GoSosmed Agent Service",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Status liveness otomasi GoSosmed Agent (A11y, Wireless ADB, Server)"
+            setShowBadge(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        nm.createNotificationChannel(channel)
+
+        startForeground(NOTIF_ID, buildNotification())
         // M3/S1: pulihkan koneksi WS dari config tersimpan (proses dibunuh OS →
         // START_STICKY restart service dengan intent null → auto-reconnect).
         startWsFromPrefs()
+        startWatchdog()
+    }
+
+    /**
+     * Membangun notifikasi persisten real-time yang menampilkan kondisi nyata
+     * Aksesibilitas, Wireless ADB, dan koneksi server WebSocket.
+     */
+    private fun buildNotification(hint: String? = null): Notification {
+        val mainIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pIntent = PendingIntent.getActivity(
+            this, 0, mainIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val a11yReady = AgentAccessibilityService.isReady()
+        val a11yEnabled = AgentAccessibilityService.isEnabled()
+        val adbStatus = AdbPairingController.status()
+        val wsConnected = ws?.isConnected() == true
+
+        val a11yText = when {
+            a11yReady -> "A11y: AKTIF ✓"
+            a11yEnabled -> "A11y: MENUNGGU..."
+            else -> "A11y: MATI ⚠️"
+        }
+
+        val adbText = when {
+            adbStatus.connected -> "ADB: TERSAMBUNG ✓"
+            adbStatus.paired -> "ADB: TERPUTUS (Auto-reconnect) ⏳"
+            else -> "ADB: BELUM DIPASANGKAN"
+        }
+
+        val wsText = if (wsConnected) "WS: ONLINE ✓" else "WS: $lastWsStatus"
+        val summary = "$a11yText • $adbText"
+        val detail = if (!hint.isNullOrEmpty()) "$summary\n$wsText\nStatus: $hint" else "$summary\n$wsText"
+
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("GoSosmed Agent • Server Mode")
+            .setContentText(summary)
+            .setStyle(Notification.BigTextStyle().bigText(detail))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
+
+    fun updateNotification(hint: String? = null) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.notify(NOTIF_ID, buildNotification(hint))
+        } catch (t: Throwable) {
+            Log.w(TAG, "updateNotification gagal: ${t.message}")
+        }
+    }
+
+    /**
+     * Watchdog berkala untuk menjaga koneksi ADB nirkabel tetap hidup setara USB
+     * dan menyegarkan notifikasi liveness di latar belakang secara otonom.
+     */
+    private fun startWatchdog() {
+        watchdogExecutor?.shutdownNow()
+        watchdogExecutor = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "gososmed-service-watchdog").apply { isDaemon = true }
+        }
+        watchdogExecutor?.scheduleWithFixedDelay({
+            try {
+                // 1) Auto-reconnect ADB bila pernah paired tapi terputus (server mode tanpa kabel)
+                AdbPairingController.maybeAutoReconnect(3500L)
+
+                // 2) Reconcile aksesibilitas dari OS settings
+                AgentAccessibilityService.reconcileFromSettings(applicationContext)
+
+                // 3) Update notifikasi live
+                updateNotification()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Watchdog error: ${t.message}")
+            }
+        }, 3, 10, TimeUnit.SECONDS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -175,7 +269,9 @@ class AgentForegroundService : Service() {
             pairingCode = code,
             onStatus = { status ->
                 Log.i(TAG, "ws status: $status")
+                lastWsStatus = status
                 broadcastStatus(status, rejected = false)
+                updateNotification(status)
             },
             onPairingRejected = { reason ->
                 // M2: pairing ditolak (kode salah/kedaluwarsa/terpakai) → hapus
@@ -214,6 +310,9 @@ class AgentForegroundService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "ForegroundService destroyed")
+        watchdogExecutor?.shutdownNow()
+        watchdogExecutor = null
+        AdbPairingController.registerStateListener(null)
         ws?.destroy()
         ws = null
         // v0.9.11 — release locks. Tanpa ini, CPU dan Wi-Fi tetap nyala

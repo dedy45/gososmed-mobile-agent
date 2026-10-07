@@ -238,9 +238,12 @@ class MainActivity : AppCompatActivity() {
             AgentLog.add("crash sebelumnya", false, 0L, crash.replace("\n", "  |  "))
         }
         rerenderLog()
-        // Dengarkan perubahan status langsung dari service di proses ini
-        AgentAccessibilityService.onStateChanged = {
+        // Dengarkan perubahan status langsung dari service di proses ini (realtime)
+        AgentAccessibilityService.addStateListener {
             runOnUiThread { refreshStatus() }
+        }
+        AdbPairingController.registerStateListener {
+            runOnUiThread { refreshAdbStatus() }
         }
 
 
@@ -937,10 +940,22 @@ class MainActivity : AppCompatActivity() {
         handleValidationIntent(intent)
     }
 
+    /** Watchdog berkala untuk memastikan UI selalu menampilkan status nyata tanpa delay. */
+    private val liveStatusTicker = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed) {
+                refreshStatus()
+                tabLayout.postDelayed(this, 1500L)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         refreshStatus()
         refreshUpdateState()
+        tabLayout.removeCallbacks(liveStatusTicker)
+        tabLayout.postDelayed(liveStatusTicker, 1500L)
         // v0.7.1: izin overlay = pengecualian Background Activity Launch.
         // Tanpa ini agent tidak pernah bisa membuka app target dari server.
         maybeAskOverlay()
@@ -972,6 +987,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        tabLayout.removeCallbacks(liveStatusTicker)
         try {
             unregisterReceiver(statusReceiver)
         } catch (_: Exception) {
@@ -986,7 +1002,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        AgentAccessibilityService.onStateChanged = null
+        tabLayout.removeCallbacks(liveStatusTicker)
+        AdbPairingController.registerStateListener(null)
         AgentLog.listener = null
         super.onDestroy()
     }

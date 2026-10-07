@@ -171,6 +171,17 @@ internal class AdbLocalShell(
     @Volatile
     private var linkUp = false
 
+    /** Listener perubahan status liveness koneksi (real-time notification & UI). */
+    var onStateChanged: (() -> Unit)? = null
+
+    private fun notifyStateChanged() {
+        try {
+            onStateChanged?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "onStateChanged error: ${t.message}")
+        }
+    }
+
     /** Stream yang sedang dibaca; ditutup paksa saat timeout agar read() lepas. */
     @Volatile
     private var activeStream: AdbStream? = null
@@ -363,10 +374,12 @@ internal class AdbLocalShell(
             linkUp = false
             lastError = "adb_disconnected: koneksi ke adbd tidak terbentuk"
         }
+        notifyStateChanged()
         ok
     } catch (t: Throwable) {
         linkUp = false
         classifyConnectFailure(t)
+        notifyStateChanged()
         false
     }
 
@@ -381,10 +394,12 @@ internal class AdbLocalShell(
             linkUp = false
             lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
         }
+        notifyStateChanged()
         ok
     } catch (t: Throwable) {
         linkUp = false
         classifyConnectFailure(t)
+        notifyStateChanged()
         false
     }
 
@@ -403,6 +418,7 @@ internal class AdbLocalShell(
         // Status dulu: UI harus langsung jujur bahwa sesi sudah tidak dipakai.
         linkUp = false
         cachedUid = -1
+        notifyStateChanged()
         // Penutupan sebenarnya di thread IO — tidak menahan pemanggil.
         io.execute {
             closeActiveStream()
@@ -439,6 +455,7 @@ internal class AdbLocalShell(
     /** Dipakai [AdbPairingController] untuk memulihkan status "pernah dipasangkan". */
     fun markPaired(value: Boolean) {
         paired = value
+        notifyStateChanged()
     }
 
     // ------------------------------------------------------------------ internal
@@ -464,7 +481,10 @@ internal class AdbLocalShell(
             // koneksi sudah tidak sehat. Turunkan [linkUp] supaya `status()`
             // melaporkan keadaan yang benar pada polling berikutnya, tanpa
             // perlu memanggil `isConnected()` library (yang memblokir).
-            if (t is java.io.IOException) linkUp = false
+            if (t is java.io.IOException) {
+                linkUp = false
+                notifyStateChanged()
+            }
             ShellResult(
                 ok = false, exitCode = -1, stdout = "", stderr = "",
                 failure = classifyExecFailure(t),

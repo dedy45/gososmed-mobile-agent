@@ -53,6 +53,18 @@ object AdbPairingController {
     @Volatile
     private var initializing = false
 
+    var onStateChanged: (() -> Unit)? = null
+
+    @Volatile
+    private var autoReconnecting = false
+
+    fun registerStateListener(listener: (() -> Unit)?) {
+        onStateChanged = listener
+        shell?.onStateChanged = {
+            listener?.invoke()
+        }
+    }
+
     // ------------------------------------------------------------------ bootstrap
 
     /**
@@ -71,6 +83,7 @@ object AdbPairingController {
                 // 1) Kunci ADB. LAMBAT saat pertama kali → wajib di thread IO.
                 val keys = AdbKeyStore.loadOrCreate(app)
                 val instance = AdbLocalShell(app, keys)
+                instance.onStateChanged = { onStateChanged?.invoke() }
                 // 2) Pulihkan status "pernah dipasangkan" supaya UI bisa
                 //    membedakan "belum pernah" vs "terputus".
                 instance.markPaired(prefs(app).getBoolean(KEY_PAIRED_ONCE, false))
@@ -156,6 +169,39 @@ object AdbPairingController {
         val ok = instance.connectTo(host, port)
         if (ok) rememberPaired(ctx, true)
         return ok
+    }
+
+    /** Coba sambung di belakang (tanpa menahan pemanggil). */
+    fun connectAsync(discoveryTimeoutMs: Long = 3500L) {
+        val ctx = appContext ?: return
+        val instance = ensureShell(ctx) ?: return
+        instance.connectAsync(discoveryTimeoutMs)
+    }
+
+    /**
+     * Otomatis sambung ulang di latar belakang bila perangkat sudah pernah dipasangkan
+     * (server mode 100% tanpa kabel).
+     *
+     * Idempoten: bila sudah tersambung atau sedang mencoba menyambung, tidak membuat tugas ganda.
+     */
+    fun maybeAutoReconnect(discoveryTimeoutMs: Long = 3500L): Boolean {
+        val ctx = appContext ?: return false
+        val instance = ensureShell(ctx) ?: return false
+        val st = instance.status()
+        if (st.paired && !st.connected && !autoReconnecting) {
+            autoReconnecting = true
+            instance.connectAsync(discoveryTimeoutMs)
+            io.execute {
+                try {
+                    Thread.sleep(discoveryTimeoutMs + 1000L)
+                } catch (_: InterruptedException) {
+                } finally {
+                    autoReconnecting = false
+                }
+            }
+            return true
+        }
+        return false
     }
 
     /**

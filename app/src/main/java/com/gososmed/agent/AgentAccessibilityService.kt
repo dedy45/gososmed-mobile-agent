@@ -112,6 +112,33 @@ class AgentAccessibilityService : AccessibilityService() {
         @Volatile
         var onStateChanged: (() -> Unit)? = null
 
+        private val stateListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+        fun addStateListener(listener: () -> Unit) {
+            if (!stateListeners.contains(listener)) {
+                stateListeners.add(listener)
+            }
+        }
+
+        fun removeStateListener(listener: () -> Unit) {
+            stateListeners.remove(listener)
+        }
+
+        fun notifyStateChanged() {
+            try {
+                onStateChanged?.invoke()
+            } catch (t: Throwable) {
+                Log.w(TAG, "onStateChanged error: ${t.message}")
+            }
+            for (l in stateListeners) {
+                try {
+                    l.invoke()
+                } catch (t: Throwable) {
+                    Log.w(TAG, "stateListener error: ${t.message}")
+                }
+            }
+        }
+
         /**
          * v0.9.7 — applicationContext. Diperlukan supaya `isEnabled()` bisa
          * bertanya LANGSUNG ke sistem operasi (lihat [osEnabled]) tanpa harus
@@ -466,11 +493,7 @@ class AgentAccessibilityService : AccessibilityService() {
         instance = this
         bound = true
         Log.i(TAG, "AccessibilityService connected")
-        try {
-            onStateChanged?.invoke()
-        } catch (t: Throwable) {
-            Log.w(TAG, "onStateChanged error saat connected", t)
-        }
+        notifyStateChanged()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -507,22 +530,14 @@ class AgentAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         bound = false
-        try {
-            onStateChanged?.invoke()
-        } catch (t: Throwable) {
-            Log.w(TAG, "onStateChanged error saat unbind", t)
-        }
+        notifyStateChanged()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         bound = false
         instance = null
-        try {
-            onStateChanged?.invoke()
-        } catch (t: Throwable) {
-            Log.w(TAG, "onStateChanged error saat destroy", t)
-        }
+        notifyStateChanged()
         super.onDestroy()
     }
 
