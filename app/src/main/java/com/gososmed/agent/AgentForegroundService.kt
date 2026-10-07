@@ -292,7 +292,6 @@ class AgentForegroundService : Service() {
                 if (allowEnvFallback && altUrl.isNotEmpty() && altUrl != url) {
                     Log.i(TAG, "Kode ditolak di $url ($reason), mencoba fallback otomatis ke $altUrl")
                     AgentLog.event("mencoba server alternatif ($altUrl)…")
-                    prefs().edit().putString("ws_url", altUrl).apply()
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         startWs(altUrl, code, allowEnvFallback = false)
                     }
