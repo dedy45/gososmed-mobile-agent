@@ -1304,6 +1304,52 @@ class AgentAccessibilityService : AccessibilityService() {
         return false to null
     }
 
+    /**
+     * Compound Action: Mengetuk elemen target (via text/desc/resId/koordinat)
+     * lalu langsung menunggu kemunculan elemen tujuan (wait target) di memori HP.
+     * Menghemat 50% giliran percakapan LLM dan round-trip jaringan.
+     */
+    fun clickAndWait(
+        clickText: String? = null,
+        clickDesc: String? = null,
+        clickResId: String? = null,
+        clickX: Int? = null,
+        clickY: Int? = null,
+        waitText: String? = null,
+        waitDesc: String? = null,
+        waitResId: String? = null,
+        timeoutMs: Long = 4000L
+    ): Triple<Boolean, Boolean, android.graphics.Rect?> {
+        var clicked = false
+        if (clickX != null && clickY != null && clickX > 0 && clickY > 0) {
+            clicked = tap(clickX, clickY)
+        } else if (!clickText.isNullOrBlank()) {
+            clicked = tapByText(clickText)
+        } else if (!clickDesc.isNullOrBlank()) {
+            clicked = tapByText(clickDesc)
+        } else if (!clickResId.isNullOrBlank()) {
+            val root = rootInActiveWindow
+            if (root != null) {
+                val r = searchNodeRecursive(root, null, null, clickResId.lowercase().trim(), 0)
+                root.recycle()
+                if (r != null) {
+                    clicked = tap(r.centerX(), r.centerY())
+                }
+            }
+        }
+
+        if (!clicked) {
+            return Triple(false, false, null)
+        }
+
+        if (waitText.isNullOrBlank() && waitDesc.isNullOrBlank() && waitResId.isNullOrBlank()) {
+            return Triple(true, true, null)
+        }
+
+        val (found, rect) = waitForNode(waitText, waitDesc, waitResId, timeoutMs)
+        return Triple(true, found, rect)
+    }
+
     private fun searchNodeRecursive(
         node: AccessibilityNodeInfo,
         textTarget: String?,

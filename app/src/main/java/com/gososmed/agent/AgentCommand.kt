@@ -74,6 +74,8 @@ object AgentCommand {
     const val CMD_WAIT_FOR_NODE = "waitForNode"
     const val CMD_REPLACE_TEXT = "replaceText"
     const val CMD_ANNOTATED_SCREENSHOT = "annotatedScreenshot"
+    // v1.0.2: Compound Action clickAndWait (50% faster LLM turn).
+    const val CMD_CLICK_AND_WAIT = "clickAndWait"
 
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
@@ -109,7 +111,7 @@ object AgentCommand {
      */
     val ASYNC_BACKGROUND_COMMANDS = setOf(
         CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
-        CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT
+        CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT, CMD_CLICK_AND_WAIT
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -1050,6 +1052,44 @@ object AgentCommand {
                         put("scale", scale)
                         put("quality", quality)
                     })
+                }
+            }
+            CMD_CLICK_AND_WAIT -> {
+                val clickText = req.optString("click_text", "").takeIf { it.isNotEmpty() }
+                val clickDesc = req.optString("click_desc", "").takeIf { it.isNotEmpty() }
+                val clickResId = req.optString("click_res_id", "").takeIf { it.isNotEmpty() }
+                val clickX = if (req.has("click_x")) req.optInt("click_x") else null
+                val clickY = if (req.has("click_y")) req.optInt("click_y") else null
+
+                val waitText = req.optString("wait_text", "").takeIf { it.isNotEmpty() }
+                val waitDesc = req.optString("wait_desc", "").takeIf { it.isNotEmpty() }
+                val waitResId = req.optString("wait_res_id", "").takeIf { it.isNotEmpty() }
+                val timeout = req.optLong("timeout_ms", 4000L)
+
+                val start = System.currentTimeMillis()
+                val (clicked, settled, rect) = svc.clickAndWait(
+                    clickText, clickDesc, clickResId, clickX, clickY,
+                    waitText, waitDesc, waitResId, timeout
+                )
+                val elapsed = System.currentTimeMillis() - start
+
+                resp.put("ok", clicked)
+                resp.put("result", JSONObject().apply {
+                    put("clicked", clicked)
+                    put("settled", settled)
+                    put("elapsed_ms", elapsed)
+                    if (rect != null) {
+                        put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
+                        put("center", JSONObject().apply {
+                            put("x", rect.centerX())
+                            put("y", rect.centerY())
+                        })
+                    }
+                })
+                if (!clicked) {
+                    resp.put("error", "gagal mengetuk elemen target")
+                } else if (!settled && (waitText != null || waitDesc != null || waitResId != null)) {
+                    resp.put("error", "elemen berhasil diklik, namun transisi target belum muncul setelah ${elapsed}ms")
                 }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")

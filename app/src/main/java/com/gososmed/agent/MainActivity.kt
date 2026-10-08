@@ -118,6 +118,7 @@ class MainActivity : AppCompatActivity() {
 
     // Mode Server (Layar Redup & Anti-Lockscreen)
     private lateinit var switchServerMode: MaterialSwitch
+    private lateinit var switchGlobalDim: MaterialSwitch
     private lateinit var serverModeOverlay: View
     private lateinit var serverClockTv: TextView
     private lateinit var serverStatusTv: TextView
@@ -314,6 +315,7 @@ class MainActivity : AppCompatActivity() {
 
         // Mode Server
         switchServerMode = findViewById(R.id.switchServerMode)
+        switchGlobalDim = findViewById(R.id.switchGlobalDim)
         serverModeOverlay = findViewById(R.id.serverModeOverlay)
         serverClockTv = findViewById(R.id.serverClockTv)
         serverStatusTv = findViewById(R.id.serverStatusTv)
@@ -327,6 +329,7 @@ class MainActivity : AppCompatActivity() {
         btnEchoTest.setOnClickListener { performEchoTest() }
         btnScanQr.setOnClickListener { startQrScan() }
         setupServerMode()
+        setupGlobalDim()
         setupOemCard()
         checkUpdateBtn.setOnClickListener { checkUpdateNow() }
         downloadUpdateBtn.setOnClickListener { openApkDownload() }
@@ -1306,6 +1309,39 @@ class MainActivity : AppCompatActivity() {
             window.attributes = lp
             serverModeOverlay.visibility = View.GONE
         }
+    }
+
+    private fun setupGlobalDim() {
+        val isGlobalDim = prefs().getBoolean("global_dim_mode", false)
+        switchGlobalDim.isChecked = isGlobalDim
+
+        switchGlobalDim.setOnCheckedChangeListener { _, isChecked ->
+            applyGlobalDim(isChecked)
+        }
+    }
+
+    private fun applyGlobalDim(enabled: Boolean) {
+        prefs().edit().putBoolean("global_dim_mode", enabled).apply()
+        Thread {
+            try {
+                val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                if (shell.status().available) {
+                    if (enabled) {
+                        shell.exec("settings put system screen_brightness 1")
+                        shell.exec("settings put system screen_off_timeout 2147483647")
+                    } else {
+                        shell.exec("settings put system screen_brightness 120")
+                        shell.exec("settings put system screen_off_timeout 600000")
+                    }
+                } else if (enabled) {
+                    runOnUiThread {
+                        toast("Wireless ADB belum aktif — kecerahan global membutuhkan izin ADB")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "applyGlobalDim error: ${e.message}")
+            }
+        }.start()
     }
 
     private fun setupOemCard() {
