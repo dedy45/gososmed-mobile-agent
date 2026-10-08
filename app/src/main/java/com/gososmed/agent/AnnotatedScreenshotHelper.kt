@@ -136,7 +136,10 @@ object AnnotatedScreenshotHelper {
 
         val txt = node.text?.toString()?.trim().orEmpty()
         val desc = node.contentDescription?.toString()?.trim().orEmpty()
-        val label = if (txt.isNotEmpty()) txt else desc
+        var label = if (txt.isNotEmpty()) txt else desc
+        if (label.isEmpty() && node.isClickable) {
+            label = extractDescendantLabel(node, 0)
+        }
 
         val isInteractive = (node.isClickable || node.className?.contains("Button") == true ||
                 node.className?.contains("EditText") == true) &&
@@ -161,5 +164,23 @@ object AnnotatedScreenshotHelper {
             }
         }
         return currentId
+    }
+
+    private fun extractDescendantLabel(node: AccessibilityNodeInfo, depth: Int): String {
+        if (depth > 3) return ""
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            try {
+                val cTxt = child.text?.toString()?.trim().orEmpty()
+                if (cTxt.isNotEmpty()) return cTxt
+                val cDesc = child.contentDescription?.toString()?.trim().orEmpty()
+                if (cDesc.isNotEmpty()) return cDesc
+                val nested = extractDescendantLabel(child, depth + 1)
+                if (nested.isNotEmpty()) return nested
+            } finally {
+                child.recycle()
+            }
+        }
+        return ""
     }
 }
