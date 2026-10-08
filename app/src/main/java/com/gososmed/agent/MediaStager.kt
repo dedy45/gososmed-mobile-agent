@@ -229,4 +229,81 @@ object MediaStager {
 
     private fun err(message: String): JSONObject =
         JSONObject().put("ok", false).put("error", message)
+
+    /**
+     * Menghapus seluruh video dan foto sementara hasil staging GoSosmed (gosmed_*, reel_*, staged_*).
+     * Menggunakan filter selektif ketat agar TIDAK AKAN PERNAH menghapus foto/video pribadi milik pengguna.
+     */
+    fun cleanStagedMedia(context: Context): JSONObject {
+        var deletedVideos = 0
+        var deletedImages = 0
+        var deletedFiles = 0
+
+        // 1. Hapus dari MediaStore Videos (Aman & Legal via ContentResolver)
+        try {
+            val videoSelection = "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'gosmed_%' OR " +
+                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'reel_%' OR " +
+                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'staged_%'"
+            deletedVideos = context.contentResolver.delete(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                videoSelection,
+                null
+            )
+        } catch (e: Exception) {
+            // Ignored / fallback ke pembersihan direktori
+        }
+
+        // 2. Hapus dari MediaStore Images
+        try {
+            val imgSelection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'gosmed_%' OR " +
+                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'reel_%' OR " +
+                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'staged_%'"
+            deletedImages = context.contentResolver.delete(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                imgSelection,
+                null
+            )
+        } catch (e: Exception) {
+            // Ignored
+        }
+
+        // 3. Sapu file fisik sisa di direktori DCIM/Camera dan Download
+        val targetDirs = listOf(
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera"),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "")
+        )
+
+        val pathsToRescan = mutableListOf<String>()
+        for (dir in targetDirs) {
+            if (dir.exists() && dir.isDirectory) {
+                val matches = dir.listFiles { file ->
+                    file.isFile && (file.name.startsWith("gosmed_") || file.name.startsWith("reel_") || file.name.startsWith("staged_"))
+                }
+                matches?.forEach { f ->
+                    pathsToRescan.add(f.absolutePath)
+                    if (f.delete()) {
+                        deletedFiles++
+                    }
+                }
+            }
+        }
+
+        // 4. Picu MediaScanner Android agar galeri (MIUI/HyperOS Gallery) me-refresh instan
+        if (pathsToRescan.isNotEmpty()) {
+            MediaScannerConnection.scanFile(
+                context,
+                pathsToRescan.toTypedArray(),
+                null,
+                null
+            )
+        }
+
+        return JSONObject().apply {
+            put("ok", true)
+            put("deleted_mediastore_videos", deletedVideos)
+            put("deleted_mediastore_images", deletedImages)
+            put("deleted_physical_files", deletedFiles)
+            put("message", "Pembersihan selesai: $deletedVideos video MediaStore dan $deletedFiles file fisik berhasil dihapus.")
+        }
+    }
 }

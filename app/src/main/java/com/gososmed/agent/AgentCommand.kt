@@ -69,6 +69,7 @@ object AgentCommand {
     // v1.0.0: native HTTP media staging — download, SHA-256 verify, register
     // to MediaStore. Does NOT need AccessibilityService; runs on IO thread.
     const val CMD_STAGE_MEDIA = "stageMedia"
+    const val CMD_CLEANUP_MEDIA = "cleanupMedia"
     // v1.0.1: 3 fitur performa tinggi (Native waitForNode, replaceText, annotatedScreenshot).
     const val CMD_WAIT_FOR_NODE = "waitForNode"
     const val CMD_REPLACE_TEXT = "replaceText"
@@ -98,7 +99,7 @@ object AgentCommand {
      */
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
-        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA
+        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA
     )
 
     /**
@@ -107,7 +108,7 @@ object AgentCommand {
      * latar belakang agar main thread tidak pernah terblokir (anti-ANR).
      */
     val ASYNC_BACKGROUND_COMMANDS = setOf(
-        CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA,
+        CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
         CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT
     )
 
@@ -787,6 +788,20 @@ object AgentCommand {
                         } else {
                             resp.put("error", result.optString("error", "stageMedia failed"))
                         }
+                    }
+                }
+            }
+            CMD_CLEANUP_MEDIA -> {
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val result = MediaStager.cleanStagedMedia(ctx)
+                    resp.put("ok", result.optBoolean("ok", false))
+                    if (result.optBoolean("ok", false)) {
+                        resp.put("result", result)
+                    } else {
+                        resp.put("error", result.optString("error", "cleanupMedia failed"))
                     }
                 }
             }

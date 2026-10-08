@@ -137,15 +137,27 @@ object AnnotatedScreenshotHelper {
         val txt = node.text?.toString()?.trim().orEmpty()
         val desc = node.contentDescription?.toString()?.trim().orEmpty()
         var label = if (txt.isNotEmpty()) txt else desc
-        if (label.isEmpty() && node.isClickable) {
+        if (label.isEmpty()) {
             label = extractDescendantLabel(node, 0)
         }
 
-        val isInteractive = (node.isClickable || node.className?.contains("Button") == true ||
-                node.className?.contains("EditText") == true) &&
-                rect.width() > 10 && rect.height() > 10
+        val hasSemanticDesc = desc.isNotEmpty() && !desc.equals("null", ignoreCase = true)
+        val hasLabel = label.isNotEmpty()
+        val isActionableClass = node.className?.contains("Button") == true ||
+                node.className?.contains("EditText") == true ||
+                (node.className?.contains("ImageView") == true && hasSemanticDesc)
 
-        if (isInteractive && rect.left >= 0 && rect.top >= 0) {
+        // Saring kontainer layout raksasa kosongan yang membungkus hampir seluruh layar
+        val isHugeEmptyLayout = (node.className?.contains("Layout") == true || node.className?.contains("ViewGroup") == true) &&
+                !hasLabel && rect.width() > 1000 && rect.height() > 1800
+
+        val isInteractive = (node.isClickable || isActionableClass || hasSemanticDesc || (hasLabel && node.className?.contains("TextView") == true)) &&
+                !isHugeEmptyLayout &&
+                rect.width() > 15 && rect.height() > 15
+
+        val isDuplicateBounds = list.any { it.bounds == rect }
+
+        if (isInteractive && !isDuplicateBounds && rect.left >= 0 && rect.top >= 0) {
             val className = node.className?.toString()?.substringAfterLast(".") ?: "View"
             list.add(MarkedElement(
                 id = currentId++,
@@ -167,7 +179,7 @@ object AnnotatedScreenshotHelper {
     }
 
     private fun extractDescendantLabel(node: AccessibilityNodeInfo, depth: Int): String {
-        if (depth > 3) return ""
+        if (depth > 8) return ""
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             try {
