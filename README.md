@@ -147,6 +147,23 @@ Repositori ini dilisensikan di bawah **[Apache License 2.0](LICENSE)** — Copyr
 
 ---
 
+## 🤖 Integrasi AI Agent & Skill Resmi (MCP)
+
+Repositori ini menyertakan harness operasional dan skill kanonik untuk AI Coding Agent (Claude Code, OpenAI Codex, Cursor IDE, Windsurf):
+* **File Skill Resmi:** [`skills/gososmed-mobile-mcp/SKILL.md`](skills/gososmed-mobile-mcp/SKILL.md)
+* **Pemasangan Instan (1-Liner):**
+  ```bash
+  # Untuk Claude Code
+  mkdir -p .claude/skills/gososmed-mobile-mcp && \
+  curl -fsSL https://raw.githubusercontent.com/dedy45/gososmed-mobile-agent/main/skills/gososmed-mobile-mcp/SKILL.md -o .claude/skills/gososmed-mobile-mcp/SKILL.md
+
+  # Untuk OpenAI Codex / Cursor / Universal Agent
+  mkdir -p .agents/skills/gososmed-mobile-mcp && \
+  curl -fsSL https://raw.githubusercontent.com/dedy45/gososmed-mobile-agent/main/skills/gososmed-mobile-mcp/SKILL.md -o .agents/skills/gososmed-mobile-mcp/SKILL.md
+  ```
+
+---
+
 ## 🌐 Ekosistem & Layanan Resmi Bamsbung
 
 * **Platform SaaS Utama:** [bamsbung.id](https://bamsbung.id)

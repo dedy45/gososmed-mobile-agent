@@ -147,6 +147,23 @@ This repository is licensed under the **[Apache License 2.0](LICENSE)** — Copy
 
 ---
 
+## 🤖 AI Coding Agent Integration & Official Skill (MCP)
+
+This repository includes the canonical operational harness and skill for AI Coding Agents (Claude Code, OpenAI Codex, Cursor IDE, Windsurf):
+* **Official Skill File:** [`skills/gososmed-mobile-mcp/SKILL.md`](skills/gososmed-mobile-mcp/SKILL.md)
+* **Instant Installation (1-Liner):**
+  ```bash
+  # For Claude Code
+  mkdir -p .claude/skills/gososmed-mobile-mcp && \
+  curl -fsSL https://raw.githubusercontent.com/dedy45/gososmed-mobile-agent/main/skills/gososmed-mobile-mcp/SKILL.md -o .claude/skills/gososmed-mobile-mcp/SKILL.md
+
+  # For OpenAI Codex / Cursor / Universal Agents
+  mkdir -p .agents/skills/gososmed-mobile-mcp && \
+  curl -fsSL https://raw.githubusercontent.com/dedy45/gososmed-mobile-agent/main/skills/gososmed-mobile-mcp/SKILL.md -o .agents/skills/gososmed-mobile-mcp/SKILL.md
+  ```
+
+---
+
 ## 🌐 Official Bamsbung Ecosystem & Services
 
 * **Main SaaS Platform:** [bamsbung.id](https://bamsbung.id)
