@@ -13,7 +13,7 @@ This application connects physical Android smartphones directly to the GoSosmed 
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Active Version: v1.1.0 (Dev Channel).**  
+> **Active Version: v1.2.0 (Stable).**  
 > Single Source of Truth (SSoT): `app/build.gradle.kts` (`versionName`) and [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Standalone & Fully Integrated:** Since v0.9.0, privileged shell capabilities equivalent to ADB UID 2000 are built directly into this APK. You **no longer need Shizuku** or external pairing utilities.
 

@@ -9,6 +9,27 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.0] - 2026-10-09
+
+### Added — Enterprise Trust Center, Credential Redaction, Sub-Region ROI Vision, Compound Actions & Scoped Storage Scrubbing
+
+Rilis **STABIL** `v1.2.0` (versionCode 32) menghadirkan penyempurnaan menyeluruh pada privasi, keamanan enterprise, dan efisiensi automasi:
+
+1. **Trust & Legal Center (`MainActivity`, `activity_main.xml`)**:
+   - Menambahkan menu dialog resmi Pusat Kepercayaan & Legalitas di header aplikasi: About, Kebijakan Privasi (Anti-Spyware), Ketentuan Layanan (ToS), dan tautan verifikasi integritas rilis GitHub.
+2. **Pencegahan Kebocoran Kredensial (Anti-Keylogger)**:
+   - Seluruh kolom sandi Android (`node.isPassword`) otomatis diredaksi menjadi `[REDACTED]` baik pada XML hierarki (`HierarchySerializer`) maupun metadata visual (`AnnotatedScreenshotHelper`).
+3. **Compound Action `clickAndWait` (`AgentAccessibilityService`, `AgentCommand`)**:
+   - Mengetuk elemen target dan langsung menunggu transisi UI selesai dalam satu siklus memori HP, memangkas 50% putaran giliran komunikasi LLM.
+4. **Region of Interest (ROI) Sub-Region Cropping (`AnnotatedScreenshotHelper`)**:
+   - Mendukung parameter `roi` untuk memotong dan memperbesar area detail layar (seperti CAPTCHA/puzzle) dengan efisiensi token vision hingga ~85 token, dengan tetap mempertahankan koordinat fisik layar asli HP.
+5. **Smart IME Submit pada Input Teks (`replaceText`)**:
+   - Menambahkan opsi `submit: true` untuk mengeksekusi aksi Enter/Search secara otomatis setelah input teks selesai.
+6. **Native Scoped Storage Cleanup (`MediaStager`, `cleanupMedia`)**:
+   - Pembersihan berkas media sementara secara legal via `ContentResolver.delete()` dan `MediaScannerConnection` tanpa menyisakan berkas hantu di galeri.
+7. **Layar Redup Otomasi Global (`globalDim`)**:
+   - Switch baru di bawah Wireless ADB untuk mengunci kecerahan sistem Android ke 1% secara global saat automasi berjalan semalaman.
+
 ## [1.1.0] - 2026-10-08
 
 ### Added — Extreme Stability, Sticky 3D Dock, Sub-10ms Native Performance & Production Release (Stabil)
