@@ -1339,7 +1339,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "applyGlobalDim error: ${e.message}")
+                Log.w("GoAgent", "applyGlobalDim error: ${e.message}")
             }
         }.start()
     }
