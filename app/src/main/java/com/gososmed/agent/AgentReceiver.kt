@@ -40,41 +40,47 @@ class AgentReceiver : BroadcastReceiver() {
             Log.w("GoAgent", "CMD broadcast ditolak: build release tidak menerima broadcast lokal (P0-2)")
             return
         }
-        val req = if (intent.hasExtra("json_file")) {
-            val path = intent.getStringExtra("json_file")!!
-            JSONObject(java.io.File(path).readText(Charsets.UTF_8))
-        } else if (intent.hasExtra("json")) {
-            JSONObject(intent.getStringExtra("json")!!)
-        } else {
-            val cmd = intent.getStringExtra("cmd") ?: return
-            val r = JSONObject().put("cmd", cmd)
-            intent.getStringExtra("text")?.let { r.put("text", it) }
-            intent.getStringExtra("content_desc")?.let { r.put("content_desc", it) }
-            intent.getStringExtra("resource_id")?.let { r.put("resource_id", it) }
-            if (intent.hasExtra("timeout_ms")) r.put("timeout_ms", intent.getLongExtra("timeout_ms", 4000L))
-            intent.getStringExtra("package")?.let { r.put("package", it) }
-            if (intent.hasExtra("x")) r.put("x", intent.getIntExtra("x", -1))
-            if (intent.hasExtra("y")) r.put("y", intent.getIntExtra("y", -1))
-            r
-        }
-        val cmdTag = req.optString("cmd", if (req.has("protocol_version")) "v2_${req.optString("cmd")}" else "unknown")
-
-        // onReceive is limited to ~10s; run the (possibly slow) dump on a
-        // background thread and finish() via goAsync. The service may still
-        // be binding, so wait until it is ready (up to ~3s).
-        val pending = goAsync()
-        pending.finish()
-        Thread {
-            var ready = AgentAccessibilityService.instance?.isServiceReady() == true
-            var attempts = 0
-            while (!ready && attempts < 6) {
-                Thread.sleep(500)
-                attempts++
-                ready = AgentAccessibilityService.instance?.isServiceReady() == true
+        try {
+            val req = if (intent.hasExtra("json_file")) {
+                val path = intent.getStringExtra("json_file")!!
+                JSONObject(java.io.File(path).readText(Charsets.UTF_8))
+            } else if (intent.hasExtra("json")) {
+                val raw = intent.getStringExtra("json")!!.trim().removeSurrounding("'").removeSurrounding("\"")
+                JSONObject(raw)
+            } else {
+                val cmd = intent.getStringExtra("cmd") ?: return
+                val r = JSONObject().put("cmd", cmd)
+                intent.getStringExtra("text")?.let { r.put("text", it) }
+                intent.getStringExtra("content_desc")?.let { r.put("content_desc", it) }
+                intent.getStringExtra("resource_id")?.let { r.put("resource_id", it) }
+                if (intent.hasExtra("timeout_ms")) r.put("timeout_ms", intent.getLongExtra("timeout_ms", 4000L))
+                intent.getStringExtra("package")?.let { r.put("package", it) }
+                if (intent.hasExtra("x")) r.put("x", intent.getIntExtra("x", -1))
+                if (intent.hasExtra("y")) r.put("y", intent.getIntExtra("y", -1))
+                r
             }
-            val resp = AgentCommand.execute(req)
-            ResultStore.write(context, cmdTag, resp.toString())
-        }.start()
+            val cmdTag = req.optString("cmd", if (req.has("protocol_version")) "v2_${req.optString("cmd")}" else "unknown")
+
+            val pending = goAsync()
+            pending.finish()
+            Thread {
+                try {
+                    var ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                    var attempts = 0
+                    while (!ready && attempts < 6) {
+                        Thread.sleep(500)
+                        attempts++
+                        ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                    }
+                    val resp = AgentCommand.execute(req)
+                    ResultStore.write(context, cmdTag, resp.toString())
+                } catch (t: Throwable) {
+                    Log.e("GoAgent", "Async CMD execution failed: ${t.message}", t)
+                }
+            }.start()
+        } catch (t: Throwable) {
+            Log.e("GoAgent", "onReceive failed: ${t.message}", t)
+        }
     }
 
     object ResultStore {

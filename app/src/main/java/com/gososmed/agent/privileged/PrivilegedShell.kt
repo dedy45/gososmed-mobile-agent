@@ -50,7 +50,7 @@ interface PrivilegedShell {
          * Daftar ini TIDAK berubah dari v0.8.0 — kontrak §3.1.
          */
         val ALLOWED_BINARIES = setOf(
-            "am", "input", "monkey", "pm", "dumpsys", "wm", "settings", "cmd"
+            "am", "input", "monkey", "pm", "dumpsys", "wm", "settings", "cmd", "rm"
         )
     }
 }

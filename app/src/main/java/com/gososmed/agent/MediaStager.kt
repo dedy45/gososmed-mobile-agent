@@ -1,4 +1,5 @@
 package com.gososmed.agent
+import com.gososmed.agent.privileged.PrivilegedShellHolder
 
 import android.content.ContentValues
 import android.content.Context
@@ -239,45 +240,67 @@ object MediaStager {
         var deletedImages = 0
         var deletedFiles = 0
 
-        // 1. Hapus dari MediaStore Videos (Aman & Legal via ContentResolver)
+        // 1. Eksekusi pembersihan via PrivilegedShell (Wireless ADB / Root / Shizuku) jika tersedia.
+        // Ini adalah cara paling ampuh & tuntas untuk menghapus file fisik + cache .trashed di HyperOS/MIUI
+        // lintas-UID tanpa diblokir kebijakan Scoped Storage Android 11+.
+        val shell = PrivilegedShellHolder.get()
+        if (shell.status().available) {
+            try {
+                val shellCmd = "rm -f /sdcard/DCIM/Camera/*gosmed* /sdcard/DCIM/Camera/.*gosmed* " +
+                               "/sdcard/DCIM/Camera/*reel* /sdcard/DCIM/Camera/.*reel* " +
+                               "/sdcard/DCIM/Camera/*staged* /sdcard/DCIM/Camera/.*staged* " +
+                               "/sdcard/Download/*gosmed* /sdcard/Download/.*gosmed* " +
+                               "/sdcard/Download/*reel* /sdcard/Download/.*reel* " +
+                               "/sdcard/Download/*staged* /sdcard/Download/.*staged* " +
+                               "/sdcard/Movies/*gosmed* /sdcard/Movies/.*gosmed* " +
+                               "/sdcard/Movies/*staged* /sdcard/Movies/.*staged*"
+                val res = shell.exec(shellCmd, 5000L)
+                android.util.Log.i("GoAgent", "cleanStagedMedia: shell rm result ok=${res.ok} failure=${res.failure} out=${res.stdout}")
+            } catch (t: Throwable) {
+                android.util.Log.w("GoAgent", "cleanStagedMedia: shell exec failed: ${t.message}")
+            }
+        }
+
+        // 2. Hapus dari MediaStore Videos (Aman & Legal via ContentResolver)
         try {
-            val videoSelection = "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'gosmed_%' OR " +
-                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'reel_%' OR " +
-                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'staged_%'"
+            val videoSelection = "${MediaStore.Video.Media.DISPLAY_NAME} LIKE '%gosmed_%' OR " +
+                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE '%reel_%' OR " +
+                                 "${MediaStore.Video.Media.DISPLAY_NAME} LIKE '%staged_%'"
             deletedVideos = context.contentResolver.delete(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 videoSelection,
                 null
             )
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             // Ignored / fallback ke pembersihan direktori
         }
 
-        // 2. Hapus dari MediaStore Images
+        // 3. Hapus dari MediaStore Images
         try {
-            val imgSelection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'gosmed_%' OR " +
-                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'reel_%' OR " +
-                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'staged_%'"
+            val imgSelection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE '%gosmed_%' OR " +
+                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE '%reel_%' OR " +
+                               "${MediaStore.Images.Media.DISPLAY_NAME} LIKE '%staged_%'"
             deletedImages = context.contentResolver.delete(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 imgSelection,
                 null
             )
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             // Ignored
         }
 
-        // 3. Sapu file fisik sisa di direktori DCIM/Camera dan Download
+        // 4. Sapu file fisik sisa di direktori DCIM/Camera, Download, dan Movies
         val targetDirs = listOf(
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera"),
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "")
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ""),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "")
         )
 
         val pathsToRescan = mutableListOf<String>()
         for (dir in targetDirs) {
             if (dir.exists() && dir.isDirectory) {
                 val matches = dir.listFiles { file ->
-                    file.isFile && (file.name.startsWith("gosmed_") || file.name.startsWith("reel_") || file.name.startsWith("staged_"))
+                    file.name.contains("gosmed_") || file.name.contains("reel_") || file.name.contains("staged_")
                 }
                 matches?.forEach { f ->
                     pathsToRescan.add(f.absolutePath)
@@ -288,7 +311,7 @@ object MediaStager {
             }
         }
 
-        // 4. Picu MediaScanner Android agar galeri (MIUI/HyperOS Gallery) me-refresh instan
+        // 5. Picu MediaScanner Android agar galeri (MIUI/HyperOS Gallery) me-refresh instan
         if (pathsToRescan.isNotEmpty()) {
             MediaScannerConnection.scanFile(
                 context,
@@ -297,13 +320,19 @@ object MediaStager {
                 null
             )
         }
+        if (shell.status().available) {
+            try {
+                shell.exec("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/DCIM/Camera", 2000L)
+            } catch (t: Throwable) {
+            }
+        }
 
         return JSONObject().apply {
             put("ok", true)
             put("deleted_mediastore_videos", deletedVideos)
             put("deleted_mediastore_images", deletedImages)
             put("deleted_physical_files", deletedFiles)
-            put("message", "Pembersihan selesai: $deletedVideos video MediaStore dan $deletedFiles file fisik berhasil dihapus.")
+            put("message", "Pembersihan selesai: $deletedVideos video MediaStore dan berkas fisik sementara berhasil dibersihkan.")
         }
     }
 }
