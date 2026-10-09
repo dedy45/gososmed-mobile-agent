@@ -830,6 +830,23 @@ object AgentCommand {
         }
     }
 
+    private fun parseRoi(str: String?, arr: JSONArray?): android.graphics.Rect? {
+        if (arr != null && arr.length() == 4) {
+            val x1 = arr.optInt(0)
+            val y1 = arr.optInt(1)
+            val x2 = arr.optInt(2)
+            val y2 = arr.optInt(3)
+            if (x2 > x1 && y2 > y1) return android.graphics.Rect(x1, y1, x2, y2)
+        }
+        if (!str.isNullOrBlank()) {
+            val parts = str.split(",", " ", ";", ":").mapNotNull { it.trim().toIntOrNull() }
+            if (parts.size == 4 && parts[2] > parts[0] && parts[3] > parts[1]) {
+                return android.graphics.Rect(parts[0], parts[1], parts[2], parts[3])
+            }
+        }
+        return null
+    }
+
     private fun executeWith(svc: AgentAccessibilityService, cmd: String, req: JSONObject): JSONObject {
         val resp = JSONObject()
         when (cmd) {
@@ -1016,22 +1033,32 @@ object AgentCommand {
             }
             CMD_REPLACE_TEXT -> {
                 val text = req.optString("text", "")
+                val submit = req.optBoolean("submit", false)
                 // 1) Set text baru via Accessibility
                 val ok = svc.setText(text)
-                // 2) Tekan tombol Back (keyevent 4) satu kali untuk menutup keyboard virtual
+                // 2) Jika submit == true: kirim keyevent ENTER (66) untuk submit/search form
                 val shell = PrivilegedShellHolder.get()
-                if (shell.status().connected) {
-                    shell.exec("input keyevent 4", 1000L)
+                if (submit) {
+                    if (shell.status().connected) {
+                        shell.exec("input keyevent 66", 1000L) // KEYCODE_ENTER
+                    }
+                } else {
+                    // Jika tidak submit, turunkan keyboard virtual via keyevent BACK (4)
+                    if (shell.status().connected) {
+                        shell.exec("input keyevent 4", 1000L)
+                    }
                 }
                 resp.put("ok", ok)
                 resp.put("result", JSONObject().apply {
                     put("replaced", ok)
-                    put("keyboard_dismissed", true)
+                    put("submitted", submit)
+                    put("keyboard_dismissed", !submit)
                 })
             }
             CMD_ANNOTATED_SCREENSHOT -> {
                 val scale = req.optDouble("scale", 0.6).toFloat().coerceIn(0.2f, 1.0f)
                 val quality = req.optInt("quality", 75).coerceIn(30, 95)
+                val roi = parseRoi(req.optString("roi", ""), req.optJSONArray("roi"))
                 // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik
                 val (bytes, width, height) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
                 if (bytes == null) {
@@ -1039,7 +1066,7 @@ object AgentCommand {
                 } else {
                     val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     val root = svc.rootInActiveWindow
-                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality)
+                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality, roi)
                     root?.recycle()
                     bmp.recycle()
 
@@ -1047,10 +1074,13 @@ object AgentCommand {
                     resp.put("result", JSONObject().apply {
                         put("image_base64", base64)
                         put("elements", elements)
-                        put("width", width)
-                        put("height", height)
+                        put("width", roi?.width() ?: width)
+                        put("height", roi?.height() ?: height)
                         put("scale", scale)
                         put("quality", quality)
+                        if (roi != null) {
+                            put("roi", JSONArray(listOf(roi.left, roi.top, roi.right, roi.bottom)))
+                        }
                     })
                 }
             }

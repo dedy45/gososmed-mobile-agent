@@ -31,11 +31,28 @@ object AnnotatedScreenshotHelper {
         bitmap: Bitmap,
         rootNode: AccessibilityNodeInfo?,
         scale: Float = 0.6f,
-        quality: Int = 75
+        quality: Int = 75,
+        roi: Rect? = null
     ): Pair<String, JSONArray> {
         val elements = mutableListOf<MarkedElement>()
         if (rootNode != null) {
             collectInteractiveNodes(rootNode, elements, 1, 0)
+        }
+
+        // Filter elemen jika ada Region of Interest (ROI)
+        val validRoi = if (roi != null && roi.width() > 10 && roi.height() > 10) {
+            Rect(
+                roi.left.coerceIn(0, bitmap.width - 1),
+                roi.top.coerceIn(0, bitmap.height - 1),
+                roi.right.coerceIn(1, bitmap.width),
+                roi.bottom.coerceIn(1, bitmap.height)
+            )
+        } else null
+
+        val targetElements = if (validRoi != null) {
+            elements.filter { validRoi.contains(it.centerX, it.centerY) || Rect.intersects(it.bounds, validRoi) }
+        } else {
+            elements
         }
 
         // Duplikat bitmap agar bisa digambar Canvas
@@ -71,7 +88,7 @@ object AnnotatedScreenshotHelper {
 
         val elementsJson = JSONArray()
 
-        for (elem in elements) {
+        for (elem in targetElements) {
             // Gambar kotak sekeliling elemen
             canvas.drawRect(elem.bounds, boxPaint)
 
@@ -89,7 +106,7 @@ object AnnotatedScreenshotHelper {
             canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBorderPaint)
             canvas.drawText(badgeText, badgeLeft + 7f, badgeTop + 20f, textPaint)
 
-            // Catat ke JSON
+            // Catat ke JSON (koordinat tetap koordinat fisik layar asli)
             val item = JSONObject().apply {
                 put("id", elem.id)
                 put("class", elem.className)
@@ -103,15 +120,30 @@ object AnnotatedScreenshotHelper {
             elementsJson.put(item)
         }
 
-        // Downscale untuk menghemat token LLM Vision jika scale < 1.0f (koordinat elements tetap koordinat fisik asli)
-        val finalBitmap = if (scale in 0.2f..0.99f) {
-            val scaledW = (bitmap.width * scale).toInt().coerceAtLeast(100)
-            val scaledH = (bitmap.height * scale).toInt().coerceAtLeast(100)
-            val scaled = Bitmap.createScaledBitmap(mutableBitmap, scaledW, scaledH, true)
+        // Potong sub-region (ROI) jika diminta, atau gunakan full bitmap
+        val processedBitmap = if (validRoi != null) {
+            val cropped = Bitmap.createBitmap(
+                mutableBitmap,
+                validRoi.left,
+                validRoi.top,
+                validRoi.width(),
+                validRoi.height()
+            )
             mutableBitmap.recycle()
-            scaled
+            cropped
         } else {
             mutableBitmap
+        }
+
+        // Downscale untuk menghemat token LLM Vision jika scale < 1.0f dan bukan ROI kecil
+        val finalBitmap = if (validRoi == null && scale in 0.2f..0.99f) {
+            val scaledW = (processedBitmap.width * scale).toInt().coerceAtLeast(100)
+            val scaledH = (processedBitmap.height * scale).toInt().coerceAtLeast(100)
+            val scaled = Bitmap.createScaledBitmap(processedBitmap, scaledW, scaledH, true)
+            processedBitmap.recycle()
+            scaled
+        } else {
+            processedBitmap
         }
 
         // Kompresi JPEG
