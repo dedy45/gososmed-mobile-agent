@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <!-- 3D Isometric Shield / Trust & Legal Icon -->
+    <!-- Shield Main Body -->
+    <path
+        android:pathData="M14,3 L23,7 L23,15 C23,20.5 19,24.5 14,26 C9,24.5 5,20.5 5,15 L5,7 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.75" />
+    <!-- 3D Right Shadow Extrusion -->
+    <path
+        android:pathData="M14,3 L14,26 C19,24.5 23,20.5 23,15 L23,7 Z"
+        android:fillColor="?attr/colorPrimary"
+        android:fillAlpha="0.4" />
+    <!-- Checkmark Icon inside Shield -->
+    <path
+        android:pathData="M10,14 L13,17 L18,11"
+        android:strokeColor="@color/text_primary"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

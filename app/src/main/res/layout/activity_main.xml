@@ -68,21 +68,6 @@
             android:paddingVertical="4dp"
             android:text="🌙"
             android:textSize="11sp" />
-        <!-- Tombol About / Trust Center -->
-        <TextView
-            android:id="@+id/btnAbout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/bg_step_badge"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
-            android:text="🛡️"
-            android:contentDescription="@string/about_title"
-            android:textSize="11sp" />
-
         <!-- Badge Versi -->
         <TextView
             android:id="@+id/versionTv"
@@ -1098,6 +1083,36 @@
                 android:layout_marginTop="3dp"
                 android:fontFamily="monospace"
                 android:text="@string/tab_log"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Item 5: Legal / Menu (Dropdown) -->
+        <LinearLayout
+            android:id="@+id/btnNavMenu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingVertical="6dp">
+
+            <ImageView
+                android:id="@+id/ivNavMenu"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:alpha="0.5"
+                android:src="@drawable/ic_3d_legal" />
+
+            <TextView
+                android:id="@+id/tvNavMenu"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:fontFamily="monospace"
+                android:text="@string/tab_menu"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>

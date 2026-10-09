@@ -59,7 +59,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var versionTv: TextView
     private lateinit var btnLangToggle: TextView
     private lateinit var btnThemeToggle: TextView
-    private lateinit var btnAbout: TextView
+    private lateinit var btnNavMenu: View
+    private lateinit var ivNavMenu: ImageView
+    private lateinit var tvNavMenu: TextView
     private lateinit var deviceInfoTv: TextView
     private lateinit var pairTv: TextView
     private lateinit var permA11yTv: TextView
@@ -224,8 +226,10 @@ class MainActivity : AppCompatActivity() {
         versionTv = findViewById(R.id.versionTv)
         btnLangToggle = findViewById(R.id.btnLangToggle)
         btnThemeToggle = findViewById(R.id.btnThemeToggle)
-        btnAbout = findViewById(R.id.btnAbout)
-        btnAbout.setOnClickListener { showTrustAndLegalDialog() }
+        btnNavMenu = findViewById(R.id.btnNavMenu)
+        ivNavMenu = findViewById(R.id.ivNavMenu)
+        tvNavMenu = findViewById(R.id.tvNavMenu)
+        btnNavMenu.setOnClickListener { showNavDropdownMenu(btnNavMenu) }
         deviceInfoTv = findViewById(R.id.deviceInfoTv)
         pairTv = findViewById(R.id.pairTv)
         permA11yTv = findViewById(R.id.permA11yTv)
@@ -607,6 +611,119 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showNavDropdownMenu(anchor: View) {
+        val popup = androidx.appcompat.widget.PopupMenu(this, anchor)
+        val activeLang = prefs().getString("app_lang", "id") ?: "id"
+        val isEn = activeLang.startsWith("en")
+
+        val menu = popup.menu
+        menu.add(0, 1, 1, if (isEn) "ℹ️ About Application" else "ℹ️ Tentang Aplikasi (About)")
+        menu.add(0, 2, 2, if (isEn) "🔒 Privacy Policy" else "🔒 Kebijakan Privasi")
+        menu.add(0, 3, 3, if (isEn) "📜 Terms of Service" else "📜 Ketentuan Layanan (ToS)")
+        menu.add(0, 4, 4, if (isEn) "⭐ License & GitHub Release" else "⭐ Lisensi & Verifikasi GitHub")
+        menu.add(0, 5, 5, if (isEn) "🛡️ Complete Trust Center" else "🛡️ Pusat Kepercayaan Lengkap")
+
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> showAboutDetailDialog(isEn)
+                2 -> showPrivacyPolicyDialog(isEn)
+                3 -> showTermsOfServiceDialog(isEn)
+                4 -> openGitHubRepository(isEn)
+                5 -> showTrustAndLegalDialog()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun showAboutDetailDialog(isEn: Boolean) {
+        val versionName = BuildConfig.VERSION_NAME
+        val buildType = BuildConfig.BUILD_TYPE
+        val title = if (isEn) "ℹ️ About Application" else "ℹ️ Tentang Aplikasi (About)"
+        val msg = if (isEn) {
+            """
+                <b>GoSosmed Mobile Agent</b><br/>
+                • <b>Version:</b> v$versionName (Build: $buildType)<br/>
+                • <b>Release Channel:</b> Official SSoT via GitHub Releases<br/>
+                • <b>Architecture:</b> Clean-Room Proprietary Automation Engine<br/>
+                • <b>Transport:</b> Standard Outbound RFC WebSocket<br/>
+                • <b>Integrity:</b> Verified production keystore signature &amp; SHA-256 tags.
+            """.trimIndent()
+        } else {
+            """
+                <b>GoSosmed Mobile Agent</b><br/>
+                • <b>Versi:</b> v$versionName (Build: $buildType)<br/>
+                • <b>Kanal Rilis:</b> SSoT resmi via GitHub Releases<br/>
+                • <b>Arsitektur:</b> Clean-Room Automation Framework dengan protokol terbuka<br/>
+                • <b>Transport:</b> Outbound WebSocket standar RFC<br/>
+                • <b>Integritas:</b> Tanda tangan rilis resmi terverifikasi &amp; SHA-256 tags.
+            """.trimIndent()
+        }
+        showMaterialDialog(title, msg, isEn)
+    }
+
+    private fun showPrivacyPolicyDialog(isEn: Boolean) {
+        val title = if (isEn) "🔒 Privacy Policy & Security" else "🔒 Kebijakan Privasi & Keamanan"
+        val msg = if (isEn) {
+            """
+                <b>Privacy Policy &amp; Security Guarantee:</b><br/><br/>
+                1. <b>Zero Password Theft:</b> All password inputs are automatically redacted to <code>[REDACTED]</code>. Credentials are never read or stored.<br/><br/>
+                2. <b>Gallery Isolation:</b> Scoped Storage strictly restricts media staging to prefixes (<code>gosmed_*</code>, <code>reel_*</code>). Personal photos and camera media are 100% protected.<br/><br/>
+                3. <b>Least-Privilege Shell:</b> System ADB commands are strictly restricted to an explicit whitelist (am, input, pm, dumpsys, wm, settings, rm).
+            """.trimIndent()
+        } else {
+            """
+                <b>Kebijakan Privasi &amp; Komitmen Keamanan:</b><br/><br/>
+                1. <b>Anti-Keylogger (Zero Password Theft):</b> Seluruh input password diredaksi otomatis menjadi <code>[REDACTED]</code>. Kredensial akun tidak pernah dibaca atau disimpan.<br/><br/>
+                2. <b>Isolasi Galeri Pribadi (Scoped Storage Guard):</b> Aplikasi hanya mengelola berkas staging dengan awalan <code>gosmed_*</code> dan <code>reel_*</code>. Foto &amp; video pribadi kamera 100% aman.<br/><br/>
+                3. <b>Prinsip Least-Privilege:</b> Shell ADB dibatasi ketat hanya pada daftar izin kernel (am, input, pm, dumpsys, wm, settings, rm).
+            """.trimIndent()
+        }
+        showMaterialDialog(title, msg, isEn)
+    }
+
+    private fun showTermsOfServiceDialog(isEn: Boolean) {
+        val title = if (isEn) "📜 Terms of Service" else "📜 Ketentuan Layanan (ToS)"
+        val msg = if (isEn) {
+            """
+                <b>Terms of Service:</b><br/><br/>
+                1. <b>Content Responsibility:</b> Operators retain sole control and accountability over published creative assets, captions, and links.<br/><br/>
+                2. <b>Platform Compliance:</b> Automation is intended for ethical, legitimate operations adhering to official social media platform guidelines (Instagram, TikTok, YouTube).
+            """.trimIndent()
+        } else {
+            """
+                <b>Ketentuan Layanan (Terms of Service):</b><br/><br/>
+                1. <b>Tanggung Jawab Konten:</b> Pengguna memegang kendali dan tanggung jawab penuh atas materi konten, teks, dan media yang dipublikasikan.<br/><br/>
+                2. <b>Kepatuhan Platform:</b> Automasi ditujukan untuk pengelolaan konten legal dan etis sesuai panduan resmi komunitas media sosial (Instagram, TikTok, YouTube).
+            """.trimIndent()
+        }
+        showMaterialDialog(title, msg, isEn)
+    }
+
+    private fun openGitHubRepository(isEn: Boolean) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/dedy45/gososmed-mobile-agent"))
+            startActivity(intent)
+        } catch (t: Throwable) {
+            toast(if (isEn) "Failed to open web browser" else "Gagal membuka peramban web")
+        }
+    }
+
+    private fun showMaterialDialog(title: String, htmlMessage: String, isEn: Boolean) {
+        try {
+            val btnGithub = if (isEn) getString(R.string.btn_view_github) else "Lihat di GitHub"
+            val btnClose = if (isEn) getString(R.string.btn_close) else "Tutup"
+            MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_Gosomed_TrustDialog)
+                .setTitle(title)
+                .setMessage(Html.fromHtml(htmlMessage, Html.FROM_HTML_MODE_LEGACY))
+                .setPositiveButton(btnGithub) { _, _ -> openGitHubRepository(isEn) }
+                .setNegativeButton(btnClose, null)
+                .show()
+        } catch (t: Throwable) {
+            Log.w("GoAgent", "showMaterialDialog error: ${t.message}")
+        }
+    }
+
 
     // ---- Tab & Sticky Bottom Navigation ----
 
@@ -656,6 +773,10 @@ class MainActivity : AppCompatActivity() {
         tvNavDiag.paint.isFakeBoldText = (index == 2)
         tvNavLog.paint.isFakeBoldText = (index == 3)
 
+        btnNavMenu.setBackgroundResource(0)
+        ivNavMenu.alpha = 0.5f
+        tvNavMenu.setTextColor(mutedColor)
+        tvNavMenu.paint.isFakeBoldText = false
         if (index == 0 || index == 1 || index == 2) {
             refreshStatus()
         }
