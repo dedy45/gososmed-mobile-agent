@@ -57,102 +57,114 @@ object AnnotatedScreenshotHelper {
 
         // Duplikat bitmap agar bisa digambar Canvas
         val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(mutableBitmap)
+        var processedBitmap: Bitmap? = null
+        var finalBitmap: Bitmap? = null
 
-        val boxPaint = Paint().apply {
-            color = Color.parseColor("#FF7A2F") // Ember Orange
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
-            isAntiAlias = true
-        }
+        try {
+            val canvas = Canvas(mutableBitmap)
 
-        val badgeBgPaint = Paint().apply {
-            color = Color.parseColor("#E6130A1B") // Dark Plum Translucent
-            style = Paint.Style.FILL
-            isAntiAlias = true
-        }
-
-        val badgeBorderPaint = Paint().apply {
-            color = Color.parseColor("#FF7A2F")
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
-            isAntiAlias = true
-        }
-
-        val textPaint = Paint().apply {
-            color = Color.parseColor("#FFF7F2")
-            textSize = 22f
-            isFakeBoldText = true
-            isAntiAlias = true
-        }
-
-        val elementsJson = JSONArray()
-
-        for (elem in targetElements) {
-            // Gambar kotak sekeliling elemen
-            canvas.drawRect(elem.bounds, boxPaint)
-
-            // Gambar kotak nomor badge di pojok kiri atas elemen
-            val badgeText = elem.id.toString()
-            val textWidth = textPaint.measureText(badgeText)
-            val badgeWidth = (textWidth + 14f).coerceAtLeast(26f)
-            val badgeHeight = 26f
-
-            val badgeLeft = elem.bounds.left.toFloat().coerceAtLeast(0f)
-            val badgeTop = (elem.bounds.top.toFloat() - badgeHeight).coerceAtLeast(0f)
-            val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
-
-            canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBgPaint)
-            canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBorderPaint)
-            canvas.drawText(badgeText, badgeLeft + 7f, badgeTop + 20f, textPaint)
-
-            // Catat ke JSON (koordinat tetap koordinat fisik layar asli)
-            val item = JSONObject().apply {
-                put("id", elem.id)
-                put("class", elem.className)
-                put("text", elem.text)
-                put("bounds", JSONArray(listOf(elem.bounds.left, elem.bounds.top, elem.bounds.right, elem.bounds.bottom)))
-                put("center", JSONObject().apply {
-                    put("x", elem.centerX)
-                    put("y", elem.centerY)
-                })
+            val boxPaint = Paint().apply {
+                color = Color.parseColor("#FF7A2F") // Ember Orange
+                style = Paint.Style.STROKE
+                strokeWidth = 3f
+                isAntiAlias = true
             }
-            elementsJson.put(item)
+
+            val badgeBgPaint = Paint().apply {
+                color = Color.parseColor("#E6130A1B") // Dark Plum Translucent
+                style = Paint.Style.FILL
+                isAntiAlias = true
+            }
+
+            val badgeBorderPaint = Paint().apply {
+                color = Color.parseColor("#FF7A2F")
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+                isAntiAlias = true
+            }
+
+            val textPaint = Paint().apply {
+                color = Color.parseColor("#FFF7F2")
+                textSize = 22f
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+
+            val elementsJson = JSONArray()
+
+            for (elem in targetElements) {
+                // Gambar kotak sekeliling elemen
+                canvas.drawRect(elem.bounds, boxPaint)
+
+                // Gambar kotak nomor badge di pojok kiri atas elemen
+                val badgeText = elem.id.toString()
+                val textWidth = textPaint.measureText(badgeText)
+                val badgeWidth = (textWidth + 14f).coerceAtLeast(26f)
+                val badgeHeight = 26f
+
+                val badgeLeft = elem.bounds.left.toFloat().coerceAtLeast(0f)
+                val badgeTop = (elem.bounds.top.toFloat() - badgeHeight).coerceAtLeast(0f)
+                val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
+
+                canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBgPaint)
+                canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBorderPaint)
+                canvas.drawText(badgeText, badgeLeft + 7f, badgeTop + 20f, textPaint)
+
+                // Catat ke JSON (koordinat tetap koordinat fisik layar asli)
+                val item = JSONObject().apply {
+                    put("id", elem.id)
+                    put("class", elem.className)
+                    put("text", elem.text)
+                    put("bounds", JSONArray(listOf(elem.bounds.left, elem.bounds.top, elem.bounds.right, elem.bounds.bottom)))
+                    put("center", JSONObject().apply {
+                        put("x", elem.centerX)
+                        put("y", elem.centerY)
+                    })
+                }
+                elementsJson.put(item)
+            }
+
+            // Potong sub-region (ROI) jika diminta, atau gunakan full bitmap
+            processedBitmap = if (validRoi != null) {
+                val cropped = Bitmap.createBitmap(
+                    mutableBitmap,
+                    validRoi.left,
+                    validRoi.top,
+                    validRoi.width(),
+                    validRoi.height()
+                )
+                if (cropped != mutableBitmap && !mutableBitmap.isRecycled) {
+                    mutableBitmap.recycle()
+                }
+                cropped
+            } else {
+                mutableBitmap
+            }
+
+            // Downscale untuk menghemat token LLM Vision jika scale < 1.0f dan bukan ROI kecil
+            finalBitmap = if (validRoi == null && scale in 0.2f..0.99f) {
+                val scaledW = (processedBitmap.width * scale).toInt().coerceAtLeast(100)
+                val scaledH = (processedBitmap.height * scale).toInt().coerceAtLeast(100)
+                val scaled = Bitmap.createScaledBitmap(processedBitmap, scaledW, scaledH, true)
+                if (scaled != processedBitmap && !processedBitmap.isRecycled) {
+                    processedBitmap.recycle()
+                }
+                scaled
+            } else {
+                processedBitmap
+            }
+
+            // Kompresi JPEG
+            val baos = ByteArrayOutputStream()
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 95), baos)
+            val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+
+            return base64 to elementsJson
+        } finally {
+            if (!mutableBitmap.isRecycled) mutableBitmap.recycle()
+            if (processedBitmap != null && !processedBitmap.isRecycled) processedBitmap.recycle()
+            if (finalBitmap != null && !finalBitmap.isRecycled) finalBitmap.recycle()
         }
-
-        // Potong sub-region (ROI) jika diminta, atau gunakan full bitmap
-        val processedBitmap = if (validRoi != null) {
-            val cropped = Bitmap.createBitmap(
-                mutableBitmap,
-                validRoi.left,
-                validRoi.top,
-                validRoi.width(),
-                validRoi.height()
-            )
-            mutableBitmap.recycle()
-            cropped
-        } else {
-            mutableBitmap
-        }
-
-        // Downscale untuk menghemat token LLM Vision jika scale < 1.0f dan bukan ROI kecil
-        val finalBitmap = if (validRoi == null && scale in 0.2f..0.99f) {
-            val scaledW = (processedBitmap.width * scale).toInt().coerceAtLeast(100)
-            val scaledH = (processedBitmap.height * scale).toInt().coerceAtLeast(100)
-            val scaled = Bitmap.createScaledBitmap(processedBitmap, scaledW, scaledH, true)
-            processedBitmap.recycle()
-            scaled
-        } else {
-            processedBitmap
-        }
-
-        // Kompresi JPEG
-        val baos = ByteArrayOutputStream()
-        finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(30, 95), baos)
-        val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-        finalBitmap.recycle()
-
-        return base64 to elementsJson
     }
 
     private fun collectInteractiveNodes(
@@ -166,10 +178,11 @@ object AnnotatedScreenshotHelper {
         val rect = Rect()
         node.getBoundsInScreen(rect)
 
-        val txt = node.text?.toString()?.trim().orEmpty()
-        val desc = node.contentDescription?.toString()?.trim().orEmpty()
+        val isPwd = node.isPassword
+        val txt = if (isPwd) "[REDACTED]" else node.text?.toString()?.trim().orEmpty()
+        val desc = if (isPwd) "[REDACTED]" else node.contentDescription?.toString()?.trim().orEmpty()
         var label = if (txt.isNotEmpty()) txt else desc
-        if (label.isEmpty()) {
+        if (label.isEmpty() && !isPwd) {
             label = extractDescendantLabel(node, 0)
         }
 
@@ -203,8 +216,11 @@ object AnnotatedScreenshotHelper {
 
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
-                currentId = collectInteractiveNodes(child, list, currentId, depth + 1)
-                child.recycle()
+                try {
+                    currentId = collectInteractiveNodes(child, list, currentId, depth + 1)
+                } finally {
+                    child.recycle()
+                }
             }
         }
         return currentId
@@ -215,6 +231,7 @@ object AnnotatedScreenshotHelper {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             try {
+                if (child.isPassword) return "[REDACTED]"
                 val cTxt = child.text?.toString()?.trim().orEmpty()
                 if (cTxt.isNotEmpty()) return cTxt
                 val cDesc = child.contentDescription?.toString()?.trim().orEmpty()

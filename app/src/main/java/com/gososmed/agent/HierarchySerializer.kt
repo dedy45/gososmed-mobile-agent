@@ -104,12 +104,15 @@ object HierarchySerializer {
         val b = Rect()
         node.getBoundsInScreen(b)
         sb.append("  ".repeat(depth))
+        val isPwd = node.isPassword
+        val textVal = if (isPwd) "[REDACTED]" else (node.text?.toString() ?: "")
+        val descVal = if (isPwd) "[REDACTED]" else (node.contentDescription?.toString() ?: "")
         sb.append("<node index=\"").append(index).append("\"")
-        sb.append(" text=\"").append(escape(node.text?.toString() ?: "")).append("\"")
+        sb.append(" text=\"").append(escape(textVal)).append("\"")
         sb.append(" resource-id=\"").append(escape(node.viewIdResourceName ?: "")).append("\"")
         sb.append(" class=\"").append(escape(node.className?.toString() ?: "")).append("\"")
         sb.append(" package=\"").append(escape(node.packageName?.toString() ?: "")).append("\"")
-        sb.append(" content-desc=\"").append(escape(node.contentDescription?.toString() ?: "")).append("\"")
+        sb.append(" content-desc=\"").append(escape(descVal)).append("\"")
         sb.append(" checkable=\"").append(node.isCheckable).append("\"")
         sb.append(" checked=\"").append(node.isChecked).append("\"")
         sb.append(" clickable=\"").append(node.isClickable).append("\"")
@@ -126,7 +129,11 @@ object HierarchySerializer {
         val childCount = node.childCount
         for (i in 0 until childCount) {
             val child = node.getChild(i) ?: continue
-            appendNode(child, sb, depth + 1, i, maxDepth, budget)
+            try {
+                appendNode(child, sb, depth + 1, i, maxDepth, budget)
+            } finally {
+                child.recycle()
+            }
         }
         sb.append("  ".repeat(depth)).append("</node>\n")
     }
