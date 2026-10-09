@@ -2,12 +2,16 @@
 
 **Enterprise-Grade Android Automation Engine untuk Arsitektur GoSosmed BYOD (Bring Your Own Device).**
 
-Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa PC perantara, tanpa root, dan tanpa aplikasi pihak ketiga**. Menggantikan model peternakan HP sewaan (*datacenter emulator farm*) yang rawan terdeteksi fraud, GoSosmed mengorkestrasi perangkat fisik nyata dengan identitas perangkat dan jaringan seluler rumahan yang 100% legal dan anti-banned.
+Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa PC perantara, tanpa root, dan tanpa aplikasi pihak ketiga**. Menggantikan model peternakan HP sewaan (*datacenter emulator farm*) yang rawan terdeteksi fraud, GoSosmed mengorkestrasi perangkat fisik nyata dengan identitas perangkat dan jaringan seluler rumahan yang 100% legal, aman, dan anti-banned.
+
+🌐 **[Bahasa Indonesia](README.md)** • **[English](README.en.md)**
 
 [![Build APK](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml)
 [![Rilis terbaru](https://img.shields.io/github/v/release/dedy45/gososmed-mobile-agent?include_prereleases&label=rilis)](https://github.com/dedy45/gososmed-mobile-agent/releases)
+[![SaaS Platform](https://img.shields.io/badge/SaaS-bamsbung.id-FF7A2F)](https://bamsbung.id)
+[![Dokumentasi](https://img.shields.io/badge/docs-docs.bamsbung.id-4f46e5)](https://docs.bamsbung.id)
+[![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Dokumentasi](https://img.shields.io/badge/docs-gososmed--docs.pages.dev-4f46e5)](https://gososmed-docs.pages.dev/agent/ikhtisar/)
 
 > **Versi Aktif: v1.1.0 (Dev Channel).**  
 > Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
@@ -72,8 +76,8 @@ Karena agent ini berjalan di perangkat pribadi dan meminta izin **Accessibility 
 * **Berkas Pribadi Terlindungi:** Foto keluarga, video pribadi, dan dokumen kamera (`IMG_*`, `VID_*`, WhatsApp Media) **dijamin secara hukum dan kode tidak akan pernah disentuh atau dihapus**.
 
 ### 3. Prinsip Hak Akses Terkecil (Least-Privilege Shell)
-* Eksekusi shell tingkat sistem dikunci ketat di dalam `PrivilegedShell.ALLOWED_BINARIES`: hanya mengizinkan `am`, `input`, `pm`, `dumpsys`, `wm`, `settings`, `cmd`, dan `svc`.
-* Perintah berbahaya seperti `rm -rf`, membaca SMS, kontak, atau memodifikasi file OS diblokir secara mutlak pada tingkat kernel APK.
+* Eksekusi shell tingkat sistem dikunci ketat di dalam `PrivilegedShell.ALLOWED_BINARIES`: hanya mengizinkan `am`, `input`, `pm`, `dumpsys`, `wm`, `settings`, `cmd`, `rm`, dan `svc`.
+* Perintah berbahaya seperti membaca SMS, membaca kontak buku telepon, atau memodifikasi file OS diblokir secara mutlak pada tingkat kernel APK.
 
 ### 4. Keamanan Jaringan Searah (Outbound-Only TLS)
 * HP Anda tidak memerlukan IP publik, tidak memerlukan port masuk yang terbuka, dan tidak dapat diakses dari luar. Semua komunikasi terjalin melalui WebSocket keluar (*outbound persistent TLS 1.3*) yang diotentikasi via pairing token.
@@ -143,9 +147,9 @@ Repositori ini dilisensikan di bawah **[Apache License 2.0](LICENSE)** — Copyr
 
 ---
 
-## 🌐 Ekosistem & Tautan Terkait
+## 🌐 Ekosistem & Layanan Resmi Bamsbung
 
-* **Dokumentasi Lengkap:** [gososmed-docs.pages.dev](https://gososmed-docs.pages.dev)
-* **Ikhtisar Model BYOD:** [Dokumentasi Agent](https://gososmed-docs.pages.dev/agent/ikhtisar/)
-* **Kebijakan Izin & Privasi:** [Izin & Privasi](https://gososmed-docs.pages.dev/agent/izin-privasi/)
-* **Kamus Integrasi AI / LLM:** [`llms.txt`](https://gososmed-docs.pages.dev/llms.txt)
+* **Platform SaaS Utama:** [bamsbung.id](https://bamsbung.id)
+* **Dokumentasi Resmi:** [docs.bamsbung.id](https://docs.bamsbung.id)
+* **Status Sistem & Ketersediaan Layanan:** [status.bamsbung.id](https://status.bamsbung.id)
+* **Repositori GitHub:** [github.com/dedy45/gososmed-mobile-agent](https://github.com/dedy45/gososmed-mobile-agent)
