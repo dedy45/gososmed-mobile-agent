@@ -40,4 +40,16 @@
         <item name="android:textColor">@color/text_secondary</item>
         <item name="android:lineSpacingMultiplier">1.2</item>
     </style>
+
+    <!-- Dialog Style untuk Trust & Legal Center (Ember 2048) -->
+    <style name="ThemeOverlay.Gosomed.TrustDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">#130A1B</item>
+        <item name="android:colorBackground">#130A1B</item>
+        <item name="colorOnSurface">#FFF7F2</item>
+        <item name="colorOnSurfaceVariant">#B6A6B0</item>
+        <item name="colorPrimary">#FF7A2F</item>
+        <item name="colorOnPrimary">#1D0D02</item>
+        <item name="android:textColorPrimary">#FFF7F2</item>
+        <item name="android:textColorSecondary">#B6A6B0</item>
+    </style>
 </resources>

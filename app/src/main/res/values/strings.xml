@@ -104,4 +104,10 @@
     <string name="log_copy">Salin</string>
     <string name="log_clear">Bersihkan</string>
     <string name="log_lines_format">%d baris</string>
+
+    <!-- Trust & Legal Center -->
+    <string name="about_title">Pusat Kepercayaan &amp; Legalitas</string>
+    <string name="about_subtitle">GoSosmed Mobile Agent</string>
+    <string name="btn_view_github">Lihat di GitHub</string>
+    <string name="btn_close">Tutup</string>
 </resources>

@@ -13,6 +13,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.Html
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -57,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var versionTv: TextView
     private lateinit var btnLangToggle: TextView
     private lateinit var btnThemeToggle: TextView
+    private lateinit var btnAbout: TextView
     private lateinit var deviceInfoTv: TextView
     private lateinit var pairTv: TextView
     private lateinit var permA11yTv: TextView
@@ -221,6 +224,8 @@ class MainActivity : AppCompatActivity() {
         versionTv = findViewById(R.id.versionTv)
         btnLangToggle = findViewById(R.id.btnLangToggle)
         btnThemeToggle = findViewById(R.id.btnThemeToggle)
+        btnAbout = findViewById(R.id.btnAbout)
+        btnAbout.setOnClickListener { showTrustAndLegalDialog() }
         deviceInfoTv = findViewById(R.id.deviceInfoTv)
         pairTv = findViewById(R.id.pairTv)
         permA11yTv = findViewById(R.id.permA11yTv)
@@ -527,6 +532,81 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Tidak bisa membuka tautan unduhan", Toast.LENGTH_LONG).show()
         }
     }
+    private fun showTrustAndLegalDialog() {
+        val activeLang = prefs().getString("app_lang", "id") ?: "id"
+        val isEn = activeLang.startsWith("en")
+        val versionName = BuildConfig.VERSION_NAME
+        val buildType = BuildConfig.BUILD_TYPE
+
+        val title = if (isEn) "🛡️ Trust & Legal Center" else "🛡️ Pusat Kepercayaan & Legalitas"
+        val btnGithub = if (isEn) getString(R.string.btn_view_github) else "Lihat di GitHub"
+        val btnClose = if (isEn) getString(R.string.btn_close) else "Tutup"
+
+        val message = if (isEn) {
+            """
+                <b>ℹ️ APPLICATION IDENTITY & SSoT</b><br/>
+                • <b>Name:</b> GoSosmed Mobile Agent<br/>
+                • <b>Version:</b> v$versionName (Build: $buildType)<br/>
+                • <b>Release Channel:</b> Single Source of Truth (SSoT) on GitHub<br/>
+                • <b>License:</b> Clean-Room Proprietary Framework with Open Transport Standards<br/>
+                • <b>Binary Integrity:</b> Verified production keystore signature &amp; SHA-256 tags.<br/><br/>
+
+                <b>🔒 PRIVACY POLICY &amp; SECURITY GUARANTEE</b><br/>
+                • <b>Zero Password Theft:</b> All password inputs are automatically redacted to [REDACTED]. Credentials are never read or stored.<br/>
+                • <b>Gallery Isolation:</b> Scoped Storage strictly restricts media staging to prefixes (gosmed_*, reel_*). Personal photos and camera media are 100% protected.<br/>
+                • <b>Least-Privilege Shell:</b> System ADB commands are strictly restricted to an explicit whitelist (am, input, pm, dumpsys, wm, settings, rm).<br/><br/>
+
+                <b>📜 TERMS OF SERVICE (ToS)</b><br/>
+                • <b>Content Responsibility:</b> Operators retain sole control and accountability over all published creative assets and captions.<br/>
+                • <b>Platform Compliance:</b> Automation is intended for ethical, legitimate operations adhering to official social media platform guidelines.<br/><br/>
+
+                <b>⭐ OPEN TRANSPORT &amp; VERIFICATION</b><br/>
+                • <b>Protocol:</b> Standard RFC WebSocket transport with deterministic state machines.<br/>
+                • <b>Repository:</b> https://github.com/dedy45/gososmed-mobile-agent
+            """.trimIndent()
+        } else {
+            """
+                <b>ℹ️ TENTANG APLIKASI (ABOUT)</b><br/>
+                • <b>Nama:</b> GoSosmed Mobile Agent<br/>
+                • <b>Versi:</b> v$versionName (Build: $buildType)<br/>
+                • <b>Kanal Rilis:</b> Single Source of Truth (SSoT) resmi di GitHub<br/>
+                • <b>Arsitektur:</b> Clean-Room Automation Framework dengan protokol terbuka<br/>
+                • <b>Integritas:</b> Tanda tangan rilis resmi terverifikasi &amp; checksum SHA-256 pada setiap rilis GitHub.<br/><br/>
+
+                <b>🔒 KEBIJAKAN PRIVASI &amp; ANTI-SPYWARE</b><br/>
+                • <b>Anti-Keylogger:</b> Seluruh input password diredaksi otomatis menjadi [REDACTED]. Kredensial tidak pernah dibaca atau disimpan.<br/>
+                • <b>Proteksi Galeri Pribadi:</b> Hanya mengelola file staging (gosmed_*, reel_*). Foto &amp; video pribadi kamera 100% aman dan tidak pernah disentuh.<br/>
+                • <b>Prinsip Least-Privilege:</b> Shell ADB dibatasi ketat pada instruksi sistem yang diizinkan (am, input, pm, dumpsys, wm, settings, rm).<br/><br/>
+
+                <b>📜 KETENTUAN LAYANAN (TERMS OF SERVICE)</b><br/>
+                • <b>Tanggung Jawab Konten:</b> Pengguna bertanggung jawab penuh atas materi konten, teks, dan media yang dipublikasikan.<br/>
+                • <b>Kepatuhan Platform:</b> Automasi ditujukan untuk pengelolaan konten legal dan etis sesuai panduan resmi komunitas media sosial (Instagram, TikTok, YouTube).<br/><br/>
+
+                <b>⭐ LISENSI &amp; VERIFIKASI GITHUB</b><br/>
+                • <b>Lisensi:</b> Clean-Room Proprietary Framework with Open Transport Standards<br/>
+                • <b>Repositori Resmi:</b> https://github.com/dedy45/gososmed-mobile-agent
+            """.trimIndent()
+        }
+
+        try {
+            MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_Gosomed_TrustDialog)
+                .setTitle(title)
+                .setMessage(Html.fromHtml(message, Html.FROM_HTML_MODE_LEGACY))
+                .setPositiveButton(btnGithub) { _, _ ->
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/dedy45/gososmed-mobile-agent"))
+                        startActivity(intent)
+                    } catch (t: Throwable) {
+                        toast(if (isEn) "Failed to open web browser" else "Gagal membuka peramban web")
+                    }
+                }
+                .setNegativeButton(btnClose, null)
+                .show()
+        } catch (t: Throwable) {
+            Log.w("GoAgent", "showTrustAndLegalDialog error: ${t.message}")
+        }
+    }
+
 
     // ---- Tab & Sticky Bottom Navigation ----
 

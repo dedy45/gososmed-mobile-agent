@@ -104,4 +104,10 @@
     <string name="log_copy">Copy</string>
     <string name="log_clear">Clear</string>
     <string name="log_lines_format">%d lines</string>
+
+    <!-- Trust & Legal Center -->
+    <string name="about_title">Trust &amp; Legal Center</string>
+    <string name="about_subtitle">GoSosmed Mobile Agent</string>
+    <string name="btn_view_github">View on GitHub</string>
+    <string name="btn_close">Close</string>
 </resources>
