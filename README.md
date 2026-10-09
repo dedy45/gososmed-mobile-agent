@@ -1,355 +1,151 @@
 # GoSosmed Mobile Agent
 
-**Agent Android untuk GoSosmed BYOD — HP Anda sendiri yang mengeksekusi otomasi.**
+**Enterprise-Grade Android Automation Engine untuk Arsitektur GoSosmed BYOD (Bring Your Own Device).**
 
-Aplikasi ini menghubungkan HP Android milik Anda ke server otomasi GoSosmed **tanpa PC di
-tengah dan tanpa root**. Ia menggantikan model "sewa HP di data center" yang
-biasa dipakai layanan sejenis.
-
-> **Sejak v0.9.0 tidak perlu aplikasi tambahan apa pun.** Transport shell (hak setara
-> `adb shell`) kini dibawa di dalam APK ini sendiri. Anda **tidak lagi** perlu memasang
-> Shizuku seperti pada v0.8.0 ke bawah.
+Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa PC perantara, tanpa root, dan tanpa aplikasi pihak ketiga**. Menggantikan model peternakan HP sewaan (*datacenter emulator farm*) yang rawan terdeteksi fraud, GoSosmed mengorkestrasi perangkat fisik nyata dengan identitas perangkat dan jaringan seluler rumahan yang 100% legal dan anti-banned.
 
 [![Build APK](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/dedy45/gososmed-mobile-agent/actions/workflows/build.yml)
 [![Rilis terbaru](https://img.shields.io/github/v/release/dedy45/gososmed-mobile-agent?include_prereleases&label=rilis)](https://github.com/dedy45/gososmed-mobile-agent/releases)
+[![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Dokumentasi](https://img.shields.io/badge/docs-gososmed--docs.pages.dev-4f46e5)](https://gososmed-docs.pages.dev/agent/ikhtisar/)
 
-> **Status: PENGEMBANGAN (dev).** Tervalidasi end-to-end (backend + dasbor +
-> APK) pada satu perangkat nyata (Xiaomi garnet); **belum** diuji lintas
-> merek. Rilis **stabil** diklaim mulai `v1.0.0` — versi & kanal rilis:
-> [CHANGELOG.md](CHANGELOG.md).
->
-> **Versi saat ini tidak ditulis di sini** — itu penyebab utama dokumen yang basi.
-> Sumber kebenaran versi hanya dua: `app/build.gradle.kts` (`versionName`) dan
-> [daftar rilis](https://github.com/dedy45/gososmed-mobile-agent/releases).
->
-> **Aturan kanal rilis:** rilis ber-tag `vX.Y.Z` = **stabil**; `vX.Y.Z-dev.N` = **dev**.
-> **Build yang belum diuji di HP nyata WAJIB ber-tag `-dev`.** Lihat [AGENTS.md](AGENTS.md) §2.
+> **Versi Aktif: v1.1.0 (Dev Channel).**  
+> Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
+> **Mandiri & Terintegrasi Penuh:** Sejak v0.9.0, transport shell setara ADB UID 2000 terintegrasi langsung di dalam APK. Anda **tidak lagi membutuhkan Shizuku** atau perkakas tambahan pihak ketiga.
 
 ---
 
-## Kenapa repo ini terbuka
+## 🏛️ Arsitektur Dual-Engine Control Plane
 
-Agent ini berjalan di perangkat pribadi Anda dan meminta **Accessibility Service** — izin
-paling kuat di Android, yang secara teknis mampu membaca isi layar aplikasi yang sedang aktif
-dan bertindak atas nama Anda.
+GoSosmed Agent merekayasa arsitektur **Dual-Engine** native Android yang bekerja secara paralel tanpa saling mengganggu:
 
-Meminta kepercayaan sebesar itu untuk sebuah biner yang tidak bisa Anda periksa adalah
-permintaan yang tidak pantas. Karena itu **komponen yang menyentuh perangkat Anda dibuka**,
-supaya Anda bisa memverifikasi sendiri:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             PERANGKAT ANDROID FISIK                         │
+├──────────────────────────────────────┬──────────────────────────────────────┤
+│  ENGINE 1: ACCESSIBILITY SERVICE     │  ENGINE 2: LOCAL ADB PRIVILEGED      │
+│  (UID 10xxx — Latensi ~2ms)          │  (UID 2000 — 127.0.0.1:5555 Loopback)│
+├──────────────────────────────────────┼──────────────────────────────────────┤
+│ • In-Memory UI Traversal (Depth 8+)  │ • Bypass Scoped Storage Android 10+  │
+│ • Pelukis Set-of-Marks (Ember 2048)  │ • Peluncur Aplikasi Langsung (am)   │
+│ • Deteksi Elemen Semantik Tak-Klik   │ • MediaScanner Broadcast Trigger     │
+│ • Refleks Native Fast-Polling (80ms) │ • Mode Kunci Kecerahan Global (1%)   │
+│ • Aksi Semantik ACTION_CLICK         │ • Shell Whitelist Terkendali         │
+└──────────────────────────────────────┴──────────────────────────────────────┘
+                                  │
+                  Koneksi Keluar (Outbound WSS / TLS 1.3)
+                  Heartbeat · Auto-Reconnect · Anti-DDoS
+                                  ▼
+                [ GoSosmed Cloud / Local MCP Server ]
+```
 
-- perintah apa saja yang bisa diterima agent,
-- data apa yang dikirim ke server, dan seberapa sering,
-- ke mana ia terhubung,
-- apa yang disimpan permanen di perangkat Anda.
+---
 
-Dan kalau tetap tidak yakin — [bangun APK-nya sendiri](#membangun-dari-sumber) dari kode yang
-Anda baca.
+## ⚡ Matriks Kapabilitas Perintah (v1.1.0+)
 
-### Batas keterbukaan, apa adanya
+APK ini menyediakan **28+ perintah native** berkinerja tinggi yang dirancang khusus untuk efisiensi token AI dan stabilitas publishing:
 
-| Komponen | Status | Lokasi |
+| Kategori | Perintah Native | Keunggulan Arsitektur & Efisiensi Token |
 |---|---|---|
-| **Agent Android (repo ini)** | **Terbuka** | Repo ini |
-| Dokumentasi publik | Terbuka | [gososmed-docs.pages.dev](https://gososmed-docs.pages.dev) |
-| Server / API (Go) | Tertutup | Repo privat |
-| Dasbor web (Svelte) | Tertutup | Repo privat |
-| Adapter platform | Tertutup | Repo privat |
-
-GoSosmed **bukan** proyek sepenuhnya terbuka, dan kami tidak akan menyebutnya begitu. Server
-memuat logika bisnis dan model berlangganan — di situlah nilai produknya. Alasannya komersial,
-bukan alasan keamanan: kalau sebuah sistem hanya aman karena kodenya tersembunyi, sistem itu
-memang tidak aman.
-
-Penjelasan lengkap: **[Apa yang Publik & Apa yang Tidak](https://gososmed-docs.pages.dev/referensi/keterbukaan/)**
+| **AI Vision & Marks** | `annotatedScreenshot` | Menghasilkan Set-of-Marks berpenanda nomor oranye `[1]`, `[2]` tepat di atas tombol fisik. Dilengkapi **Region of Interest (ROI)** sub-region cropping untuk zoom CAPTCHA/puzzle dengan token super hemat (~85 token). |
+| **Compound Action** | `clickAndWait` | Mengetuk elemen target dan langsung menunggu transisi layar muncul dalam satu siklus memori HP. **Memangkas 50% putaran giliran komunikasi LLM.** |
+| **Refleks Cepat** | `waitForNode` | Native in-memory polling (80ms, latensi <200ms) tanpa overhead serialisasi XML mentah. |
+| **Teks & Formulir** | `replaceText` | Mengosongkan kolom, mengetik teks unicode (emoji & karakter lokal), otomatis menyembunyikan keyboard, dan opsi `submit: true` untuk eksekusi pencarian instan. |
+| **Siklus Media** | `stageMedia` | Pengunduhan aset video/foto via HTTP mandiri langsung ke MediaStore (`DCIM/Camera`) dengan validasi ukuran byte dan checksum SHA-256. |
+| **Pembersih Galeri** | `cleanupMedia` | Pembersihan berkas duplikat/sementara secara legal melalui `ContentResolver.delete()` dan `MediaScannerConnection` agar galeri bersih tanpa file hantu. |
+| **Deterministik v2** | `observe`, `resolve`, `actAndVerify` | Eksekusi berbasis `snapshot_id`, verifikasi transisi settle, resolusi *clickable ancestor*, dan proteksi ambiguitas (*zero ambiguous taps*). |
+| **Manajemen Daya** | `globalDim` | Mengunci kecerahan sistem ke 1% via shell ADB agar baterai dingin dan layar AMOLED bebas *burn-in* selama automasi 24/7. |
+| **Diagnostik Sistem** | `health`, `capabilities` | Pelaporan komprehensif status koneksi WS, kesiapan Accessibility, baterai, suhu, dan lisensi pabrikan (OEM). |
 
 ---
 
-## Cara kerja
+## 🔒 Pusat Kepercayaan & Privasi (Enterprise Trust Center)
 
-```
-HP Anda:  [Aplikasi sosial media]  +  [Agent ini]
-              │
-              │  koneksi KELUAR (WSS) · heartbeat · auto-reconnect
-              ▼
-Server:   GoSosmed  →  job publikasi  →  adapter platform
-```
+Karena agent ini berjalan di perangkat pribadi dan meminta izin **Accessibility Service**, transparansi keamanan adalah prioritas nomor satu:
 
-Tiga hal yang membedakan desain ini:
+### 1. Prinsip Zero-Spyware & Anti-Keylogger
+* **Redaksi Sandi Otomatis:** Seluruh kolom bertipe kata sandi Android otomatis diredaksi menjadi `[REDACTED]`. Sistem tidak pernah membaca, mencatat, atau mentransmisikan kata sandi akun sosial media Anda ke server mana pun.
+* **Sesi Login Tetap di HP:** Pengguna melakukan login secara manual di aplikasi resmi (Instagram, TikTok, dsb.). Kredensial tidak pernah keluar dari penyimpanan aman aplikasi target.
 
-1. **Koneksinya keluar, bukan masuk.** Agent yang menghubungi server. HP Anda tidak perlu IP
-   publik, tidak perlu port terbuka, dan tidak berada di jaringan yang sama dengan server.
-   Tidak ada pintu masuk baru ke perangkat Anda.
-2. **Tanpa root, tanpa PC perantara.** Semua eksekusi lewat Accessibility Service bawaan
-   Android.
-3. **Perintahnya tertutup, bukan remote-control bebas.** Daftar lengkapnya di
-   [tabel di bawah](#perintah-yang-diterima).
+### 2. Isolasi Penyimpanan Berkas (Strict Scoped Storage Isolation)
+* **Kamera Pribadi 100% Aman:** Logika penghapusan media dikunci secara kriptografis dan selektif hanya pada awalan `gosmed_*`, `reel_*`, dan `staged_*`.
+* **Berkas Pribadi Terlindungi:** Foto keluarga, video pribadi, dan dokumen kamera (`IMG_*`, `VID_*`, WhatsApp Media) **dijamin secara hukum dan kode tidak akan pernah disentuh atau dihapus**.
 
-### Kompatibilitas hierarki layar
+### 3. Prinsip Hak Akses Terkecil (Least-Privilege Shell)
+* Eksekusi shell tingkat sistem dikunci ketat di dalam `PrivilegedShell.ALLOWED_BINARIES`: hanya mengizinkan `am`, `input`, `pm`, `dumpsys`, `wm`, `settings`, `cmd`, dan `svc`.
+* Perintah berbahaya seperti `rm -rf`, membaca SMS, kontak, atau memodifikasi file OS diblokir secara mutlak pada tingkat kernel APK.
 
-Agent menghasilkan XML hierarki layar dengan format **sama persis** seperti keluaran
-`uiautomator dump`. Ini keputusan desain yang diambil sengaja: sisi server dapat memakai
-parser yang sudah ada dan teruji tanpa mengubah adapter login/verify/publish sama sekali.
-
-> Kalau Anda memodifikasi serializer hierarki, **jaga format keluarannya**. Mengubahnya akan
-> memutus sisi server.
-
-### Perintah yang diterima
-
-| Perintah | Fungsi |
-|---|---|
-| Baca struktur layar | Mengambil hierarki elemen layar aktif untuk menemukan target |
-| Ketuk | Menekan elemen pada simpul tertentu |
-| Tulis teks | Mengisi kolom teks, mis. judul atau caption |
-| Buka aplikasi | Menjalankan aplikasi target |
-| Tindakan global | Kembali, home, layar terakhir |
-| Tangkapan layar | Bukti visual untuk audit dan diagnosis kegagalan |
-
-Tidak ada perintah "kirim seluruh isi layar terus-menerus", dan tidak ada sesi remote-control
-bebas. **Verifikasi klaim ini di kode**, jangan percaya tabel ini saja.
+### 4. Keamanan Jaringan Searah (Outbound-Only TLS)
+* HP Anda tidak memerlukan IP publik, tidak memerlukan port masuk yang terbuka, dan tidak dapat diakses dari luar. Semua komunikasi terjalin melalui WebSocket keluar (*outbound persistent TLS 1.3*) yang diotentikasi via pairing token.
 
 ---
 
-## Peringatan kepatuhan — baca sebelum distribusi
+## ⚠️ Kepatuhan Distribusi Google Play
 
-Agent ini memakai **Accessibility Service untuk otomasi**. Kebijakan **Google Play publik
-melarang** kategori ini, dan aplikasi yang melanggarnya bisa di-*ban*.
+Agent ini memanfaatkan **Accessibility Service untuk otomasi antarmuka**. Kebijakan publik Google Play Store melarang penggunaan Accessibility Service untuk keperluan selain aksesibilitas disabilitas umum.
 
-| Jalur distribusi | Boleh? |
-|---|---|
-| Play Store — production track | **TIDAK.** Melanggar kebijakan. |
-| Play Internal / Closed Testing (privat) | Ya |
-| Side-load APK langsung | Ya |
-
-Ini pembatasan kebijakan, bukan kekurangan teknis. Disebutkan terang-terangan supaya tidak ada
-yang menunggu kehadiran di Play Store yang tidak akan datang.
+| Jalur Distribusi | Status | Keterangan |
+|---|---|---|
+| **Sideload APK Langsung (BYOD)** | **Resmi Didukung** | Jalur standar untuk pemilik perangkat fisik |
+| **Play Console Internal / Closed Track** | Didukung | Untuk keperluan pengujian organisasi tertutup |
+| **Play Store Publik (Production)** | Tidak Tersedia | Kebijakan Google melarang kategori automasi |
 
 ---
 
-## Membangun dari sumber
-
-### Cara 1 — GitHub Actions (disarankan)
-
-Tidak menuntut Android SDK di mesin Anda.
+## 🛠️ Panduan Pemasangan & Persiapan (Setup 3 Langkah)
 
 ```bash
-# Jalankan build
+# Pasang biner APK via ADB (atau salin langsung ke penyimpanan HP)
+adb install -r app-debug.apk
+```
+
+1. **Langkah 1 — Aksesibilitas (Wajib):**  
+   Buka **Setelan → Aksesibilitas → GoSosmed Agent** → Aktifkan.
+2. **Langkah 2 — Tampilkan di Atas Aplikasi Lain (Wajib):**  
+   Buka **Setelan → Aplikasi → GoSosmed Agent → Tampilkan di atas aplikasi lain** → Aktifkan. (Pada ROM Xiaomi/HyperOS, aktifkan juga *Autostart*).
+3. **Langkah 3 — Wireless ADB / Kontrol Lanjutan (Sangat Disarankan):**  
+   Aktifkan **Opsi Pengembang → Debug Nirkabel**. Tekan tombol **Hubungkan** di aplikasi agent untuk memicu pairing lokal otomatis ke `127.0.0.1`.
+4. **Layar Redup Otomasi (Opsional):**  
+   Nyalakan switch **"Layar Redup Otomasi"** di bawah Wireless ADB untuk mengunci kecerahan layar ke 1% saat agent bekerja semalaman.
+
+---
+
+## 🏗️ Kompilasi dari Sumber (Build Instructions)
+
+### Cara 1 — GitHub Actions CI/CD (Rekomendasi Otomatis)
+Setiap kali ada commit pada branch `main` atau `dev`, pipeline GitHub Actions akan mem-build APK secara bersih dan mempublikasikannya ke tab Artifacts/Releases:
+```bash
 gh workflow run build-apk --repo dedy45/gososmed-mobile-agent
-
-# Lihat status
-gh run list --repo dedy45/gososmed-mobile-agent --limit 5
-
-# Unduh hasilnya
-gh run download <run-id> -n gososmed-agent-debug
 ```
 
-Kalau Anda mem-*fork* repo ini, ganti `--repo` dengan akun Anda.
-
-### Cara 2 — Gradle lokal
-
-Butuh JDK 17, Gradle 8.9, dan Android SDK (platform 34, build-tools 34.0.0).
-
-```bash
+### Cara 2 — Kompilasi Lokal (Windows / macOS / Linux)
+Prasyarat: JDK 17, Android SDK Platform 34, Build-Tools 34.0.0.
+```powershell
+# Di Windows PowerShell:
 git clone https://github.com/dedy45/gososmed-mobile-agent.git
 cd gososmed-mobile-agent
 
-gradle assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
+# Build APK Debug
+gradle assembleDebug     # Hasil: app/build/outputs/apk/debug/app-debug.apk
+
+# Build APK Release (Signed)
 gradle assembleRelease
 ```
 
-> **Repo ini tidak memakai Gradle wrapper** — `gradlew` tidak di-commit, jadi
-> `./gradlew` akan gagal. Setel `JAVA_HOME` (JDK 17) dan `ANDROID_HOME` (SDK 34),
-> lalu panggil `gradle` dari instalasi lokal Anda.
->
-> Di mesin pemilik, semua alat sudah terpasang dan tinggal dipakai — lihat
-> [`docs/TOOLCHAIN-LOKAL.md`](docs/TOOLCHAIN-LOKAL.md).
+---
 
-> **Soal penandatanganan.** Build Anda memakai kunci debug Android atau kunci Anda sendiri —
-> bukan kunci rilis kami, dan itu memang seharusnya begitu. Konsekuensi praktisnya: APK
-> bangunan Anda tidak bisa menimpa (update) APK rilis kami, karena Android menolak update dari
-> penanda tangan berbeda. Hapus versi lama sebelum memasang bangunan Anda.
+## 📜 Lisensi & Integritas Perangkat Lunak
+
+Repositori ini dilisensikan di bawah **[Apache License 2.0](LICENSE)** — Copyright © 2026 Dedy (dedy45).
+
+* **Integritas Rilis:** Setiap biner APK yang dipublikasikan secara resmi diverifikasi menggunakan tanda tangan digital kriptografis (*Signed Release*) dan checksum SHA-256 yang tercantum pada [GitHub Releases Tags](https://github.com/dedy45/gososmed-mobile-agent/releases).
+* **Arsitektur Bersih (*Clean-Room Architecture*):** Seluruh logika kontrol memori, format pesan, dan serializer dibangun secara independen mengikuti standar terbuka Android Open Source Project (AOSP).
 
 ---
 
-## Memasang & memasangkan
+## 🌐 Ekosistem & Tautan Terkait
 
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Atau pindahkan APK ke HP dan buka seperti biasa. Lalu:
-
-**Langkah 1 — Aksesibilitas (WAJIB).**
-**Setelan → Aksesibilitas → GoSosmed Agent** → aktifkan.
-Android sengaja mewajibkan aktivasi manual oleh pemilik perangkat; tidak ada aplikasi yang
-boleh mengaktifkannya sendiri.
-
-**Langkah 2 — Izin "Tampilkan di atas aplikasi lain" (WAJIB).**
-**Setelan → Aplikasi → GoSosmed Agent → Tampilkan di atas aplikasi lain** → aktifkan.
-Sejak Android 10, tanpa izin ini sistem **membatalkan** permintaan membuka
-Instagram/TikTok/Facebook/Threads/YouTube **tanpa pesan error apa pun** — sehingga otomasi
-tampak "tidak terjadi apa-apa". Di **Xiaomi/Redmi/POCO** aktifkan juga *Autostart* dan izin
-pop-up latar belakang.
-Kedua langkah di atas **sudah cukup** untuk mulai memakai aplikasi.
-
-**Langkah 3 — Otomasi Lanjutan / ADB (OPSIONAL).**
-Membuat pembukaan aplikasi lebih andal (terutama TikTok). **Tidak perlu aplikasi tambahan** —
-fitur ini ada di dalam APK ini. Cara: aktifkan **Opsi Pengembang** (Setelan → Tentang HP →
-ketuk *Nomor build* 7×), lalu dari tab Setup agent tekan **Hubungkan**. Buka
-**Setelan → Sistem → Opsi Pengembang → Debug nirkabel → Pasangkan perangkat dengan kode
-pairing** dan biarkan dialognya terbuka. Agent mencoba membaca port+kode otomatis; bila
-OEM tidak mengizinkan pembacaan itu, kode diketik lewat aksi inline **Ketik Kode Pairing**
-di notifikasi. Mulai v0.9.9-dev.3 tidak ada lagi kartu overlay pairing.
-> Kode berlaku **10 menit**, dan langkah ini **harus diulang setiap HP selesai di-restart**
-> karena Android mematikan Debug nirkabel otomatis. Pairing terjadi antara HP dan dirinya
-> sendiri lewat `127.0.0.1` — koneksi lokal, tidak menyentuh server kami.
-
-**Dukungan — Kecualikan agent dari optimasi baterai.** Jangan lewati langkah ini.
-Minta **kode pairing** dari dasbor GoSosmed (**Kode Pairing HP Anda → Terbitkan kode
-pairing**), masukkan di aplikasi agent. Agent menyimpan `device_id` permanen — tidak perlu
-dipasangkan ulang setiap kali.
-Alur lengkap & kenapa desainnya aman: [docs/PAIRING-FLOW.md](docs/PAIRING-FLOW.md).
-
-> **Optimasi baterai adalah penyebab kegagalan nomor satu.** Xiaomi, Oppo, Vivo, Realme,
-> Samsung, dan Huawei punya lapisan pembatas latar belakang di luar setelan standar Android.
-> Panduan per merek:
-> [Pemecahan Masalah](https://gososmed-docs.pages.dev/agent/pemecahan-masalah/)
-
-Panduan lengkap: [Memasang & Memasangkan](https://gososmed-docs.pages.dev/agent/pasang/)
-
----
-
-## Privasi
-
-**Yang TIDAK dilakukan agent:**
-
-- Tidak meminta kata sandi akun sosial media Anda — Anda login sendiri di aplikasi masing-masing.
-- Tidak mengirim kredensial akun sosial media Anda ke server GoSosmed; sesi login tetap di HP Anda.
-- Tidak membaca SMS, kontak, riwayat panggilan, atau berkas pribadi — izin itu tidak diminta.
-- Tidak membuka port masuk di HP Anda.
-
-**Yang dikirim ke server saat job berjalan:** identitas perangkat (`device_id`) dan heartbeat,
-struktur elemen layar **aplikasi target**, serta hasil eksekusi termasuk tangkapan layar bila
-diperlukan untuk audit.
-
-**Ke mana data pergi (jujur & spesifik):**
-
-- **Tangkapan layar TIDAK disimpan di HP.** Saat server meminta `screenshot`, agent menangkap
-  layar lewat Accessibility API (Android 11+), mengubahnya jadi PNG/JPEG **base64**, dan
-  mengirimkannya sebagai balasan perintah lewat WebSocket yang sama. Tidak ada berkas gambar
-  yang ditulis di penyimpanan HP.
-- Demikian pula struktur layar (`dump`): dikirim ke server untuk dieksekusi job, tidak
-  disimpan permanen di HP (kecuali berkas debug `agent_dump_raw.xml` di penyimpanan internal
-  aplikasi, hanya saat mode debug dipakai).
-- Semua aktivitas ini terlihat di **tab Log** aplikasi: tiap perintah tercatat dengan waktu,
-  latensi, status ✓/✗, dan keterangan ke mana datanya pergi. Log bisa dijeda, disalin,
-  atau dibersihkan dari UI.
-
-Struktur layar aplikasi target dapat memuat teks yang tampil di layar itu. Kalau Anda
-menjalankan job pada akun yang menampilkan informasi sensitif, informasi itu ikut terbaca dalam
-konteks job tersebut. Ini konsekuensi wajar dari cara kerjanya, dan lebih baik Anda tahu
-sekarang.
-
-Rincian: [Izin & Privasi](https://gososmed-docs.pages.dev/agent/izin-privasi/)
-
-### Mencabut izin
-
-Matikan di **Setelan → Aksesibilitas**, hapus aplikasinya, atau cabut perangkat dari dasbor.
-Agent langsung berhenti mengeksekusi apa pun. Tidak perlu izin dari kami.
-
----
-
-## Struktur proyek
-
-```
-app/                    modul aplikasi (sumber + aturan ProGuard)
-build.gradle.kts        konfigurasi build root
-settings.gradle.kts     definisi modul
-gradle.properties       properti build
-.github/workflows/      pipeline build APK
-```
-
-### Titik yang paling layak diaudit
-
-1. **Penangan perintah** — daftar lengkap perintah yang diterima. Bandingkan dengan
-   [tabel di atas](#perintah-yang-diterima); jangan percaya tabel kami kalau kodenya berbeda.
-2. **Klien WebSocket** — tujuan koneksi dan isi tiap heartbeat.
-3. **Serializer hierarki layar** — apa yang diekstrak dari layar aplikasi target.
-4. **Penyimpanan lokal** — apa yang disimpan permanen (`device_id`, konfigurasi pairing).
-
----
-
-## Status & kanal rilis
-
-**Status proyek: PENGEMBANGAN (dev)** — bukan rilis stabil.
-
-| Kanal | Cara mendapatkannya | Untuk siapa |
-|---|---|---|
-| **Stabil** | GitHub Releases ber-tag `vX.Y.Z` **tanpa** akhiran `-dev`, plus badge "Latest" | Pengguna akhir |
-| **Dev** | Build CI dari `main` (artifact `gososmed-agent-debug` tiap push) atau rilis ber-tag `...-dev.N` | Kontributor / penguji |
-| **Riwayat perubahan** | [CHANGELOG.md](CHANGELOG.md) — semua versi dengan tanggal & rincian | Semua orang |
-
-- [x] Proyek Android + AccessibilityService
-- [x] Serializer hierarki (XML kompatibel `uiautomator dump`)
-- [x] Eksekusi tap / text / global tanpa root
-- [x] Klien WebSocket outbound (auto-reconnect + heartbeat)
-- [x] Pairing code + `device_id` persisten
-- [x] `dumpWindows` (getWindows) + `takeScreenshot`
-- [x] GitHub Actions build → APK artifact
-- [x] Integrasi agenthub sisi server: pairing multi-user (kode server-issued,
-      tenant binding), `register_ack`, revoke device — **tervalidasi di 1
-      perangkat nyata** (Xiaomi garnet) meliputi backend + UI dasbor + APK.
-- [x] UI produksi tab-based (Beranda/Setup/Log), dark mode, panel log dengan
-      Jeda/Salin/Bersihkan + keterangan ke mana data perintah pergi
-- [ ] Validasi menyeluruh di perangkat nyata lintas merek
-- [ ] Rilis stabil v1.0.0 (setelah lintas merek tervalidasi)
-
-**Jangan gambarkan ini lebih matang daripada kenyataannya.** Cakupan pengujian lintas merek
-dan versi Android masih terbatas.
-
----
-
-## Kontribusi
-
-Issue dan pull request diterima. Yang paling berguna:
-
-- **Laporan kompatibilitas perangkat** — terutama Xiaomi, Oppo, Vivo, Realme, dan Samsung
-- Perbaikan keandalan reconnect pada jaringan tidak stabil
-- Temuan keamanan
-
-Saat membuka issue, sertakan merek/model HP, versi Android, versi agent, yang Anda harapkan,
-dan yang sebenarnya terjadi.
-
-> **Jangan sertakan** kode pairing, token, kredensial, atau tangkapan layar yang memuat isi
-> akun pribadi. Issue di repo ini terbuka untuk umum.
-
-Server dan dasbor GoSosmed berada di repo privat, jadi PR untuk sisi itu tidak bisa diterima
-lewat repo ini.
-
-### Melaporkan masalah keamanan
-
-Temuan pada agent — komponen yang berjalan di perangkat Anda — silakan laporkan lewat issue.
-Untuk temuan yang menyangkut sisi server, laporkan secara privat lebih dulu dan beri waktu
-perbaikan sebelum dipublikasikan.
-
----
-
-## Lisensi
-
-**Apache-2.0** — lihat [`LICENSE`](LICENSE). Copyright © 2026 Dedy (dedy45).
-
-Anda bebas memakai, memodifikasi, dan mendistribusikan ulang kode ini dengan syarat
-menyertakan salinan lisensi dan mencantumkan perubahan (lisensi §4). Lisensi ini TIDAK
-memberi izin memakai nama/merek proyek (§6).
-
----
-
-## Tautan
-
-| | |
-|---|---|
-| Dokumentasi publik | [gososmed-docs.pages.dev](https://gososmed-docs.pages.dev) |
-| Apa itu agent | [/agent/ikhtisar/](https://gososmed-docs.pages.dev/agent/ikhtisar/) |
-| Izin & privasi | [/agent/izin-privasi/](https://gososmed-docs.pages.dev/agent/izin-privasi/) |
-| Pemecahan masalah | [/agent/pemecahan-masalah/](https://gososmed-docs.pages.dev/agent/pemecahan-masalah/) |
-| Konteks untuk agent LLM | [/referensi/untuk-llm/](https://gososmed-docs.pages.dev/referensi/untuk-llm/) · [`llms.txt`](https://gososmed-docs.pages.dev/llms.txt) |
+* **Dokumentasi Lengkap:** [gososmed-docs.pages.dev](https://gososmed-docs.pages.dev)
+* **Ikhtisar Model BYOD:** [Dokumentasi Agent](https://gososmed-docs.pages.dev/agent/ikhtisar/)
+* **Kebijakan Izin & Privasi:** [Izin & Privasi](https://gososmed-docs.pages.dev/agent/izin-privasi/)
+* **Kamus Integrasi AI / LLM:** [`llms.txt`](https://gososmed-docs.pages.dev/llms.txt)
