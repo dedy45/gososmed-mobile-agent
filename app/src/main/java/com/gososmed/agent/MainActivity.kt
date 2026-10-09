@@ -1338,7 +1338,7 @@ class MainActivity : AppCompatActivity() {
                         toast("Wireless ADB belum aktif — kecerahan global membutuhkan izin ADB")
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w("GoAgent", "applyGlobalDim error: ${e.message}")
             }
         }.start()
