@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 32 = v1.2.0 (STABIL) — Trust & Legal Center,
-        // Password Redaction, Depth 8+ SoM, clickAndWait, ROI Zoom, Smart IME, Global Dimming.
-        versionCode = 32
-        versionName = "1.2.0"
+        // versionCode 33 = v1.2.1 (STABIL) — Annotated Screenshot Stabilization,
+        // Zero-Leak Direct Mutable Decode, TLS Hardening & App Signature Attestation.
+        versionCode = 33
+        versionName = "1.2.1"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

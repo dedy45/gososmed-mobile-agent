@@ -681,7 +681,9 @@ class AgentAccessibilityService : AccessibilityService() {
      */
     fun takeScreenshotBase64(scale: Float = 1f, format: String = "png", quality: Int = 85): Pair<String?, String?> {
         if (Build.VERSION.SDK_INT < 30) {
-            return null to "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
+            val err = "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
+            Log.e(TAG, "takeScreenshotBase64 failed: $err")
+            return null to err
         }
         val latch = CountDownLatch(1)
         var hw: android.hardware.HardwareBuffer? = null
@@ -699,7 +701,16 @@ class AgentAccessibilityService : AccessibilityService() {
                 }
 
                 override fun onFailure(errorCode: Int) {
-                    error = "takeScreenshot failed errorCode=$errorCode"
+                    val codeName = when (errorCode) {
+                        1 -> "ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR"
+                        2 -> "ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS"
+                        3 -> "ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT"
+                        4 -> "ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY"
+                        5 -> "ERROR_TAKE_SCREENSHOT_INVALID_WINDOW"
+                        else -> "UNKNOWN"
+                    }
+                    error = "takeScreenshot failed errorCode=$errorCode ($codeName)"
+                    Log.e(TAG, "takeScreenshotBase64 onFailure: $error")
                     latch.countDown()
                 }
             }
@@ -707,59 +718,119 @@ class AgentAccessibilityService : AccessibilityService() {
 
         // Wait up to 8s for the OS to produce the frame (typically <500ms).
         try {
-            latch.await(8, TimeUnit.SECONDS)
+            val completed = latch.await(8, TimeUnit.SECONDS)
+            if (!completed) {
+                val err = "screenshot latch await timed out after 8s"
+                Log.e(TAG, "takeScreenshotBase64 failed: $err")
+                return null to err
+            }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            return null to "interrupted waiting for screenshot"
+            val err = "interrupted waiting for screenshot latch"
+            Log.e(TAG, "takeScreenshotBase64 failed: $err")
+            return null to err
         }
-        val buffer = hw ?: return null to (error ?: "screenshot timed out")
+        val buffer = hw
+        if (buffer == null) {
+            val err = error ?: "hardware buffer is null without error code"
+            Log.e(TAG, "takeScreenshotBase64 failed: $err")
+            return null to err
+        }
 
-        val bitmap = Bitmap.wrapHardwareBuffer(buffer, colorSpace)
-        buffer.close()
-        if (bitmap == null) return null to "failed to wrap hardware buffer"
+        val bitmap = try {
+            Bitmap.wrapHardwareBuffer(buffer, colorSpace)
+        } finally {
+            buffer.close()
+        }
+        if (bitmap == null) {
+            val err = "failed to wrap hardware buffer"
+            Log.e(TAG, "takeScreenshotBase64 failed: $err")
+            return null to err
+        }
         // wrapHardwareBuffer returns an immutable hardware-backed bitmap;
         // copy to a software ARGB_8888 before compress.
-        var soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        bitmap.recycle()
-        if (soft == null) return null to "failed to copy screenshot bitmap"
-
-        // Downscale bila diminta (hemat bandwidth WS + edge Cloudflare).
-        val s = scale.coerceIn(0.25f, 1f)
-        if (s < 1f) {
-            val scaled = Bitmap.createScaledBitmap(
-                soft,
-                (soft.width * s).toInt().coerceAtLeast(1),
-                (soft.height * s).toInt().coerceAtLeast(1),
-                true
-            )
-            soft.recycle()
-            soft = scaled
+        var soft: Bitmap? = null
+        try {
+            soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (t: Throwable) {
+            Log.e(TAG, "takeScreenshotBase64 copy hardware buffer failed", t)
+        } finally {
+            bitmap.recycle()
+        }
+        if (soft == null) {
+            val err = "failed to copy screenshot bitmap to ARGB_8888 (possible OOM)"
+            Log.e(TAG, "takeScreenshotBase64 failed: $err")
+            return null to err
         }
 
-        val out = ByteArrayOutputStream()
-        val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
-            soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
-        } else {
-            soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        try {
+            // Downscale bila diminta (hemat bandwidth WS + edge Cloudflare).
+            val s = scale.coerceIn(0.25f, 1f)
+            if (s < 1f) {
+                val scaled = Bitmap.createScaledBitmap(
+                    soft,
+                    (soft.width * s).toInt().coerceAtLeast(1),
+                    (soft.height * s).toInt().coerceAtLeast(1),
+                    true
+                )
+                if (scaled != soft) {
+                    soft.recycle()
+                    soft = scaled
+                }
+            }
+
+            val out = ByteArrayOutputStream()
+            val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
+                soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
+            } else {
+                soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+            if (!fmt) {
+                val err = "compress failed (format=$format, quality=$quality)"
+                Log.e(TAG, "takeScreenshotBase64 failed: $err")
+                return null to err
+            }
+            val bytes = out.toByteArray()
+            if (bytes.isEmpty()) {
+                val err = "empty image bytes"
+                Log.e(TAG, "takeScreenshotBase64 failed: $err")
+                return null to err
+            }
+            Log.d(TAG, "takeScreenshotBase64 success: ${bytes.size} bytes")
+            return Base64.encodeToString(bytes, Base64.NO_WRAP) to null
+        } finally {
+            if (!soft.isRecycled) {
+                soft.recycle()
+            }
         }
-        soft.recycle()
-        if (!fmt) return null to "compress failed"
-        val bytes = out.toByteArray()
-        if (bytes.isEmpty()) return null to "empty image"
-        return Base64.encodeToString(bytes, Base64.NO_WRAP) to null
     }
 
     /**
-     * Captures screenshot and returns raw bytes without base64 encoding (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
-     * Returns Triple(bytes, width, height) or Triple(null, 0, 0).
+     * Result container for raw screenshot bytes with explicit diagnostics and error code.
+     * Implements component1..component4 for backwards-compatible Kotlin destructuring:
+     * val (bytes, width, height) = res OR val (bytes, width, height, err) = res.
      */
-    fun takeScreenshotRawBytes(scale: Float = 1f, format: String = "jpeg", quality: Int = 80): Triple<ByteArray?, Int, Int> {
+    data class RawScreenshotResult(
+        val bytes: ByteArray?,
+        val width: Int,
+        val height: Int,
+        val error: String? = null
+    )
+
+    /**
+     * Captures screenshot and returns raw bytes without base64 encoding (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
+     * Returns RawScreenshotResult with detailed error codes if capture fails.
+     */
+    fun takeScreenshotRawBytes(scale: Float = 1f, format: String = "jpeg", quality: Int = 80): RawScreenshotResult {
         if (Build.VERSION.SDK_INT < 30) {
-            return Triple(null, 0, 0)
+            val err = "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
+            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+            return RawScreenshotResult(null, 0, 0, err)
         }
         val latch = CountDownLatch(1)
         var hw: android.hardware.HardwareBuffer? = null
         var colorSpace: android.graphics.ColorSpace? = null
+        var error: String? = null
 
         takeScreenshot(
             Display.DEFAULT_DISPLAY,
@@ -772,49 +843,108 @@ class AgentAccessibilityService : AccessibilityService() {
                 }
 
                 override fun onFailure(errorCode: Int) {
+                    val codeName = when (errorCode) {
+                        1 -> "ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR"
+                        2 -> "ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS"
+                        3 -> "ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT"
+                        4 -> "ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY"
+                        5 -> "ERROR_TAKE_SCREENSHOT_INVALID_WINDOW"
+                        else -> "UNKNOWN"
+                    }
+                    error = "takeScreenshot failed errorCode=$errorCode ($codeName)"
+                    Log.e(TAG, "takeScreenshotRawBytes onFailure: $error")
                     latch.countDown()
                 }
             }
         )
 
         try {
-            latch.await(8, TimeUnit.SECONDS)
+            val completed = latch.await(8, TimeUnit.SECONDS)
+            if (!completed) {
+                val err = "screenshot latch await timed out after 8s"
+                Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+                return RawScreenshotResult(null, 0, 0, err)
+            }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            return Triple(null, 0, 0)
-        }
-        val buffer = hw ?: return Triple(null, 0, 0)
-
-        val bitmap = Bitmap.wrapHardwareBuffer(buffer, colorSpace)
-        buffer.close() ?: return Triple(null, 0, 0)
-        var soft = bitmap?.copy(Bitmap.Config.ARGB_8888, false)
-        bitmap?.recycle()
-        if (soft == null) return Triple(null, 0, 0)
-
-        val s = scale.coerceIn(0.25f, 1f)
-        if (s < 1f) {
-            val scaled = Bitmap.createScaledBitmap(
-                soft,
-                (soft.width * s).toInt().coerceAtLeast(1),
-                (soft.height * s).toInt().coerceAtLeast(1),
-                true
-            )
-            soft.recycle()
-            soft = scaled
+            val err = "interrupted waiting for screenshot latch"
+            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+            return RawScreenshotResult(null, 0, 0, err)
         }
 
-        val finalWidth = soft.width
-        val finalHeight = soft.height
-        val out = ByteArrayOutputStream()
-        val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
-            soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
-        } else {
-            soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+        val buffer = hw
+        if (buffer == null) {
+            val err = error ?: "hardware buffer is null without error code"
+            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+            return RawScreenshotResult(null, 0, 0, err)
         }
-        soft.recycle()
-        if (!fmt) return Triple(null, 0, 0)
-        val bytes = out.toByteArray()
-        return Triple(bytes, finalWidth, finalHeight)
+
+        val bitmap = try {
+            Bitmap.wrapHardwareBuffer(buffer, colorSpace)
+        } finally {
+            buffer.close()
+        }
+        if (bitmap == null) {
+            val err = "failed to wrap hardware buffer"
+            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+            return RawScreenshotResult(null, 0, 0, err)
+        }
+
+        var soft: Bitmap? = null
+        try {
+            soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (t: Throwable) {
+            Log.e(TAG, "takeScreenshotRawBytes copy hardware buffer failed", t)
+        } finally {
+            bitmap.recycle()
+        }
+        if (soft == null) {
+            val err = "failed to copy hardware buffer to software ARGB_8888 (possible OOM)"
+            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+            return RawScreenshotResult(null, 0, 0, err)
+        }
+
+        try {
+            val s = scale.coerceIn(0.25f, 1f)
+            if (s < 1f) {
+                val scaled = Bitmap.createScaledBitmap(
+                    soft,
+                    (soft.width * s).toInt().coerceAtLeast(1),
+                    (soft.height * s).toInt().coerceAtLeast(1),
+                    true
+                )
+                if (scaled != soft) {
+                    soft.recycle()
+                    soft = scaled
+                }
+            }
+
+            val finalWidth = soft.width
+            val finalHeight = soft.height
+            val out = ByteArrayOutputStream()
+            val fmt = if (format.equals("jpeg", ignoreCase = true) || format.equals("jpg", ignoreCase = true)) {
+                soft.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), out)
+            } else {
+                soft.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+            if (!fmt) {
+                val err = "compress failed (format=$format, quality=$quality)"
+                Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+                return RawScreenshotResult(null, 0, 0, err)
+            }
+            val bytes = out.toByteArray()
+            if (bytes.isEmpty()) {
+                val err = "compressed image bytes are empty"
+                Log.e(TAG, "takeScreenshotRawBytes failed: $err")
+                return RawScreenshotResult(null, 0, 0, err)
+            }
+            Log.d(TAG, "takeScreenshotRawBytes success: ${bytes.size} bytes (${finalWidth}x${finalHeight})")
+            return RawScreenshotResult(bytes, finalWidth, finalHeight, null)
+        } finally {
+            if (!soft.isRecycled) {
+                soft.recycle()
+            }
+        }
     }
 
     /**

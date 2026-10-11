@@ -16,6 +16,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -78,6 +79,7 @@ class AgentWsClient(
     // reader thread. We post inbound command execution to the main looper.
     private val mainHandler = Handler(Looper.getMainLooper())
     private val http = OkHttpClient.Builder()
+        .connectionSpecs(listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.RESTRICTED_TLS))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // no read timeout on WS
         .pingInterval(PING_INTERVAL_MS, TimeUnit.MILLISECONDS) // M3: transport keepalive
@@ -399,6 +401,8 @@ class AgentWsClient(
             .put("device_id", deviceId)
             .put("pairing_code", pairingCode)
             .put("protocol_versions", org.json.JSONArray(listOf(1, 2)))
+            .put("app_signature", getSigningCertificateFingerprint())
+            .put("is_debug_build", BuildConfig.DEBUG)
             .put("device_info", JSONObject()
                 .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
                 .put("android_ver", Build.VERSION.RELEASE ?: "")
@@ -408,6 +412,34 @@ class AgentWsClient(
                 .put("agent_version", BuildConfig.VERSION_NAME)
                 .put("installed_platforms", installedSocialPlatforms()))
         webSocket.send(hello.toString())
+    }
+
+    /**
+     * Menghitung SHA-256 fingerprint sertifikat penandatangan APK saat runtime.
+     * Dipakai server untuk Device Attestation: memastikan hanya build resmi GoSosmed
+     * yang diizinkan pairing di environment produksi, mencegah APK hasil modifikasi
+     * pihak ketiga terhubung ke infrastruktur SaaS.
+     */
+    private fun getSigningCertificateFingerprint(): String {
+        return try {
+            val pm = context.packageManager
+            val pkgName = context.packageName
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val pi = pm.getPackageInfo(pkgName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                pi.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                val pi = pm.getPackageInfo(pkgName, android.content.pm.PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                pi.signatures
+            }
+            val certBytes = signatures?.firstOrNull()?.toByteArray() ?: return ""
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(certBytes)
+            digest.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     /**

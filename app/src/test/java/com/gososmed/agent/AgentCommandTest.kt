@@ -282,4 +282,37 @@ class AgentCommandTest {
             assertFalse("result object must not be present for $cmd", resp.has("result"))
         }
     }
+
+    @Test
+    fun `annotatedScreenshot is registered in ASYNC_BACKGROUND_COMMANDS and rejects when service disconnected`() {
+        assertTrue("annotatedScreenshot must be registered in ASYNC_BACKGROUND_COMMANDS",
+            AgentCommand.CMD_ANNOTATED_SCREENSHOT in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+
+        val req = JSONObject("""{"id":301,"cmd":"annotatedScreenshot","scale":0.5,"quality":70}""")
+        val resp = AgentCommand.execute(req)
+        assertEquals(301, resp.getInt("id"))
+        assertFalse("ok must be false when service disconnected", resp.optBoolean("ok"))
+        assertEquals("accessibility service not connected/ready", resp.optString("error"))
+        assertTrue(resp.optString("reason").startsWith("a11y_"))
+    }
+
+    @Test
+    fun `RawScreenshotResult supports backwards-compatible 3-component and 4-component destructuring`() {
+        val dummyBytes = byteArrayOf(1, 2, 3)
+        val res = AgentAccessibilityService.RawScreenshotResult(dummyBytes, 1080, 2400, "takeScreenshot failed errorCode=3 (ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT)")
+
+        // 3-component destructuring (existing callers)
+        val (bytes, width, height) = res
+        assertEquals(dummyBytes, bytes)
+        assertEquals(1080, width)
+        assertEquals(2400, height)
+
+        // 4-component destructuring (new callers with diagnostics)
+        val (b, w, h, err) = res
+        assertEquals(dummyBytes, b)
+        assertEquals(1080, w)
+        assertEquals(2400, h)
+        assertTrue("err must contain errorCode and reason", err!!.contains("errorCode=3"))
+        assertTrue(err.contains("ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT"))
+    }
 }

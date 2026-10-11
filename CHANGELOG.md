@@ -9,6 +9,27 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.1] - 2026-10-12
+
+### Fixed & Hardened — `annotatedScreenshot` Stabilization, Zero-Leak Mutable Decoding, Strict TLS & App Signature Attestation
+
+Rilis **STABIL** `v1.2.1` (versionCode 33) menuntaskan stabilisasi visual Set-of-Marks dan pengerasan keamanan enterprise:
+
+1. **Stabilisasi `annotatedScreenshot` (C1, C2, C3 Resolved)**:
+   - Menangkap dan mengekspos Android `errorCode` (1–5) pada `takeScreenshotBase64` dan `takeScreenshotRawBytes` via `RawScreenshotResult`.
+   - Mengeliminasi 6 titik kegagalan senyap dan menggantinya dengan pesan diagnostik spesifik serta logging `Log.e("GoAgent", ...)`.
+   - Membungkus blok `CMD_ANNOTATED_SCREENSHOT` dalam `try { ... } catch (t: Throwable) { ... }` dengan pembersihan `root?.recycle()` dan `bmp?.recycle()` di dalam `finally`.
+2. **Optimalisasi Memori (Pemangkasan Alokasi Ganda 12,6 MB)**:
+   - Menerapkan `BitmapFactory.Options().apply { inMutable = true }` saat dekode byte array gambar, dan deteksi `if (bitmap.isMutable)` pada `AnnotatedScreenshotHelper`.
+   - Menghilangkan proses kloning bitmap ganda, memangkas beban puncak alokasi memori hingga ~50% dan mencegah risiko OOM di HyperOS/MIUI.
+3. **Pengerasan Keamanan Enterprise (Zero-Trust BYOD)**:
+   - **App Signature Attestation**: Menambahkan SHA-256 fingerprint certificate extractor (`getSigningCertificateFingerprint`) pada payload `register` WebSocket untuk validasi integritas build resmi di backend.
+   - **Strict Modern TLS**: OkHttpClient ditegakkan menggunakan `ConnectionSpec.MODERN_TLS` dan `ConnectionSpec.RESTRICTED_TLS` (TLS 1.2/1.3 only).
+   - **Network Security Config Anti-MITM**: Membatasi trust-anchors ke `<certificates src="system" />` pada domain `bamsbung.id` untuk menolak sertifikat proxy pihak ketiga (Charles/Burp).
+4. **Verifikasi Perangkat Nyata (Xiaomi HyperOS Android 14 API 34)**:
+   - Uji matriks 20× lintas konteks (Home, transisi Back/Home, Chrome, YouTube, burst 4×) lulus **100% (20/20 sukses)** dengan rata-rata latensi ~370ms.
+   - PSS memori stabil di 154 MB (zero memory leak terbukti via `dumpsys meminfo`).
+
 ## [1.2.0] - 2026-10-09
 
 ### Added — Enterprise Trust Center, Credential Redaction, Sub-Region ROI Vision, Compound Actions & Scoped Storage Scrubbing

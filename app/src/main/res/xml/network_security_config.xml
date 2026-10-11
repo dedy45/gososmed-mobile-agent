@@ -3,5 +3,15 @@
      release. Produksi memakai wss://api.bamsbung.id (TLS lewat Cloudflare
      Tunnel). Tidak ada pengecualian domain di build release. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config>
+        <domain includeSubdomains="true">bamsbung.id</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config>

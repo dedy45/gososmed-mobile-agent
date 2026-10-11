@@ -55,11 +55,16 @@ object AnnotatedScreenshotHelper {
             elements
         }
 
-        // Duplikat bitmap agar bisa digambar Canvas
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        // Gunakan bitmap langsung jika sudah mutable (inMutable=true), atau clone jika immutable
+        val mutableBitmap = if (bitmap.isMutable) {
+            bitmap
+        } else {
+            bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                ?: throw IllegalStateException("Failed to create mutable bitmap copy (possible OOM)")
+        }
+        val isCloned = (mutableBitmap != bitmap)
         var processedBitmap: Bitmap? = null
         var finalBitmap: Bitmap? = null
-
         try {
             val canvas = Canvas(mutableBitmap)
 
@@ -161,9 +166,9 @@ object AnnotatedScreenshotHelper {
 
             return base64 to elementsJson
         } finally {
-            if (!mutableBitmap.isRecycled) mutableBitmap.recycle()
-            if (processedBitmap != null && !processedBitmap.isRecycled) processedBitmap.recycle()
-            if (finalBitmap != null && !finalBitmap.isRecycled) finalBitmap.recycle()
+            if (isCloned && !mutableBitmap.isRecycled) mutableBitmap.recycle()
+            if (processedBitmap != null && !processedBitmap.isRecycled && processedBitmap != bitmap) processedBitmap.recycle()
+            if (finalBitmap != null && !finalBitmap.isRecycled && finalBitmap != processedBitmap && finalBitmap != bitmap) finalBitmap.recycle()
         }
     }
 

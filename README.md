@@ -13,7 +13,7 @@ Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa P
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Versi Aktif: v1.2.0 (Stabil).**  
+> **Versi Aktif: v1.2.1 (Stabil).**  
 > Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Mandiri & Terintegrasi Penuh:** Sejak v0.9.0, transport shell setara ADB UID 2000 terintegrasi langsung di dalam APK. Anda **tidak lagi membutuhkan Shizuku** atau perkakas tambahan pihak ketiga.
 
@@ -81,6 +81,15 @@ Karena agent ini berjalan di perangkat pribadi dan meminta izin **Accessibility 
 
 ### 4. Keamanan Jaringan Searah (Outbound-Only TLS)
 * HP Anda tidak memerlukan IP publik, tidak memerlukan port masuk yang terbuka, dan tidak dapat diakses dari luar. Semua komunikasi terjalin melalui WebSocket keluar (*outbound persistent TLS 1.3*) yang diotentikasi via pairing token.
+
+### 5. Verifikasi Tanda Tangan Kriptografis (Device Attestation)
+* APK mengekstrak SHA-256 fingerprint sertifikat penandatangan resminya (`74197a2440023bdb4eee85b1fc7d1585387b14b32f4a4c87b22978d7f28f27fa`) saat runtime dan menyertakannya di handshake registrasi WebSocket. Backend memverifikasi tanda tangan ini untuk memastikan hanya build resmi GoSosmed yang dapat tersambung, secara efektif menolak APK modifikasi pihak ketiga yang tidak sah.
+
+### 6. Proteksi Anti-MITM Proxy & Strict TLS Modern
+* Seluruh pertukaran data ditegakkan melalui TLS 1.2/1.3 (`MODERN_TLS`/`RESTRICTED_TLS`) dan diproteksi via `network_security_config.xml` yang hanya mempercayai System Root CA resmi untuk domain `bamsbung.id`. Sertifikat CA kustom pengguna (Charles Proxy, Burp Suite, mitmproxy) ditolak secara otomatis untuk mencegah penyadapan data.
+
+### 7. Optimalisasi Memori Tanpa Kebocoran (Zero-Leak Lifecycle)
+* Alokasi bitmap Set-of-Marks didekode langsung secara mutable (`inMutable = true`) tanpa kloning ganda 12,6 MB, dan seluruh resource grafik diproteksi dalam siklus blok `try ... finally` yang ketat, menjamin nol kebocoran memori pada sesi operasi jangka panjang.
 
 ---
 

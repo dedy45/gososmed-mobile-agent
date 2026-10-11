@@ -57,6 +57,9 @@ class AgentReceiver : BroadcastReceiver() {
                 intent.getStringExtra("package")?.let { r.put("package", it) }
                 if (intent.hasExtra("x")) r.put("x", intent.getIntExtra("x", -1))
                 if (intent.hasExtra("y")) r.put("y", intent.getIntExtra("y", -1))
+                if (intent.hasExtra("scale")) r.put("scale", intent.getStringExtra("scale")?.toDoubleOrNull() ?: 0.6)
+                if (intent.hasExtra("quality")) r.put("quality", intent.getIntExtra("quality", 75))
+                intent.getStringExtra("roi")?.let { r.put("roi", it) }
                 r
             }
             val cmdTag = req.optString("cmd", if (req.has("protocol_version")) "v2_${req.optString("cmd")}" else "unknown")

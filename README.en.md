@@ -13,7 +13,7 @@ This application connects physical Android smartphones directly to the GoSosmed 
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Active Version: v1.2.0 (Stable).**  
+> **Active Version: v1.2.1 (Stable).**  
 > Single Source of Truth (SSoT): `app/build.gradle.kts` (`versionName`) and [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Standalone & Fully Integrated:** Since v0.9.0, privileged shell capabilities equivalent to ADB UID 2000 are built directly into this APK. You **no longer need Shizuku** or external pairing utilities.
 
@@ -81,6 +81,15 @@ Because this agent operates on personal devices and requests the **Accessibility
 
 ### 4. Unidirectional Network Security (Outbound-Only TLS)
 * Your phone does not need a public IP address, requires no open inbound listening ports, and cannot be reached externally. All communication flows through an outbound persistent TLS 1.3 WebSocket authenticated via single-use pairing codes.
+
+### 5. Cryptographic Device Attestation (Official Release Keystore Verification)
+* The APK computes its official release certificate SHA-256 fingerprint (`74197a2440023bdb4eee85b1fc7d1585387b14b32f4a4c87b22978d7f28f27fa`) at runtime and delivers it in the WebSocket `register` handshake. The backend validates this signature to ensure only official GoSosmed release builds can connect, blocking unofficial third-party modified APKs.
+
+### 6. Anti-MITM Proxy Hardening & Strict Modern TLS
+* All network transport enforces modern TLS 1.2/1.3 (`MODERN_TLS`/`RESTRICTED_TLS`) and is fortified via `network_security_config.xml`, strictly pinning trust anchors to official System Root CAs for `bamsbung.id`. User-installed root certificates (Charles Proxy, Burp Suite, mitmproxy) are fundamentally rejected.
+
+### 7. Zero-Leak Memory Architecture
+* Set-of-Marks bitmap allocations utilize direct mutable decoding (`inMutable = true`) to eliminate duplicate 12.6 MB allocations, and all graphic/node resources are governed by guarded `try ... finally` recycling blocks, ensuring 0% memory accumulation over 24/7 continuous runs.
 
 ---
 

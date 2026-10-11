@@ -2,13 +2,15 @@ package com.gososmed.agent
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.util.Log
+import android.view.accessibility.AccessibilityNodeInfo
 import com.gososmed.agent.privileged.AdbPairingController
 import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-
 /**
  * Command protocol between the GoSosmed agenthub (server) and the agent.
  *
@@ -26,6 +28,7 @@ import kotlinx.coroutines.runBlocking
  *          : { "id": 1, "ok": false, "error": "..." }
  */
 object AgentCommand {
+    private const val TAG = "GoAgent"
     val debugFrameQueue = DebugFrameEncoder.BoundedFrameQueue(maxCapacity = 5)
 
 
@@ -1056,32 +1059,52 @@ object AgentCommand {
                 })
             }
             CMD_ANNOTATED_SCREENSHOT -> {
-                val scale = req.optDouble("scale", 0.6).toFloat().coerceIn(0.2f, 1.0f)
-                val quality = req.optInt("quality", 75).coerceIn(30, 95)
-                val roi = parseRoi(req.optString("roi", ""), req.optJSONArray("roi"))
-                // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik
-                val (bytes, width, height) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
-                if (bytes == null) {
-                    resp.put("ok", false).put("error", "gagal mengambil screenshot")
-                } else {
-                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    val root = svc.rootInActiveWindow
-                    val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality, roi)
-                    root?.recycle()
-                    bmp.recycle()
-
-                    resp.put("ok", true)
-                    resp.put("result", JSONObject().apply {
-                        put("image_base64", base64)
-                        put("elements", elements)
-                        put("width", roi?.width() ?: width)
-                        put("height", roi?.height() ?: height)
-                        put("scale", scale)
-                        put("quality", quality)
-                        if (roi != null) {
-                            put("roi", JSONArray(listOf(roi.left, roi.top, roi.right, roi.bottom)))
+                try {
+                    val scale = req.optDouble("scale", 0.6).toFloat().coerceIn(0.2f, 1.0f)
+                    val quality = req.optInt("quality", 75).coerceIn(30, 95)
+                    val roi = parseRoi(req.optString("roi", ""), req.optJSONArray("roi"))
+                    // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik
+                    val (bytes, width, height, err) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
+                    if (bytes == null || bytes.isEmpty()) {
+                        val errMsg = err ?: "gagal mengambil screenshot"
+                        Log.e(TAG, "annotatedScreenshot failed: $errMsg")
+                        resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
+                    } else {
+                        var bmp: Bitmap? = null
+                        var root: AccessibilityNodeInfo? = null
+                        try {
+                            val opts = android.graphics.BitmapFactory.Options().apply {
+                                inMutable = true
+                            }
+                            bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                            if (bmp == null) {
+                                val errMsg = "BitmapFactory.decodeByteArray returned null (possible OOM or invalid image buffer)"
+                                Log.e(TAG, "annotatedScreenshot failed: $errMsg")
+                                resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
+                            } else {
+                                root = svc.rootInActiveWindow
+                                val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality, roi)
+                                resp.put("ok", true)
+                                resp.put("result", JSONObject().apply {
+                                    put("image_base64", base64)
+                                    put("elements", elements)
+                                    put("width", roi?.width() ?: width)
+                                    put("height", roi?.height() ?: height)
+                                    put("scale", scale)
+                                    put("quality", quality)
+                                    if (roi != null) {
+                                        put("roi", JSONArray(listOf(roi.left, roi.top, roi.right, roi.bottom)))
+                                    }
+                                })
+                            }
+                        } finally {
+                            root?.recycle()
+                            bmp?.recycle()
                         }
-                    })
+                    }
+                } catch (t: Throwable) {
+                    Log.e(TAG, "annotatedScreenshot exception", t)
+                    resp.put("ok", false).put("error", "annotatedScreenshot: ${t.message ?: t.javaClass.simpleName}")
                 }
             }
             CMD_CLICK_AND_WAIT -> {
