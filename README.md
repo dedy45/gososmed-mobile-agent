@@ -19,6 +19,16 @@ Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa P
 
 ---
 
+## 📱 Tangkapan Layar Aplikasi (Mode Produksi v1.2.1)
+
+Antarmuka native Android GoSosmed Agent dirancang dengan tema gelap modern (*modern dark theme*), navigasi intuitif, dan transparansi sistem tingkat enterprise:
+
+| **1. Beranda & Status BYOD** | **2. Setup 3-Langkah** | **3. Telemetri & Kesehatan HP** | **4. Log Realtime & Privasi** |
+|:---:|:---:|:---:|:---:|
+| <img src="img/01-home-screen.jpg" width="230" alt="Beranda & Koneksi BYOD" /> | <img src="img/02-setup-screen.jpg" width="230" alt="Setup 3-Langkah Aksesibilitas & ADB" /> | <img src="img/03-diagnostics-screen.jpg" width="230" alt="Telemetri & Kesehatan Perangkat" /> | <img src="img/04-logs-trust-center.jpg" width="230" alt="Log Realtime & Pusat Kepercayaan" /> |
+| **Koneksi WebSocket & Pairing**<br>Status terhubung, pairing code, QR scan, dan mode layar redup anti-lock untuk operasional server. | **Aksesibilitas & Pairing ADB**<br>Status aktivasi Step 1 (Aksesibilitas), Step 2 (Overlay), dan Step 3 (Wireless ADB lokal UID 2000). | **Telemetri & Deteksi Aplikasi**<br>Monitoring suhu baterai real-time (35.4°C), RTT latensi WebSocket, serta deteksi aplikasi sosial media terpasang. | **Pusat Kepercayaan & Log**<br>Stream log eksekusi sub-150ms serta akses cepat Kebijakan Privasi, Ketentuan Layanan, dan Lisensi. |
+
+---
 ## 🏛️ Arsitektur Dual-Engine Control Plane
 
 GoSosmed Agent merekayasa arsitektur **Dual-Engine** native Android yang bekerja secara paralel tanpa saling mengganggu:

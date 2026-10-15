@@ -19,6 +19,16 @@ This application connects physical Android smartphones directly to the GoSosmed 
 
 ---
 
+## 📱 Application Screenshots (Production Mode v1.2.1)
+
+GoSosmed Agent's native Android user interface features a sleek modern dark theme, intuitive navigation, and enterprise-grade transparency:
+
+| **1. Home & BYOD Status** | **2. 3-Step Setup** | **3. Telemetry & Health** | **4. Live Logs & Privacy** |
+|:---:|:---:|:---:|:---:|
+| <img src="img/01-home-screen.jpg" width="230" alt="Home & BYOD Connection" /> | <img src="img/02-setup-screen.jpg" width="230" alt="3-Step Setup Accessibility & ADB" /> | <img src="img/03-diagnostics-screen.jpg" width="230" alt="Device Health & Telemetry" /> | <img src="img/04-logs-trust-center.jpg" width="230" alt="Live Logs & Trust Center" /> |
+| **WebSocket Connection & Pairing**<br>Live connection state, pairing code, QR scanner, and anti-lock dimmed screen mode for server operations. | **Accessibility & ADB Pairing**<br>Active validation of Step 1 (Accessibility), Step 2 (Overlay), and Step 3 (Embedded local Wireless ADB UID 2000). | **Telemetry & App Detection**<br>Real-time battery temperature monitoring (35.4°C), WebSocket round-trip latency, and installed social platform detection. | **Trust Center & Live Logs**<br>Sub-150ms command execution logs with one-tap access to Privacy Policy, Terms of Service, and open-source licenses. |
+
+---
 ## 🏛️ Dual-Engine Control Plane Architecture
 
 GoSosmed Mobile Agent engineers a native Android **Dual-Engine** architecture that operates concurrently with zero interference:
