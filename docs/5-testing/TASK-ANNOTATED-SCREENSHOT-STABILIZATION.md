@@ -1,12 +1,10 @@
 # TASK — Stabilkan `annotatedScreenshot` (DEV)
 
-> **Status**: BUG TERVERIFIKASI — SIAP DIKERJAKAN
-> **Repo**: `gososmed-mobile-agent` (APK Android)
-> **Lingkungan uji**: DEV (`agent-ef08ec4a` — Xiaomi 2312DRA50G, Android 15/API 35)
-> **APK terpasang**: v1.2.0 (versionCode 32)
-> **Dibuat**: 2026-10-11 · dari sesi audit Ubuntu
-> **Rujukan lintas-repo**: `gososmed` → `docs/5-testing/16-AUDIT-DEV-AGENT-MOBILE-JOBQUEUE-2026-10-11.md` §3
->
+> **Status**: RESOLVED & VERIFIED IN v1.2.1 (STABLE)
+> **Target Repository**: `gososmed-mobile-agent` (APK Android)
+> **Lingkungan Uji**: Xiaomi HyperOS (Android 14/15, API 34/35)
+> **Verifikasi**: Lulus 20/20 uji matriks stres (`run_20x_suite.py`) dengan 0 kegagalan dan PSS memori stabil 154 MB.
+> **Kompilasi & Rilis**: Berhasil dirilis ke GitHub Releases `v1.2.1`.
 > **Dokumen ini TIDAK memuat kode perbaikan.** Hanya bukti, lokasi (`file:baris`),
 > dan kriteria verifikasi — agar agent APK langsung tahu apa & di mana.
 

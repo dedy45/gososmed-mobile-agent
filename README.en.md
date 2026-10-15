@@ -107,6 +107,7 @@ This agent leverages the **Android Accessibility Service for UI automation**. Go
 
 ## 🛠️ Quick 3-Step Setup Guide
 
+> Comprehensive walkthrough and troubleshooting available in **[3-Step Setup Guide](docs/SETUP-3-LANGKAH.md)** and **[Documentation Index](docs/)**.
 ```bash
 # Install APK binary via ADB (or copy directly to phone storage)
 adb install -r app-debug.apk
@@ -132,7 +133,7 @@ gh workflow run build-apk --repo dedy45/gososmed-mobile-agent
 ```
 
 ### Method 2 — Local Compilation (Windows / macOS / Linux)
-Prerequisites: JDK 17, Android SDK Platform 34, Build-Tools 34.0.0.
+Prerequisites: JDK 17, Android SDK Platform 34, Build-Tools 34.0.0. Complete local toolchain setup guide is documented in **[TOOLCHAIN-LOKAL.md](docs/TOOLCHAIN-LOKAL.md)**.
 ```powershell
 # In PowerShell / Terminal:
 git clone https://github.com/dedy45/gososmed-mobile-agent.git

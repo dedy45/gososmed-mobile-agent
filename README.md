@@ -107,6 +107,8 @@ Agent ini memanfaatkan **Accessibility Service untuk otomasi antarmuka**. Kebija
 
 ## 🛠️ Panduan Pemasangan & Persiapan (Setup 3 Langkah)
 
+> Panduan interaktif dan pemecahan masalah selengkapnya dapat dibaca di **[Panduan Setup 3 Langkah](docs/SETUP-3-LANGKAH.md)** dan **[Indeks Dokumentasi Teknis](docs/)**.
+
 ```bash
 # Pasang biner APK via ADB (atau salin langsung ke penyimpanan HP)
 adb install -r app-debug.apk
@@ -132,7 +134,7 @@ gh workflow run build-apk --repo dedy45/gososmed-mobile-agent
 ```
 
 ### Cara 2 — Kompilasi Lokal (Windows / macOS / Linux)
-Prasyarat: JDK 17, Android SDK Platform 34, Build-Tools 34.0.0.
+Prasyarat: JDK 17, Android SDK Platform 34, Build-Tools 34.0.0. Panduan konfigurasi lingkungan lengkap tersedia di **[TOOLCHAIN-LOKAL.md](docs/TOOLCHAIN-LOKAL.md)**.
 ```powershell
 # Di Windows PowerShell:
 git clone https://github.com/dedy45/gososmed-mobile-agent.git

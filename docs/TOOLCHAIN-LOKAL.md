@@ -1,158 +1,106 @@
-# Toolchain Build APK — Lokal (Windows)
+# Panduan Toolchain & Kompilasi APK
 
-> **Baca ini sebelum mencari JDK/Gradle/SDK sendiri.**
-> Semua alat build APK **sudah terpasang** di mesin ini. Jangan unduh ulang —
-> cukup setel environment, lalu panggil `gradle`.
->
-> Diperbarui: 2026-09-14 · Berlaku untuk repo `gososmed-mobile-agent`.
+Dokumentasi ini menjelaskan konfigurasi toolchain lokal yang selaras dengan Continuous Integration (CI) GitHub Actions repository ini (`.github/workflows/build.yml` dan `.github/workflows/release.yml`).
 
 ---
 
-## 1. Satu tempat, satu versi
+## 1. Spesifikasi Toolchain Standar
 
-Toolchain dikonsolidasi di **`C:\Users\dedy\tools`**. Ini satu-satunya lokasi
-yang benar.
+Untuk memastikan hasil kompilasi lokal konsisten dan 100% identik (*byte-level parity*) dengan pipeline GitHub Actions, gunakan kombinasi versi berikut:
 
-| Komponen | Versi | Lokasi |
+| Komponen | Versi Rekomendasi | Keterangan |
 |---|---|---|
-| **JDK** | Temurin **17.0.20.1+1** | `C:\Users\dedy\tools\jdk\jdk-17.0.20.1+1` |
-| **Gradle** | **8.9** | `C:\Users\dedy\tools\gradle-8.9` |
-| **Android SDK** | Platform **34**, Build-tools **34.0.0** | `C:\Users\dedy\tools\sdk` |
-| **Kotlin compiler** | (kotlinc) | `C:\Users\dedy\tools\kotlin\kotlinc` |
-
-Versi ini **sengaja disamakan dengan CI** (`.github/workflows/build.yml`:
-JDK 17 + Gradle 8.9). Build lokal dan CI karena itu menghasilkan APK yang
-sebanding — beda versi toolchain = beda perilaku build yang membingungkan.
-
-### Isi Android SDK
-
-```
-sdk/
-├── build-tools/34.0.0     ← apksigner ada di sini
-├── platforms/android-34   ← compileSdk 34 (sesuai build.gradle.kts)
-├── platform-tools/        ← adb.exe
-├── cmdline-tools/latest/  ← sdkmanager
-└── licenses/              ← SUDAH diterima (7 file)
-```
-
-Lisensi SDK **sudah diterima**, jadi `sdkmanager` tidak akan meminta persetujuan
-ulang. Jangan hapus folder `licenses/`.
+| **Java Development Kit (JDK)** | **Temurin JDK 17** (17.0.x) | Sesuai `actions/setup-java@v4` di CI |
+| **Gradle** | **Gradle 8.9** | Versi resmi yang divalidasi dengan Android Gradle Plugin (AGP) 8.5.2 |
+| **Android SDK Platform** | **Android 14 (API level 34)** | `compileSdk = 34`, `targetSdk = 34` |
+| **Android Build-Tools** | **34.0.0** | Menyediakan `aapt2`, `zipalign`, dan `apksigner` |
+| **Android Platform-Tools** | Versi terbaru | Menyediakan `adb` |
 
 ---
 
-## 2. Cara pakai — setel environment dulu
+## 2. Konfigurasi Environment Variable
 
-Repo ini **TIDAK punya Gradle wrapper** (`gradlew`/`gradlew.bat` tidak ada).
-Karena itu `./gradlew` yang tertulis di banyak README lama **akan gagal**.
-Pakai `gradle` dari `tools/` setelah environment disetel.
+Repository ini **tidak menyertakan Gradle Wrapper binary (`gradlew`)** demi keamanan repositori publik. Gunakan instalasi Gradle sistem atau lokal setelah menyetel variabel lingkungan.
 
-### Skrip siap pakai
+### A. Windows (Command Prompt / Batch)
 
-File **`gradle-run.sh`** di `C:\Users\dedy\gradle-run.sh` sudah melakukan semua
-pengaturan di bawah. Pakai itu kalau tidak ingin mengingat variabelnya:
+```bat
+set JAVA_HOME=C:\path\to\jdk-17
+set ANDROID_HOME=C:\path\to\android-sdk
+set ANDROID_SDK_ROOT=%ANDROID_HOME%
+set PATH=%JAVA_HOME%\bin;C:\path\to\gradle-8.9\bin;%ANDROID_HOME%\platform-tools;%PATH%
+```
+
+### B. Windows (PowerShell)
+
+```powershell
+$env:JAVA_HOME = "C:\path\to\jdk-17"
+$env:ANDROID_HOME = "C:\path\to\android-sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:Path = "$env:JAVA_HOME\bin;C:\path\to\gradle-8.9\bin;$env:ANDROID_HOME\platform-tools;" + $env:Path
+```
+
+### C. Linux / macOS / Bash
 
 ```bash
-bash /c/Users/dedy/gradle-run.sh testDebugUnitTest assembleDebug
+export JAVA_HOME="/path/to/jdk-17"
+export ANDROID_HOME="/path/to/android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$JAVA_HOME/bin:/path/to/gradle-8.9/bin:$ANDROID_HOME/platform-tools:$PATH"
 ```
 
-Skrip itu otomatis: setel `JAVA_HOME`/`ANDROID_HOME`, menambahkan Gradle ke
-`PATH`, mematikan proxy yang mengganggu unduhan dependensi, `cd` ke repo, dan
-menjalankan `gradle` dengan `--no-daemon`.
+---
 
-### Setel manual (kalau perlu)
+## 3. Verifikasi Kesiapan Toolchain
+
+Jalankan perintah berikut pada terminal:
 
 ```bash
-export JAVA_HOME="C:/Users/dedy/tools/jdk/jdk-17.0.20.1+1"
-export PATH="$JAVA_HOME/bin:/c/Users/dedy/tools/gradle-8.9/bin:$PATH"
-export ANDROID_HOME="C:/Users/dedy/tools/sdk"
-export ANDROID_SDK_ROOT="C:/Users/dedy/tools/sdk"
+java -version
+# Output harus menunjukkan: openjdk version "17.0.x"
 
-cd /c/Users/dedy/Documents/gososmed-mobile-agent
-gradle testDebugUnitTest assembleDebug --no-daemon --console=plain
+gradle --version
+# Output harus menunjukkan: Gradle 8.9, JVM 17.0.x
 ```
-
-### Kenapa proxy dimatikan
-
-`gradle-run.sh` men-unset `http_proxy`/`https_proxy` dan
-`CODEBUDDY_SERVICE_PROXY_URL`. Proxy aktif membuat unduhan dependensi Gradle
-menggantung atau gagal. Kalau build macet di tahap "Download ...", cek
-variabel ini dulu sebelum menyalahkan kode.
-
-### Kenapa `CODEBUDDY_SAFE_DELETE_*` di-unset
-
-Shim hapus-aman WorkBuddy dapat menimbulkan deadlock di
-`java.io.WinNTFileSystem.delete0` saat Gradle membersihkan direktori build.
-Ini bukan masalah kode APK — matikan shim-nya untuk build.
 
 ---
 
-## 3. Verifikasi toolchain masih sehat
+## 4. Perintah Kompilasi & Pengujian
 
+### A. Menjalankan Seluruh Unit Test (JVM)
 ```bash
-export JAVA_HOME="C:/Users/dedy/tools/jdk/jdk-17.0.20.1+1"
-export PATH="$JAVA_HOME/bin:/c/Users/dedy/tools/gradle-8.9/bin:$PATH"
-
-java -version    # openjdk version "17.0.20.1"
-gradle --version # Gradle 8.9, Launcher JVM 17.0.20.1
+gradle testDebugUnitTest --no-daemon
 ```
 
-Kalau dua perintah itu menjawab dengan versi di atas, toolchain siap.
+### B. Menjalankan Unit Test Spesifik
+```bash
+gradle testDebugUnitTest --tests "*ProtocolV2IntegrationTest*" --no-daemon
+```
+
+### C. Kompilasi APK Debug
+```bash
+gradle assembleDebug --no-daemon
+```
+Artefak keluaran: `app/build/outputs/apk/debug/app-debug.apk`
+
+### D. Kompilasi APK Release (Memerlukan Konfigurasi Keystore)
+```bash
+gradle assembleRelease --no-daemon
+```
+Artefak keluaran: `app/build/outputs/apk/release/app-release.apk`
+
+### E. Verifikasi Tanda Tangan APK (Signature Check)
+```bash
+apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+```
 
 ---
 
-## 4. Perintah yang benar-benar dipakai
+## 5. Tips Kestabilan Kompilasi
 
-| Maksud | Perintah |
-|---|---|
-| Unit test saja | `gradle testDebugUnitTest --no-daemon` |
-| Test satu kelas | `gradle testDebugUnitTest --tests "*AdbTlsProviderTest*" --no-daemon` |
-| Debug APK | `gradle assembleDebug --no-daemon` |
-| Release APK (butuh env keystore) | `gradle assembleRelease --no-daemon` |
-| Verifikasi tanda tangan | `"$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs app/build/outputs/apk/release/*.apk` |
-
-> Build pertama kali memakan waktu lama (mengunduh dependensi + komponen SDK).
-> Build berikutnya jauh lebih cepat.
-
----
-
-## 5. Sisa unduhan yang boleh dibersihkan
-
-Arsip pemasang sudah diekstrak dan **tidak dipakai lagi**. Total ±546 MB yang
-aman dihapus bila disk perlu:
-
-| Arsip | Ukuran |
-|---|---|
-| `C:\Users\dedy\tools\jdk\jdk.tar.gz` | 182 MB |
-| `C:\Users\dedy\tools\cmdline.zip` | 147 MB |
-| `C:\Users\dedy\tools\gradle.zip` | 130 MB |
-| `C:\Users\dedy\tools\kotlin\kotlin.zip` | 87 MB |
-
-Folder kosong yang tidak terpakai: `tools\jdk\x`, `tools\syntaxcheck`.
-
-> **Jangan hapus** `tools\gradle-8.9`, `tools\jdk\jdk-17.0.20.1+1`,
-> `tools\sdk`, atau `tools\kotlin\kotlinc` — itu toolchain yang hidup.
-
----
-
-## 6. Tempat lain yang *bukan* toolchain
-
-Supaya tidak bingung saat mencari:
-
-| Lokasi | Isi sebenarnya |
-|---|---|
-| `C:\Users\dedy\adb` | Salinan platform-tools lama (Juli 2024). Duplikat `sdk\platform-tools` — bukan toolchain build. |
-| `C:\Users\dedy\jtest` | Coretan uji Java sekali pakai. Sampah. |
-| `C:\Users\dedy\Documents\android` | Firmware/ROM perangkat + scrcpy. **Tidak ada hubungannya** dengan build APK. |
-| `C:\Users\dedy\miniconda3` | Python, bukan toolchain Android. |
-| `C:\Users\dedy\.workbuddy-ai\binaries` | Node/Python/Git milik WorkBuddy. Bukan toolchain Android. |
-
----
-
-## 7. Aturan untuk agent
-
-1. **Jangan mengunduh** JDK/Gradle/SDK baru — semua sudah ada di `C:\Users\dedy\tools`.
-2. **Jangan menjalankan `./gradlew`** — wrapper tidak ada di repo ini.
-3. **Setel environment dulu** (pakai `gradle-run.sh` paling aman) sebelum `gradle`.
-4. **Jangan hapus** isi `tools\` kecuali arsip di §5.
-5. Build APK yang menyentuh `tools\` **tidak perlu CI** — bisa diverifikasi
-   lokal. Ini menghemat antrian GitHub Actions.
+1. **Proxy Jaringan:** Jika proses kompilasi atau resolusi Maven menggantung (*hang*) saat mengunduh dependensi, pastikan variabel proxy seperti `HTTP_PROXY`, `HTTPS_PROXY` dinonaktifkan atau dikonfigurasi secara tepat.
+2. **Flag `--no-daemon`:** Selalu gunakan opsi `--no-daemon` pada mesin CI atau saat menjalankan skrip otomatisasi untuk mencegah penguncian berkas (*file locking*) pada sistem operasi Windows.
+3. **Pembersihan Cache:** Jika terjadi inkonsistensi task Gradle, jalankan perintah pembersihan:
+   ```bash
+   gradle clean --no-daemon
+   ```

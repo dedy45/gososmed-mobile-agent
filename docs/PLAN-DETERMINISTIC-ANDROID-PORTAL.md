@@ -1,12 +1,10 @@
 # Plan Implementasi APK — Deterministic Android Portal
 
-> **Status:** READY FOR CODING AGENT
+> **Status:** IMPLEMENTED & VERIFIED (Protocol v2)
 > **Tanggal:** 2026-10-05
-> **Repo:** `C:\Users\dedy\Documents\gososmed-mobile-agent`
-> **Owner kode:** coding agent APK
-> **Batas keras:** agent pada repo ini DILARANG mengedit `C:\Users\dedy\Documents\Go-sosmed`
-> **Pasangan kontrak server:** `C:\Users\dedy\Documents\Go-sosmed\docs\7-plans\2026-10-05-mobile-control-plane-and-web-inspector.md`
-> **Perubahan sesi penyusunan:** dokumentasi saja; belum ada kode APK yang diubah
+> **Target Repository:** `gososmed-mobile-agent`
+> **Komponen:** Kotlin Accessibility Control Plane, Deterministic Resolver & Snapshot Registry
+> **Kontrak Server:** Protokol WebSocket v2 (JSON Envelope + Binary Debug Frames)
 
 ---
 
