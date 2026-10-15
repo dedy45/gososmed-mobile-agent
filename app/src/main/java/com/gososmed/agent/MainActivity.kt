@@ -375,7 +375,15 @@ class MainActivity : AppCompatActivity() {
         tapBtn.setOnClickListener { doTapFirstClickable() }
 
         openA11yBtn.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            if (AgentAccessibilityService.isRestrictedBlocked(this)) {
+                showRestrictedSettingsGuideDialog()
+            } else {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }
+        openA11yBtn.setOnLongClickListener {
+            showRestrictedSettingsGuideDialog()
+            true
         }
         openOverlayBtn.setOnClickListener { openOverlaySettings() }
         batteryBtn.setOnClickListener { requestBatteryExemption() }
@@ -889,10 +897,21 @@ class MainActivity : AppCompatActivity() {
         // sini; ia tetap dipakai internal oleh perintah dump/tap.
         AgentAccessibilityService.reconcileFromSettings(this)
         val a11y = AgentAccessibilityService.isEnabled()
-        permA11yTv.text = "${getString(R.string.step_1_title)} — ${if (a11y) "AKTIF ✓" else "BELUM AKTIF"}"
+        val a11yBlocked = !a11y && AgentAccessibilityService.isRestrictedBlocked(this)
+        val a11yStatusText = when {
+            a11y -> "AKTIF ✓"
+            a11yBlocked -> getString(R.string.status_a11y_blocked)
+            else -> "BELUM AKTIF"
+        }
+        permA11yTv.text = "${getString(R.string.step_1_title)} — $a11yStatusText"
         openA11yBtn.isEnabled = !a11y
-        openA11yBtn.text = getString(if (a11y) R.string.btn_already_active else R.string.btn_activate)
-
+        openA11yBtn.text = getString(
+            when {
+                a11y -> R.string.btn_already_active
+                a11yBlocked -> R.string.btn_how_to_allow
+                else -> R.string.btn_activate
+            }
+        )
         // Baterai: cek nyata ke sistem (bukan tebakan).
         val pm = getSystemService(PowerManager::class.java)
         val batteryFree = pm?.isIgnoringBatteryOptimizations(packageName) == true
@@ -1217,6 +1236,33 @@ class MainActivity : AppCompatActivity() {
     private fun isXiaomiFamily(): Boolean {
         val m = Build.MANUFACTURER.lowercase()
         return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco")
+    }
+    /**
+     * Panduan pembukaan Restricted Settings (Setelan Dibatasi) pada Android 13+.
+     *
+     * Menu ⋮ (tiga titik) di Info Aplikasi HANYA BISA DIBUKA SEKALI oleh Android.
+     * Bila pengguna menutupnya tanpa memilih "Izinkan setelan yang dibatasi", menu
+     * tersebut hilang permanen. Dialog ini memperingatkan secara keras sebelum
+     * mengarahkan pengguna ke ACTION_APPLICATION_DETAILS_SETTINGS.
+     */
+    private fun showRestrictedSettingsGuideDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_restricted_title)
+            .setMessage(R.string.dialog_restricted_message)
+            .setPositiveButton(R.string.btn_open_app_settings) { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    AgentLog.event("gagal buka app details: ${e.message}")
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton(R.string.btn_close, null)
+            .show()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

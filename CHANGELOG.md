@@ -9,8 +9,30 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.1] - 2026-10-12
+## [1.2.2-dev.1] - 2026-10-16
 
+### Fixed & Enhanced — Onboarding Permission Unblocking, Restricted Settings Detection, SettingsActivity & Multi-OEM Developer Guides
+
+Rilis **DEV** `v1.2.2-dev.1` (versionCode 34) mengatasi kendala pengguna saat mengaktifkan izin pada Android 13/14 dan mempermudah onboarding perangkat BYOD:
+
+1. **[CELAH-1] Interaktivitas Entri Layanan Aksesibilitas (`accessibility_service_config.xml`, `strings.xml`)**:
+   - Menambahkan konfigurasi `android:settingsActivity="com.gososmed.agent.MainActivity"` dan `android:summary="@string/accessibility_service_summary"`.
+   - Entri "Agent GoSosmed" pada daftar Aksesibilitas sistem kini dapat diketuk untuk membuka langsung aplikasi tanpa kebingungan.
+   - Melengkapi string lokalisasi bahasa Indonesia (`values/strings.xml`) dan bahasa Inggris (`values-en/strings.xml`).
+2. **[CELAH-2] Deteksi Tiga Keadaan & Panduan Restricted Settings (`AgentAccessibilityService`, `MainActivity`)**:
+   - Menambahkan fungsi pembacaan AppOps `isRestrictedBlocked(ctx)` untuk memeriksa apakah app-op `android:access_restricted_settings` berada dalam status `MODE_ERRORED` (Android 13+).
+   - Memperbarui kartu Langkah 1 di tab Setup dengan 3 keadaan jujur: `AKTIF ✓`, `DIBLOKIR ANDROID ⚠️`, dan `BELUM AKTIF`.
+   - Saat terblokir, tombol menampilkan **"Cara Mengizinkan"** yang membuka dialog panduan terperinci, lalu mengarahkan langsung (*deep-link*) ke `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` (`package:$packageName`).
+   - Panduan UI memberikan peringatan keras bahwa menu titik tiga (⋮) di Info Aplikasi hanya dapat dibuka satu kali oleh sistem sebelum hilang permanen.
+   - Telemetri `a11y_blocked` ditambahkan ke snapshot kesehatan (`healthSnapshot`) dan kapabilitas (`capabilitiesJson`).
+3. **[CELAH-3] Panduan Komprehensif Opsi Pengembang & Debug Nirkabel per OEM (`docs/SETUP-3-LANGKAH.md`)**:
+   - Menambahkan panduan spesifik ketuk 7× Nomor Build dan lokasi menu Opsi Pengembang untuk Xiaomi/HyperOS, Samsung One UI, OPPO/Realme ColorOS, Vivo Funtouch OS, dan Google Pixel/AOSP.
+   - Menambahkan sub-bagian panduan pembebasan Setelan Dibatasi (Restricted Settings) dan penambahan solusi pada tabel kendala.
+4. **Status Gate Rilis & Batasan yang Jujur**:
+   - **Verifikasi JVM:** `testDebugUnitTest` (termasuk verifikasi health snapshot `a11y_blocked`) lulus 100%. Kompilasi `assembleDebug` sukses.
+   - **Kanal Rilis:** Ditetapkan sebagai kanal **DEV (`v1.2.2-dev.1`)** sesuai §2 Gate Rilis karena belum tersambung ke perangkat fisik nyata di sesi pengujian ini. Verifikasi alur di HP nyata dijadwalkan sebelum promosi rilis stabil.
+
+## [1.2.1] - 2026-10-12
 ### Fixed & Hardened — `annotatedScreenshot` Stabilization, Zero-Leak Mutable Decoding, Strict TLS & App Signature Attestation
 
 Rilis **STABIL** `v1.2.1` (versionCode 33) menuntaskan stabilisasi visual Set-of-Marks dan pengerasan keamanan enterprise:

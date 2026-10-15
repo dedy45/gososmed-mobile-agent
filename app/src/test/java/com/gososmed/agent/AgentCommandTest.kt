@@ -61,6 +61,7 @@ class AgentCommandTest {
         assertTrue("health harus punya result", result != null)
         // Harus punya field a11y_alive (akan false di JVM test, tapi field harus ada)
         assertTrue("health harus punya a11y_alive", result!!.has("a11y_alive"))
+        assertTrue("health harus punya a11y_blocked", result.has("a11y_blocked"))
         assertTrue("health harus punya adb_available", result.has("adb_available"))
     }
 

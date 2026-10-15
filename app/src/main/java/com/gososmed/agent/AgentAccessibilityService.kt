@@ -3,6 +3,7 @@ package com.gososmed.agent
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -11,6 +12,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.os.Process
 import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
@@ -218,6 +220,7 @@ class AgentAccessibilityService : AccessibilityService() {
                 put("a11y_alive", isServiceAlive())
                 put("a11y_ready", isReady())
                 put("a11y_os_enabled", appContext?.let { osEnabled(it) } ?: false)
+                put("a11y_blocked", appContext?.let { isRestrictedBlocked(it) } ?: false)
                 put("adb_available", shellStatus.available)
                 put("adb_connected", shellStatus.connected)
                 put("adb_paired", shellStatus.paired)
@@ -243,6 +246,7 @@ class AgentAccessibilityService : AccessibilityService() {
                 put("model", Build.MODEL)
                 put("a11y_enabled", isEnabled())
                 put("a11y_ready", false)
+                put("a11y_blocked", effectiveCtx?.let { isRestrictedBlocked(it) } ?: false)
                 put("can_draw_overlay", overlayOk)
                 put("overlay_attached", AgentOverlay.isAttached())
                 put("transport_tier", if (shellStatus.available) TRANSPORT_SHELL else TRANSPORT_A11Y)
@@ -350,6 +354,36 @@ class AgentAccessibilityService : AccessibilityService() {
             if (apiListed(ctx)) return true
             if (secureListed(ctx)) return true
             return false
+        }
+
+        /**
+         * v1.2.2 — Deteksi Restricted Settings (Setelan Dibatasi) Android 13+ (API 33+).
+         *
+         * Saat aplikasi dipasang melalui sideload (di luar Play Store / tanpa installer terpercaya),
+         * Android 13+ otomatis menetapkan app-op "android:access_restricted_settings" ke status
+         * MODE_ERRORED (2). Akibatnya, toggle Aksesibilitas tidak bisa diaktifkan dan sistem
+         * memunculkan dialog "Restricted setting / Setelan dibatasi".
+         *
+         * Nilai false dikembalikan jika:
+         * - Android versi di bawah 13 (API < 33, di mana fitur ini belum ada)
+         * - Aksesibilitas sudah aktif (berarti izin sudah tembus / aktif)
+         * - AppOps tidak mengembalikan MODE_ERRORED (misal sudah diizinkan lewat menu ⋮)
+         */
+        fun isRestrictedBlocked(ctx: Context): Boolean {
+            if (Build.VERSION.SDK_INT < 33) return false
+            if (isEnabled()) return false
+            return try {
+                val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+                    ?: return false
+                val mode = appOps.unsafeCheckOpNoThrow(
+                    "android:access_restricted_settings",
+                    Process.myUid(),
+                    ctx.packageName
+                )
+                mode == AppOpsManager.MODE_ERRORED
+            } catch (_: Throwable) {
+                false
+            }
         }
 
         /** Sumber 1: API resmi AccessibilityManager. */
@@ -1354,6 +1388,7 @@ class AgentAccessibilityService : AccessibilityService() {
             // adalah keadaan NORMAL, bukan cacat.
             put("a11y_enabled", isEnabled())
             put("a11y_ready", isServiceReady())
+            put("a11y_blocked", isRestrictedBlocked(this@AgentAccessibilityService))
             // Pengecualian Background Activity Launch — penentu bisa/tidaknya
             // membuka app target dari server.
             put("can_draw_overlay", AgentOverlay.canDraw(this@AgentAccessibilityService))

@@ -4,6 +4,12 @@
     <string name="app_name">Agent GoSosmed</string>
     <string name="accessibility_service_label">Agent GoSosmed</string>
     <string name="accessibility_service_description">Connects this smartphone to GoSosmed automation server to control social media apps (Facebook, TikTok, Instagram) upon your consent.</string>
+    <string name="accessibility_service_summary">Open app for activation guide and connection status.</string>
+    <string name="status_a11y_blocked">BLOCKED BY ANDROID ⚠️</string>
+    <string name="btn_how_to_allow">How to Allow</string>
+    <string name="dialog_restricted_title">Unblock Android Restricted Settings</string>
+    <string name="dialog_restricted_message">Android 13+ automatically blocks Accessibility for sideloaded apps for security.\n\nHOW TO UNBLOCK:\n1. Tap \"Open App Info\" below.\n2. In App Settings, tap the three dots (⋮) in the top-right corner.\n3. Tap \"Allow restricted settings\".\n4. Confirm with your PIN or biometrics.\n5. Return to this app and activate Accessibility.\n\n⚠️ CRITICAL WARNING:\nThe three dots menu (⋮) CAN ONLY BE OPENED ONCE. Do not exit or press back before tapping \"Allow restricted settings\"!</string>
+    <string name="btn_open_app_settings">Open App Info</string>
     
     <!-- Bottom Navigation Tabs -->
     <string name="tab_beranda">Home</string>

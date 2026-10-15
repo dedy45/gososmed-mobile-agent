@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 33 = v1.2.1 (STABIL) — Annotated Screenshot Stabilization,
-        // Zero-Leak Direct Mutable Decode, TLS Hardening & App Signature Attestation.
-        versionCode = 33
-        versionName = "1.2.1"
+        // versionCode 34 = v1.2.2-dev.1 (DEV) — Onboarding Permission Unblocking,
+        // Restricted Settings Detection & Deep Link, SettingsActivity & OEM Guides.
+        versionCode = 34
+        versionName = "1.2.2-dev.1"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

@@ -4,6 +4,12 @@
     <string name="app_name">Agent GoSosmed</string>
     <string name="accessibility_service_label">Agent GoSosmed</string>
     <string name="accessibility_service_description">Menghubungkan smartphone ini ke server otomasi GoSosmed untuk mengontrol aplikasi sosial (Facebook, TikTok, Instagram) atas persetujuan Anda.</string>
+    <string name="accessibility_service_summary">Buka aplikasi untuk panduan aktivasi dan status koneksi.</string>
+    <string name="status_a11y_blocked">DIBLOKIR ANDROID ⚠️</string>
+    <string name="btn_how_to_allow">Cara Mengizinkan</string>
+    <string name="dialog_restricted_title">Buka Blokir Setelan Android</string>
+    <string name="dialog_restricted_message">Android 13+ otomatis memblokir Aksesibilitas untuk aplikasi di luar Play Store demi keamanan.\n\nLANGKAH MEMBUKA:\n1. Tekan tombol \"Buka Info Aplikasi\" di bawah.\n2. Di halaman Setelan Aplikasi, ketuk ikon titik tiga (⋮) di pojok kanan atas.\n3. Pilih \"Izinkan setelan yang dibatasi\" (Allow restricted settings).\n4. Konfirmasi dengan PIN atau sidik jari Anda.\n5. Kembali ke aplikasi ini lalu aktifkan Aksesibilitas.\n\n⚠️ PERINGATAN PENTING:\nMenu titik tiga (⋮) ini HANYA BISA DIBUKA SEKALI. Jangan tutup layar atau tekan tombol kembali sebelum memilih menu tersebut!</string>
+    <string name="btn_open_app_settings">Buka Info Aplikasi</string>
     
     <!-- Tab Navigasi Bawah -->
     <string name="tab_beranda">Beranda</string>

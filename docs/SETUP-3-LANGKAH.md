@@ -26,11 +26,26 @@ Ini yang membuat aplikasi bisa "membaca layar" dan menekan tombol.
 
 1. Buka **GoSosmed Agent**.
 2. Masuk tab **Setup**.
-3. Pada kartu "Akses otomatisasi (Aksesibilitas)", tekan **Aktifkan**.
-4. Android membuka halaman Layanan Aksesibilitas. Cari **GoSosmed Agent
-   Controller**, lalu aktifkan.
-5. Android menampilkan peringatan. Tekan **Izinkan / OK**.
-6. Kembali ke aplikasi. Statusnya sekarang harus **AKTIF**.
+3. Pada kartu "Akses otomatisasi (Aksesibilitas)":
+   - Jika tombol bertuliskan **Aktifkan**, tekan tombol tersebut. Android membuka halaman Aksesibilitas. Cari **Agent GoSosmed**, lalu aktifkan.
+   - Jika tombol bertuliskan **Cara Mengizinkan** (atau muncul status **DIBLOKIR ANDROID ⚠️**): ikuti panduan khusus Android 13/14 di bawah ini.
+4. Android menampilkan konfirmasi keamanan. Tekan **Izinkan / OK**.
+5. Kembali ke aplikasi. Statusnya sekarang harus **AKTIF ✓**.
+
+### Khusus Android 13 & 14+: Cara Mengatasi "Setelan dibatasi" (Restricted Settings)
+
+Android 13 dan 14 secara otomatis mengunci perizinan tingkat tinggi untuk aplikasi yang dipasang di luar Google Play Store (sideload). Saat Anda mencoba mengaktifkan Aksesibilitas, sakelar akan berwarna abu-abu atau muncul dialog:
+> *"Setelan dibatasi: Demi keamanan Anda, setelan ini saat ini tidak tersedia"* (*Restricted setting: For your security, this setting is currently unavailable*).
+
+**Langkah membuka kuncinya:**
+1. Di tab **Setup** aplikasi GoSosmed Agent, ketuk tombol **"Cara Mengizinkan"** pada kartu Langkah 1.
+2. Baca peringatan yang muncul, lalu tekan **"Buka Info Aplikasi"**. HP akan membuka halaman rincian aplikasi di Pengaturan sistem Android.
+3. Di pojok kanan atas layar Info Aplikasi, ketuk ikon **titik tiga (⋮)**.
+4. Pilih **"Izinkan setelan yang dibatasi" (Allow restricted settings)**.
+5. Masukkan PIN, pola, atau sidik jari Anda untuk konfirmasi.
+6. ⚠️ **PERINGATAN SANGAT PENTING:** Menu titik tiga (⋮) ini **HANYA BISA DIBUKA SEKALI** oleh sistem Android. Jangan tutup layar atau menekan tombol kembali sebelum memilih menu tersebut! Jika terlanjur tertutup tanpa dipilih, opsi tersebut akan hilang.
+7. Kembali ke aplikasi GoSosmed Agent. Kartu Langkah 1 akan berubah status menjadi **BELUM AKTIF** dengan tombol **"Aktifkan"**.
+8. Ketuk **"Aktifkan"**, cari **Agent GoSosmed**, lalu aktifkan sakelarnya.
 
 ## Langkah 2 — Izin "tampil di atas aplikasi lain" (WAJIB)
 
@@ -80,13 +95,33 @@ cara lain, dan ini bukan kekurangan aplikasi kita.
 
 ### Cara mengaktifkan Opsi Pengembang (sekali saja)
 
-Kalau menu **Opsi Pengembang** belum ada di HP Anda:
+Jika menu **Opsi Pengembang** belum muncul di Pengaturan HP Anda, aktifkan dengan mengetuk **Nomor Build** sebanyak 7 kali berturut-turut. Letak menu berbeda tergantung merek HP Anda:
 
-1. **Pengaturan > Tentang HP**
-2. Cari **Nomor build** (atau "Versi MIUI" di Xiaomi).
-3. **Ketuk 7 kali.** Android berkata "Anda sekarang adalah pengembang".
-4. Kembali ke Pengaturan utama. Menu **Opsi Pengembang** sekarang ada
-   (biasanya di **Pengaturan > Sistem**, atau **Pengaturan > Setelan tambahan**).
+* **Xiaomi / Redmi / POCO (MIUI / HyperOS):**
+  1. Buka **Setelan > Tentang telepon** (About phone).
+  2. Ketuk baris **"Versi OS"** (HyperOS) atau **"Versi MIUI"** (MIUI) sebanyak **7 kali** dengan cepat hingga muncul pesan *"Sekarang Anda adalah seorang developer!"*.
+  3. Lokasi menu: Kembali ke Setelan utama → **Setelan tambahan > Opsi pengembang**.
+  4. *Catatan penting Xiaomi:* Di dalam Opsi Pengembang, selain mengaktifkan **Debug nirkabel**, pastikan juga mengaktifkan **"Debugging USB (Setelan keamanan)"** jika perangkat memintanya.
+
+* **Samsung (One UI):**
+  1. Buka **Pengaturan > Tentang ponsel > Informasi perangkat lunak** (About phone > Software information).
+  2. Ketuk baris **"Nomor versi"** (Build number) sebanyak **7 kali**. Masukkan PIN/pola kunci layar jika diminta.
+  3. Lokasi menu: Kembali ke Pengaturan utama → geser ke paling bawah → **Pilihan pengembang** (Developer options).
+
+* **OPPO / Realme (ColorOS / Realme UI):**
+  1. Buka **Pengaturan > Tentang perangkat > Versi** (About device > Version).
+  2. Ketuk **"Nomor kompilasi"** atau **"Nomor versi"** sebanyak **7 kali**.
+  3. Lokasi menu: Kembali ke Pengaturan utama → **Pengaturan tambahan** (atau **Setelan sistem**) → **Opsi pengembang**.
+
+* **Vivo / iQOO (Funtouch OS / OriginOS):**
+  1. Buka **Pengaturan > Tentang ponsel > Informasi perangkat lunak**.
+  2. Ketuk **"Nomor versi"** (Build number) sebanyak **7 kali**.
+  3. Lokasi menu: Kembali ke Pengaturan utama → **Sistem > Opsi developer**.
+
+* **Google Pixel / Motorola / Android Murni (AOSP):**
+  1. Buka **Setelan > Tentang ponsel**.
+  2. Geser ke bagian paling bawah, ketuk **"Nomor build"** (Build number) sebanyak **7 kali**.
+  3. Lokasi menu: Kembali ke Setelan utama → **Sistem > Opsi developer**.
 
 ### Cara melakukan pairing (v0.9.6 — cara yang benar)
 
@@ -134,6 +169,7 @@ restart"**, itu memang keadaannya — cukup hubungkan ulang dengan cara di atas.
 
 | Gejala | Penyebab paling mungkin | Yang harus dilakukan |
 |---|---|---|
+| Status aksesibilitas "DIBLOKIR ANDROID ⚠️" atau abu-abu | Android 13/14 memblokir aplikasi sideload (Restricted Settings) | Di tab Setup, tekan **"Cara Mengizinkan"** → ketuk menu **⋮** di Info Aplikasi → pilih **"Izinkan setelan yang dibatasi"** |
 | Status aksesibilitas tidak mau AKTIF | Android mematikan layanan | Buka lagi Layanan Aksesibilitas, aktifkan ulang |
 | Status aksesibilitas "BELUM AKTIF" padahal sudah diaktifkan | *Bug v0.9.5, sudah diperbaiki di v0.9.6.* Bila masih terjadi, tutup lalu buka lagi app | Perbarui ke v0.9.6 atau lebih baru |
 | Aplikasi sosial tidak mau terbuka | Izin overlay belum aktif | Ulangi Langkah 2 |
