@@ -27,8 +27,8 @@ Ini yang membuat aplikasi bisa "membaca layar" dan menekan tombol.
 1. Buka **GoSosmed Agent**.
 2. Masuk tab **Setup**.
 3. Pada kartu "Akses otomatisasi (Aksesibilitas)":
-   - Jika tombol bertuliskan **Aktifkan**, tekan tombol tersebut. Android membuka halaman Aksesibilitas. Cari **Agent GoSosmed**, lalu aktifkan.
-   - Jika tombol bertuliskan **Cara Mengizinkan** (atau muncul status **DIBLOKIR ANDROID ⚠️**): ikuti panduan khusus Android 13/14 di bawah ini.
+   - Pada Android 13/14+: Ada dua tombol. Jika sakelar di Setelan abu-abu/terkunci, ketuk tombol kiri **"Buka Info App (Menu ⋮)"** untuk membuka blokir terlebih dahulu (lihat panduan di bawah).
+   - Ketuk tombol **"Buka Aksesibilitas"** (atau **"Aktifkan"**), cari **Agent GoSosmed**, lalu nyalakan sakelarnya.
 4. Android menampilkan konfirmasi keamanan. Tekan **Izinkan / OK**.
 5. Kembali ke aplikasi. Statusnya sekarang harus **AKTIF ✓**.
 
@@ -38,8 +38,8 @@ Android 13 dan 14 secara otomatis mengunci perizinan tingkat tinggi untuk aplika
 > *"Setelan dibatasi: Demi keamanan Anda, setelan ini saat ini tidak tersedia"* (*Restricted setting: For your security, this setting is currently unavailable*).
 
 **Langkah membuka kuncinya:**
-1. Di tab **Setup** aplikasi GoSosmed Agent, ketuk tombol **"Cara Mengizinkan"** pada kartu Langkah 1.
-2. Baca peringatan yang muncul, lalu tekan **"Buka Info Aplikasi"**. HP akan membuka halaman rincian aplikasi di Pengaturan sistem Android.
+1. Di tab **Setup** aplikasi GoSosmed Agent, ketuk tombol **"Buka Info App (Menu ⋮)"** pada kartu Langkah 1.
+2. Baca peringatan yang muncul, lalu tekan **"Buka Info Aplikasi Sekarang"**. HP akan membuka halaman rincian aplikasi di Pengaturan sistem Android.
 3. Di pojok kanan atas layar Info Aplikasi, ketuk ikon **titik tiga (⋮)**.
 4. Pilih **"Izinkan setelan yang dibatasi" (Allow restricted settings)**.
 5. Masukkan PIN, pola, atau sidik jari Anda untuk konfirmasi.

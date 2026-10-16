@@ -375,6 +375,17 @@ class AgentAccessibilityService : AccessibilityService() {
             return try {
                 val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
                     ?: return false
+                try {
+                    val m = AppOpsManager::class.java.getMethod(
+                        "checkOpNoThrow",
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        String::class.java
+                    )
+                    val res = m.invoke(appOps, 119, Process.myUid(), ctx.packageName) as? Int
+                    if (res == AppOpsManager.MODE_ERRORED) return true
+                } catch (_: Throwable) {}
+
                 val mode = appOps.unsafeCheckOpNoThrow(
                     "android:access_restricted_settings",
                     Process.myUid(),

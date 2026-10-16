@@ -9,8 +9,23 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.2-dev.1] - 2026-10-16
+## [1.2.2-dev.2] - 2026-10-16
 
+### Enhanced — Dual-Action Onboarding UX, Direct "Buka Info App (Menu ⋮)" Button, Toast Reminder & Reflection AppOps
+
+Rilis **DEV** `v1.2.2-dev.2` (versionCode 35) merombak alur UI Setup Langkah 1 agar ramah pengguna (*user-friendly*) dan tidak lagi bergantung pada deteksi vendor yang kerap ambigu:
+
+1. **Dual-Action Buttons di Langkah 1**:
+   - Menampilkan tombol langsung **"Buka Info App (Menu ⋮)"** berdampingan dengan **"Buka Aksesibilitas"** pada Android 13+ saat Aksesibilitas belum aktif.
+   - Pengguna tidak lagi terjebak hanya memiliki tombol "Aktifkan" yang langsung terbentur dialog Restricted Settings di sistem.
+2. **Notice Box Panduan Visual Terbuka**:
+   - Menyematkan kotak panduan visual di dalam kartu Langkah 1 yang menguraikan 4 tahapan membuka kunci *Restricted Settings* sebelum pengguna menekan tombol apa pun.
+3. **Toast Reminder Sebelum Pindah Layar**:
+   - Menampilkan Toast pengingat saat pengguna mengetuk "Buka Aksesibilitas" di Android 13+: *"Bila sakelar abu-abu, kembali dan ketuk tombol 'Buka Info App (Menu ⋮)'"*.
+4. **Enhanced AppOps Reflection Check**:
+   - Menambahkan pemanggilan refleksi `checkOpNoThrow(119, ...)` (OP 119 di Android 13/14) di samping fallback string op untuk deteksi status `MODE_ERRORED` yang lebih andal.
+
+## [1.2.2-dev.1] - 2026-10-16
 ### Fixed & Enhanced — Onboarding Permission Unblocking, Restricted Settings Detection, SettingsActivity & Multi-OEM Developer Guides
 
 Rilis **DEV** `v1.2.2-dev.1` (versionCode 34) mengatasi kendala pengguna saat mengaktifkan izin pada Android 13/14 dan mempermudah onboarding perangkat BYOD:

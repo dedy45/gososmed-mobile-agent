@@ -106,6 +106,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var batteryBtn: Button
     private lateinit var notifBtn: Button
     private lateinit var openA11yBtn: Button
+    private lateinit var openAppInfoBtn: Button
+    private lateinit var restrictedGuideLayout: View
     private lateinit var openOverlayBtn: Button
     private lateinit var debugSection: View
     private lateinit var updateInfoTv: TextView
@@ -307,6 +309,8 @@ class MainActivity : AppCompatActivity() {
         batteryBtn = findViewById(R.id.batteryBtn)
         notifBtn = findViewById(R.id.notifBtn)
         openA11yBtn = findViewById(R.id.openAccessibilityBtn)
+        openAppInfoBtn = findViewById(R.id.openAppInfoBtn)
+        restrictedGuideLayout = findViewById(R.id.restrictedGuideLayout)
         openOverlayBtn = findViewById(R.id.openOverlayBtn)
         debugSection = findViewById(R.id.debugSection)
         updateInfoTv = findViewById(R.id.updateInfoTv)
@@ -374,12 +378,14 @@ class MainActivity : AppCompatActivity() {
         homeBtn.setOnClickListener { doGlobal { it.pressHome() } }
         tapBtn.setOnClickListener { doTapFirstClickable() }
 
+        openAppInfoBtn.setOnClickListener {
+            showRestrictedSettingsGuideDialog()
+        }
         openA11yBtn.setOnClickListener {
-            if (AgentAccessibilityService.isRestrictedBlocked(this)) {
-                showRestrictedSettingsGuideDialog()
-            } else {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            if (Build.VERSION.SDK_INT >= 33 && !AgentAccessibilityService.isEnabled()) {
+                Toast.makeText(this, getString(R.string.hint_a11y_blocked_toast), Toast.LENGTH_LONG).show()
             }
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         openA11yBtn.setOnLongClickListener {
             showRestrictedSettingsGuideDialog()
@@ -897,21 +903,29 @@ class MainActivity : AppCompatActivity() {
         // sini; ia tetap dipakai internal oleh perintah dump/tap.
         AgentAccessibilityService.reconcileFromSettings(this)
         val a11y = AgentAccessibilityService.isEnabled()
-        val a11yBlocked = !a11y && AgentAccessibilityService.isRestrictedBlocked(this)
-        val a11yStatusText = when {
-            a11y -> "AKTIF ✓"
-            a11yBlocked -> getString(R.string.status_a11y_blocked)
-            else -> "BELUM AKTIF"
-        }
-        permA11yTv.text = "${getString(R.string.step_1_title)} — $a11yStatusText"
-        openA11yBtn.isEnabled = !a11y
-        openA11yBtn.text = getString(
-            when {
-                a11y -> R.string.btn_already_active
-                a11yBlocked -> R.string.btn_how_to_allow
-                else -> R.string.btn_activate
+        val isModernAndroid = Build.VERSION.SDK_INT >= 33
+
+        if (a11y) {
+            permA11yTv.text = "${getString(R.string.step_1_title)} — AKTIF ✓"
+            openA11yBtn.isEnabled = false
+            openA11yBtn.text = getString(R.string.btn_already_active)
+            openAppInfoBtn.visibility = View.GONE
+            restrictedGuideLayout.visibility = View.GONE
+        } else {
+            val a11yBlocked = AgentAccessibilityService.isRestrictedBlocked(this)
+            val a11yStatus = if (a11yBlocked) getString(R.string.status_a11y_blocked) else "BELUM AKTIF"
+            permA11yTv.text = "${getString(R.string.step_1_title)} — $a11yStatus"
+            openA11yBtn.isEnabled = true
+            openA11yBtn.text = getString(if (isModernAndroid) R.string.btn_activate_a11y else R.string.btn_activate)
+
+            if (isModernAndroid) {
+                openAppInfoBtn.visibility = View.VISIBLE
+                restrictedGuideLayout.visibility = View.VISIBLE
+            } else {
+                openAppInfoBtn.visibility = View.GONE
+                restrictedGuideLayout.visibility = View.GONE
             }
-        )
+        }
         // Baterai: cek nyata ke sistem (bukan tebakan).
         val pm = getSystemService(PowerManager::class.java)
         val batteryFree = pm?.isIgnoringBatteryOptimizations(packageName) == true

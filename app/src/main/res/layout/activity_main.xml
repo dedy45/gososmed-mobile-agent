@@ -567,12 +567,62 @@
                         android:layout_marginTop="8dp"
                         android:text="@string/step_1_desc" />
 
-                    <Button
-                        android:id="@+id/openAccessibilityBtn"
-                        android:layout_width="wrap_content"
+                    <!-- Box Panduan Khusus Android 13/14+ Restricted Settings -->
+                    <LinearLayout
+                        android:id="@+id/restrictedGuideLayout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_card"
+                        android:orientation="vertical"
+                        android:padding="10dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/restrictedGuideTitleTv"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/restricted_guide_title"
+                            android:textColor="@color/status_warn"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/restrictedGuideDescTv"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:lineSpacingExtra="2dp"
+                            android:text="@string/restricted_guide_desc"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <!-- Tombol Aksi Langkah 1 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:text="@string/btn_activate" />
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/openAppInfoBtn"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:text="@string/btn_open_app_info_short"
+                            android:textColor="@color/primary"
+                            android:visibility="gone" />
+
+                        <Button
+                            android:id="@+id/openAccessibilityBtn"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/btn_activate" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- Langkah 2: Izin overlay (BAL) — BARU di v0.9.0 -->
