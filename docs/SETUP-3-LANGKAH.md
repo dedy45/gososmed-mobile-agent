@@ -40,10 +40,12 @@ Android 13 dan 14 secara otomatis mengunci perizinan tingkat tinggi untuk aplika
 **Langkah membuka kuncinya:**
 1. Di tab **Setup** aplikasi GoSosmed Agent, ketuk tombol **"Buka Info App (Menu ⋮)"** pada kartu Langkah 1.
 2. Baca peringatan yang muncul, lalu tekan **"Buka Info Aplikasi Sekarang"**. HP akan membuka halaman rincian aplikasi di Pengaturan sistem Android.
-3. Di pojok kanan atas layar Info Aplikasi, ketuk ikon **titik tiga (⋮)**.
-4. Pilih **"Izinkan setelan yang dibatasi" (Allow restricted settings)**.
+3. Di layar Info Aplikasi:
+   - Ketuk ikon **titik tiga (⋮)** di pojok kanan atas, **ATAU**
+   - Pada beberapa merek HP (seperti Samsung One UI / Android 14 tertentu), opsi ini tidak di titik tiga melainkan berada di bagian **paling bawah layar** Info Aplikasi bertuliskan **"Izinkan setelan yang dibatasi"** (atau *"Restricted settings"*).
+4. Pilih / aktifkan **"Izinkan setelan yang dibatasi" (Allow restricted settings)**.
 5. Masukkan PIN, pola, atau sidik jari Anda untuk konfirmasi.
-6. ⚠️ **PERINGATAN SANGAT PENTING:** Menu titik tiga (⋮) ini **HANYA BISA DIBUKA SEKALI** oleh sistem Android. Jangan tutup layar atau menekan tombol kembali sebelum memilih menu tersebut! Jika terlanjur tertutup tanpa dipilih, opsi tersebut akan hilang.
+6. ⚠️ **PERINGATAN SANGAT PENTING:** Opsi menu ini **HANYA BISA DIBUKA SEKALI** oleh sistem Android. Jangan tutup layar atau menekan tombol kembali sebelum memilih menu tersebut! Jika terlanjur tertutup tanpa dipilih, opsi tersebut akan hilang.
 7. Kembali ke aplikasi GoSosmed Agent. Kartu Langkah 1 akan berubah status menjadi **BELUM AKTIF** dengan tombol **"Aktifkan"**.
 8. Ketuk **"Aktifkan"**, cari **Agent GoSosmed**, lalu aktifkan sakelarnya.
 

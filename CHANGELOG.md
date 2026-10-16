@@ -9,8 +9,30 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.2-dev.2] - 2026-10-16
+## [1.2.2] - 2026-10-16
 
+### Fixed & Enhanced — Onboarding Permission Unblocking, Dual-Action Buttons, SettingsActivity, Bottom/Menu ⋮ Variant & OEM Guides
+
+Rilis **STABIL** `v1.2.2` (versionCode 36) menuntaskan penyempurnaan menyeluruh pada alur perizinan awal dan onboarding perangkat BYOD Android 13/14:
+
+1. **Dual-Action Buttons & Panduan Visual Terbuka di Langkah 1**:
+   - Menghadirkan tombol langsung **"Buka Info App (Menu ⋮)"** berdampingan dengan **"Buka Aksesibilitas"** saat layanan belum aktif pada Android 13+.
+   - Menambahkan kotak panduan visual di dalam kartu yang memandu 4 tahapan membuka blokir Setelan Dibatasi (*Restricted Settings*).
+   - Menyertakan panduan varian lokasi tombol unblock: baik melalui menu titik tiga (⋮) di atas maupun gulir ke paling bawah layar Info Aplikasi (*Restricted settings / default disable*).
+2. **Interaktivitas Entri Layanan Aksesibilitas (`accessibility_service_config.xml`)**:
+   - Menambahkan `android:settingsActivity="com.gososmed.agent.MainActivity"` dan `android:summary="@string/accessibility_service_summary"`.
+   - Entri "Agent GoSosmed" di menu Pengaturan Aksesibilitas Android kini dapat diketuk langsung untuk membuka aplikasi (`singleTask`).
+   - Melengkapi string lokalisasi bahasa Indonesia (`values/strings.xml`) dan bahasa Inggris (`values-en/strings.xml`).
+3. **Deteksi Multi-Level & Telemetri AppOps**:
+   - Menggabungkan refleksi `checkOpNoThrow(119, ...)` dan fallback string app-op `android:access_restricted_settings` untuk mendeteksi status `MODE_ERRORED`.
+   - Telemetri `a11y_blocked` dipublikasikan ke `healthSnapshot()` dan `capabilitiesJson()`.
+4. **Panduan Opsi Pengembang & Debug Nirkabel Multi-OEM (`docs/SETUP-3-LANGKAH.md`)**:
+   - Panduan terperinci aktivasi Opsi Pengembang (ketuk 7×) dan letak menu sistem untuk Xiaomi/HyperOS, Samsung One UI, OPPO/Realme ColorOS, Vivo Funtouch OS, dan Google Pixel/AOSP.
+5. **Verifikasi Perangkat Nyata (Gate Rilis §2 LULUS)**:
+   - **Uji Perangkat Fisik:** Terverifikasi sukses pada perangkat fisik Android 13/14 oleh pengguna ("ok sudah saya tes dan berfungsi"). Alur pembukaan blokir Setelan Dibatasi via Info Aplikasi berhasil tembus dan Aksesibilitas aktif normal.
+   - **Uji Unit JVM:** `testDebugUnitTest` 100% lulus. Kompilasi `assembleDebug` sukses.
+
+## [1.2.2-dev.2] - 2026-10-16
 ### Enhanced — Dual-Action Onboarding UX, Direct "Buka Info App (Menu ⋮)" Button, Toast Reminder & Reflection AppOps
 
 Rilis **DEV** `v1.2.2-dev.2` (versionCode 35) merombak alur UI Setup Langkah 1 agar ramah pengguna (*user-friendly*) dan tidak lagi bergantung pada deteksi vendor yang kerap ambigu:

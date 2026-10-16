@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 35 = v1.2.2-dev.2 (DEV) — Onboarding Permission Dual-Button UX,
-        // Explicit Open App Info (Menu ⋮), Notice Box, and Reflection AppOps Check.
-        versionCode = 35
-        versionName = "1.2.2-dev.2"
+        // versionCode 36 = v1.2.2 (STABIL) — Onboarding Permission Dual-Button UX,
+        // Explicit Open App Info (Menu ⋮ / Bottom), Notice Box, and Multi-OEM Guides.
+        versionCode = 36
+        versionName = "1.2.2"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

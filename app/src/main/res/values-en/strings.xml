@@ -7,11 +7,11 @@
     <string name="accessibility_service_summary">Open app for activation guide and connection status.</string>
     <string name="status_a11y_blocked">BLOCKED BY ANDROID ⚠️</string>
     <string name="btn_how_to_allow">How to Allow</string>
-    <string name="dialog_restricted_title">Unblock Restricted Settings (Menu ⋮)</string>
-    <string name="dialog_restricted_message">Android 13 and 14 automatically restrict Accessibility for sideloaded apps for security.\n\nHOW TO UNBLOCK:\n1. Tap \"Open App Info Now\" below.\n2. In App Info, tap the three dots (⋮) in the top-right corner.\n3. Tap \"Allow restricted settings\".\n4. Confirm with your PIN, pattern, or biometrics.\n5. Return to GoSosmed Agent, then tap \"Open Accessibility\".\n\n⚠️ CRITICAL WARNING:\nThe three dots menu (⋮) CAN ONLY BE OPENED ONCE by the system! Do not exit or press back before tapping that menu!</string>
+    <string name="dialog_restricted_title">Unblock Restricted Settings</string>
+    <string name="dialog_restricted_message">Android 13 and 14 automatically restrict Accessibility for sideloaded apps for security.\n\nHOW TO UNBLOCK:\n1. Tap \"Open App Info Now\" below.\n2. In App Info:\n   • Tap the three dots (⋮) in the top-right corner, OR\n   • Scroll to the very bottom (\"Allow restricted settings\" / \"Restricted settings\").\n3. Tap \"Allow restricted settings\".\n4. Confirm with your PIN, pattern, or biometrics.\n5. Return to GoSosmed Agent, then tap \"Open Accessibility\".\n\n⚠️ CRITICAL WARNING:\nThis menu option CAN ONLY BE OPENED ONCE by the system! Do not exit before tapping that option!</string>
     <string name="btn_open_app_settings">Open App Info Now</string>
     <string name="restricted_guide_title">⚠️ ANDROID 13 &amp; 14+ (RESTRICTED SETTINGS)</string>
-    <string name="restricted_guide_desc">If Accessibility switch is greyed out / blocked:\n1. Tap [Open App Info (Menu ⋮)] below.\n2. Tap the three dots (⋮) in the top-right corner of App Info.\n3. Tap \"Allow restricted settings\".\n4. Return here and tap [Open Accessibility].</string>
+    <string name="restricted_guide_desc">If Accessibility switch is greyed out / blocked:\n1. Tap [Open App Info (Menu ⋮)] below.\n2. In App Info: tap three dots (⋮) on top OR scroll to the bottom.\n3. Tap \"Allow restricted settings\".\n4. Return here and tap [Open Accessibility].</string>
     <string name="btn_open_app_info_short">Open App Info (Menu ⋮)</string>
     <string name="btn_activate_a11y">Open Accessibility</string>
     <string name="hint_a11y_blocked_toast">If switch is greyed out, return and tap \"Open App Info (Menu ⋮)\"</string>
