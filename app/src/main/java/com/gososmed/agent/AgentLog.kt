@@ -58,6 +58,17 @@ object AgentLog {
     /** Seluruh isi log (untuk render ulang saat UI dibuka). */
     fun snapshot(): List<Entry> = synchronized(lock) { entries.toList() }
 
+    /**
+     * Entri terakhir yang berjenis ERR, terbaru di akhir, maksimal [limit].
+     * Dipakai tab Diagnostik untuk menampilkan error yang benar-benar terjadi
+     * tanpa membocorkan dump logcat mentah.
+     */
+    fun recentErrors(limit: Int = 8): List<String> = synchronized(lock) {
+        entries.filter { it.kind == Kind.ERR }
+            .takeLast(limit.coerceAtLeast(1))
+            .map { it.toString() }
+    }
+
     /** Jumlah baris tersimpan (untuk counter UI). */
     fun size(): Int = synchronized(lock) { entries.size }
 

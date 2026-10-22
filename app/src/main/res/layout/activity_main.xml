@@ -547,6 +547,92 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
+                <!-- ===== HEALTH CHECK (status subsistem + log error) ===== -->
+                <TextView
+                    style="@style/GosoSectionLabel"
+                    android:layout_marginTop="16dp"
+                    android:text="HEALTH CHECK" />
+
+                <LinearLayout
+                    android:id="@+id/cardHealth"
+                    style="@style/GosoCard"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvHealthSummary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:text="Memeriksa subsistem…"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvHealthRows"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="monospace"
+                        android:lineSpacingExtra="4dp"
+                        android:text=""
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="10dp"
+                        android:background="@color/card_border" />
+
+                    <TextView
+                        android:id="@+id/tvHealthErrorsLabel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="LOG ERROR TERAKHIR"
+                        android:textColor="@color/status_warn"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvHealthErrors"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:fontFamily="monospace"
+                        android:lineSpacingExtra="3dp"
+                        android:text="Tidak ada error."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnHealthRefresh"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Periksa Ulang"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/btnHealthCopy"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:layout_weight="1"
+                            android:text="Salin Laporan"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
                 <!-- ===== OPTIMASI KHUSUS PABRIKAN HP (OEM) ===== -->
                 <TextView
                     style="@style/GosoSectionLabel"

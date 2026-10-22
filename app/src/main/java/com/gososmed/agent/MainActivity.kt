@@ -119,6 +119,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnEchoTest: Button
     private lateinit var btnScanQr: Button
 
+    // Health check (tab Diagnostik)
+    private lateinit var tvHealthSummary: TextView
+    private lateinit var tvHealthRows: TextView
+    private lateinit var tvHealthErrors: TextView
+    private lateinit var btnHealthRefresh: Button
+    private lateinit var btnHealthCopy: Button
+
     // Mode Server (Layar Redup & Anti-Lockscreen)
     private lateinit var switchServerMode: MaterialSwitch
     private lateinit var switchGlobalDim: MaterialSwitch
@@ -343,6 +350,20 @@ class MainActivity : AppCompatActivity() {
         tvTelemetryNetwork = findViewById(R.id.tvTelemetryNetwork)
         btnEchoTest = findViewById(R.id.btnEchoTest)
         btnScanQr = findViewById(R.id.btnScanQr)
+
+        // Health check
+        tvHealthSummary = findViewById(R.id.tvHealthSummary)
+        tvHealthRows = findViewById(R.id.tvHealthRows)
+        tvHealthErrors = findViewById(R.id.tvHealthErrors)
+        btnHealthRefresh = findViewById(R.id.btnHealthRefresh)
+        btnHealthCopy = findViewById(R.id.btnHealthCopy)
+        btnHealthRefresh.setOnClickListener { refreshHealthCheck() }
+        btnHealthCopy.setOnClickListener {
+            val report = buildHealthReport()
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            cm?.setPrimaryClip(android.content.ClipData.newPlainText("health", report.fullText()))
+            toast("Laporan health check disalin")
+        }
 
         // Mode Server
         switchServerMode = findViewById(R.id.switchServerMode)
@@ -816,6 +837,11 @@ class MainActivity : AppCompatActivity() {
         panelSetup.visibility = if (index == 1) View.VISIBLE else View.GONE
         panelDiagnostik.visibility = if (index == 2) View.VISIBLE else View.GONE
         panelLog.visibility = if (index == 3) View.VISIBLE else View.GONE
+
+        // Tab Diagnostik selalu menampilkan kondisi terkini saat dibuka.
+        if (index == 2) {
+            try { refreshHealthCheck() } catch (_: Throwable) {}
+        }
 
         // Update Bottom Nav Bar Visual State (1: Beranda, 2: Setup, 3: Diagnostik, 4: Log)
         val primaryColor = ContextCompat.getColor(this, R.color.primary)
@@ -1414,6 +1440,94 @@ class MainActivity : AppCompatActivity() {
         if (serverModeOverlay.visibility == View.VISIBLE) {
             serverClockTv.text = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
             serverInfoTv.text = getString(R.string.server_overlay_info_format, snap.batteryPct, tempStr, latencyStr)
+        }
+    }
+
+    /**
+     * Menyusun laporan kesehatan dari kondisi nyata subsistem.
+     * Tidak menampilkan data sensitif; hanya status boolean + detail singkat.
+     */
+    private fun buildHealthReport(): HealthReport {
+        val items = mutableListOf<HealthItem>()
+
+        // 1. Accessibility service
+        val a11yAlive = AgentAccessibilityService.isServiceAlive()
+        val a11yReady = AgentAccessibilityService.isReady()
+        items += HealthItem(
+            "Aksesibilitas",
+            a11yAlive,
+            when {
+                !a11yAlive -> "belum aktif"
+                a11yReady -> "aktif & siap"
+                else -> "aktif, layar belum terbaca"
+            }
+        )
+
+        // 2. WebSocket ke backend
+        val ws = AgentForegroundService.instance?.getWsClient()
+        val wsConnected = ws?.isConnected() == true
+        items += HealthItem(
+            "WebSocket Server",
+            wsConnected,
+            if (wsConnected) "tersambung" else "terputus"
+        )
+
+        // 3. ADB lokal (opsional, bukan prasyarat)
+        val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
+        items += HealthItem(
+            "ADB Lokal",
+            shell.available,
+            if (shell.available) "uid ${shell.uid}" else "belum dipasangkan (opsional)"
+        )
+
+        // 4. Local web server + PIN
+        val serverRunning = com.gososmed.agent.capture.LocalWebServer.isRunning
+        val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
+        items += HealthItem(
+            "Server Lokal",
+            serverRunning,
+            if (serverRunning) "port 8765 aktif, PIN ${if (pin.isEmpty()) "nonaktif" else "aktif"}"
+            else "mati (switch Remote Controller off)"
+        )
+
+        // 5. Capture pipeline
+        val captureAlive = com.gososmed.agent.capture.CaptureService.instance != null
+        items += HealthItem(
+            "Capture Layar",
+            captureAlive,
+            if (captureAlive) "berjalan" else "belum dimulai"
+        )
+
+        // 6. Izin overlay (dibutuhkan untuk background launch)
+        val overlayOk = AgentOverlay.canDraw(this)
+        items += HealthItem(
+            "Izin Overlay",
+            overlayOk,
+            if (overlayOk) "diberikan" else "belum diberikan"
+        )
+
+        // 7. Penyimpanan log error
+        val errLines = AgentLog.recentErrors(limit = 8)
+        items += HealthItem(
+            "Log Error",
+            errLines.isEmpty(),
+            if (errLines.isEmpty()) "bersih" else "${errLines.size} entri terakhir"
+        )
+
+        return HealthReport(items, errLines)
+    }
+
+    private fun refreshHealthCheck() {
+        try {
+            val report = buildHealthReport()
+            tvHealthSummary.text = report.summary()
+            tvHealthRows.text = report.rowsText()
+            tvHealthErrors.text = report.errorsText()
+        } catch (t: Throwable) {
+            // Tab diagnostik tidak boleh crash karena satu probe gagal.
+            tvHealthSummary.text = "⚠️ Pemeriksaan gagal"
+            tvHealthRows.text = t.message ?: t.javaClass.simpleName
+            tvHealthErrors.text = "Tidak ada error."
         }
     }
 
