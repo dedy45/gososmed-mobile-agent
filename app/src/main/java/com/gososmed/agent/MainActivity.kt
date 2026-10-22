@@ -126,6 +126,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnHealthRefresh: Button
     private lateinit var btnHealthCopy: Button
 
+    // PIN protection toggle
+    private lateinit var switchRequirePin: com.google.android.material.materialswitch.MaterialSwitch
+    private lateinit var tvPinHint: TextView
+
     // Mode Server (Layar Redup & Anti-Lockscreen)
     private lateinit var switchServerMode: MaterialSwitch
     private lateinit var switchGlobalDim: MaterialSwitch
@@ -1786,6 +1790,27 @@ class MainActivity : AppCompatActivity() {
         switchRemoteController.isChecked = false
         applyRemoteState(false)
 
+        // ---- PIN protection toggle -------------------------------------
+        switchRequirePin = findViewById(R.id.switchRequirePin)
+        tvPinHint = findViewById(R.id.tvPinHint)
+        val pinPrefs = prefs()
+        val pinRequired = pinPrefs.getBoolean("require_pin", true)
+        switchRequirePin.isChecked = pinRequired
+        com.gososmed.agent.capture.LocalWebServer.setPinRequired(pinRequired)
+        updatePinHint(pinRequired)
+
+        switchRequirePin.setOnCheckedChangeListener { _, isChecked ->
+            pinPrefs.edit().putBoolean("require_pin", isChecked).apply()
+            com.gososmed.agent.capture.LocalWebServer.setPinRequired(isChecked)
+            updatePinHint(isChecked)
+            if (!isChecked) {
+                toast("PIN dimatikan — siapa pun di Wi-Fi ini bisa mengakses tanpa PIN")
+            } else {
+                toast("PIN diaktifkan kembali")
+            }
+            applyRemoteState(com.gososmed.agent.capture.CaptureService.instance != null)
+        }
+
         switchRemoteController.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 // Prasyarat: Aksesibilitas wajib aktif
@@ -1830,6 +1855,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updatePinHint(required: Boolean) {
+        tvPinHint.text = if (required) {
+            "Siapa pun di Wi-Fi ini harus memasukkan PIN 6 digit."
+        } else {
+            "⚠️ PIN mati: siapa pun di Wi-Fi ini bisa mengendalikan HP tanpa PIN."
+        }
+        tvPinHint.setTextColor(
+            androidx.core.content.ContextCompat.getColor(
+                this,
+                if (required) R.color.text_secondary else R.color.status_warn
+            )
+        )
+    }
+
     private fun applyRemoteState(active: Boolean) {
         val localIp = getLocalIpAddress()
         val port = com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT
@@ -1839,12 +1878,15 @@ class MainActivity : AppCompatActivity() {
             val url = "http://$localIp:$port"
             val httpsUrl = "https://$localIp:$httpsPort"
             val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
+            val pinRequired = com.gososmed.agent.capture.LocalWebServer.isAuthEnabled
             tvRemoteSubtitle.text = "Aktif • $localIp"
             tvRemoteLocalUrl.text = buildString {
                 append(url).append('\n').append(httpsUrl).append(" (HTTPS)")
-                if (pin.isNotEmpty()) {
+                if (pinRequired && pin.isNotEmpty()) {
                     append("\n\nPIN: ").append(pin)
                     append("\nMasukkan PIN ini di browser PC.")
+                } else if (!pinRequired) {
+                    append("\n\n⚠️ Tanpa PIN — siapa pun di Wi-Fi ini bisa masuk.")
                 }
             }
             tvRemoteClients.text = "Port $port / $httpsPort"

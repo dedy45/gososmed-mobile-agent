@@ -379,6 +379,43 @@
                             android:layout_marginTop="8dp"
                             android:text="Buka di Browser" />
                     </LinearLayout>
+
+                    <!-- PIN protection toggle (security) -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Wajibkan PIN"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvPinHint"
+                                style="@style/GosoHint"
+                                android:layout_marginTop="2dp"
+                                android:text="Siapa pun di Wi-Fi ini harus memasukkan PIN 6 digit." />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchRequirePin"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="true"
+                            android:layout_marginStart="8dp" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- ===== MODE DEBUG (tap 7× versi) ===== -->

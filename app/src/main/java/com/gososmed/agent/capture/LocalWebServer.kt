@@ -55,6 +55,28 @@ object LocalWebServer {
     // ---------------------------------------------------------------------
     @Volatile private var sessionPin: String = ""
 
+    /**
+     * Apakah PIN diwajibkan. Default true. Bisa dimatikan pengguna lewat UI
+     * untuk skenario tepercaya (mis. demo di jaringan pribadi), tetapi
+     * aplikasi memberi peringatan jelas karena mematikan PIN berarti siapa pun
+     * di Wi-Fi yang sama bisa mengendalikan perangkat.
+     */
+    @Volatile private var pinRequired: Boolean = true
+
+    fun setPinRequired(required: Boolean) {
+        pinRequired = required
+        if (!required) {
+            // Mode tanpa PIN: terbitkan satu sesi panjang agar browser yang
+            // sudah terbuka tetap bekerja tanpa halaman login.
+            sessionPin = ""
+            sessions.clear()
+            pinAttempts.clear()
+            Log.w(TAG, "PIN DINONAKTIFKAN — server lokal terbuka bagi siapa pun di jaringan ini")
+        } else {
+            rotatePin()
+        }
+    }
+
     /** Issued auth cookies -> expiry epoch millis. */
     private val sessions = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
@@ -62,7 +84,10 @@ object LocalWebServer {
     private val pinAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /** True when a PIN is required (always, unless the host app disabled it). */
-    val isAuthEnabled: Boolean get() = sessionPin.isNotEmpty()
+    val isAuthEnabled: Boolean get() = pinRequired && sessionPin.isNotEmpty()
+
+    /** Whether the user turned PIN protection off (open LAN access). */
+    val isPinDisabledByUser: Boolean get() = !pinRequired
 
     /** The PIN to display on the phone. Empty when the server is stopped. */
     fun currentPin(): String = sessionPin
@@ -72,6 +97,14 @@ object LocalWebServer {
      * server starts, so a PIN never survives an app restart.
      */
     fun rotatePin(): String {
+        if (!pinRequired) {
+            // PIN dimatikan pengguna: jangan buat PIN, jangan minta login.
+            sessionPin = ""
+            sessions.clear()
+            pinAttempts.clear()
+            Log.w(TAG, "Server lokal dimulai TANPA PIN (dimatikan pengguna)")
+            return ""
+        }
         val rnd = java.security.SecureRandom()
         val pin = String.format("%06d", rnd.nextInt(1_000_000))
         sessionPin = pin
@@ -164,7 +197,7 @@ object LocalWebServer {
                 }
                 ss.bind(addr)
                 serverSocket = ss
-                Log.i(TAG, "LocalWebServer started on http://$hostIp:$port (PIN aktif)")
+                Log.i(TAG, "LocalWebServer started on http://$hostIp:$port (${if (pinRequired) "PIN aktif" else "TANPA PIN"})")
                 while (running && !ss.isClosed) {
                     val client = ss.accept()
                     thread(name = "goso-web-client", isDaemon = true) {
@@ -399,7 +432,9 @@ button:active{transform:translateY(1px)}
                 return
             }
 
-            if (!isValidToken(token)) {
+            // When the user explicitly disabled the PIN, skip the gate entirely.
+            // The UI warns loudly that this exposes the device to the whole LAN.
+            if (pinRequired && !isValidToken(token)) {
                 if (isWsUpgrade) {
                     // WebSocket cannot render a login page: reject clearly.
                     val body = "Unauthorized".toByteArray()
