@@ -88,9 +88,19 @@ class CaptureService : Service() {
 
     /**
      * Codec yang diminta viewer (mis. browser tidak bisa decode HEVC).
-     * Null = biarkan perangkat memilih urutan terbaik.
+     *
+     * DEFAULT = AVC. Alasannya konkret: muxer fMP4 di viewer (`stream.js`)
+     * membangun sample entry `avc1` + `avcC` dari SPS/PPS NALU. AV1 tidak
+     * memakai SPS/PPS sama sekali, dan HEVC memakai VPS/SPS/PPS (tipe NALU
+     * 32/33/34) dengan sample entry `hvc1`. Selama muxer itu belum punya
+     * dukungan AV1/HEVC, mengirim AV1/HEVC ke browser menghasilkan layar
+     * kosong — bukan hemat bandwidth.
+     *
+     * Negosiasi tetap berjalan dan tercatat di log, tetapi default tetap AVC
+     * sampai muxer AV1/HEVC selesai (lihat docs/plans/2026-10-23-ADVANCED-
+     * CAPTURE-MODES.md, Task lanjutan).
      */
-    @Volatile private var preferredCodec: CodecKind? = null
+    @Volatile private var preferredCodec: CodecKind? = CodecKind.AVC
 
     private var targetWidth = 720
     private var targetKbps = 2500
