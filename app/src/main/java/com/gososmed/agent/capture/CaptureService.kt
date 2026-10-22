@@ -45,6 +45,9 @@ class CaptureService : Service() {
         const val MSG_FRAME = 4  // Binary [4][key:1][NALU Annex-B]
         const val MSG_AUDIO = 5  // Binary [5][PCM 16-bit 44100Hz Stereo bytes]
 
+        /** Jeda sebelum reconfigure penuh saat pipeline mandek. */
+        const val RECONFIGURE_AFTER_MS = 10_000L
+
         @Volatile var instance: CaptureService? = null
             private set
 
@@ -101,6 +104,49 @@ class CaptureService : Service() {
      * CAPTURE-MODES.md, Task lanjutan).
      */
     @Volatile private var preferredCodec: CodecKind? = CodecKind.AVC
+
+    /**
+     * Mendeteksi pipeline mandek dan memulihkannya.
+     *
+     * PENTING: layar statis memang menghasilkan 0 frame — itu normal, bukan
+     * kerusakan. Karena itu urutannya:
+     *   1. Hanya periksa bila ada klien yang menonton.
+     *   2. Setelah 3 dtk tanpa frame, MINTA keyframe (murah, tidak merusak).
+     *   3. Hanya bila tetap mandek >10 dtk, lakukan reconfigure penuh.
+     *
+     * Tanpa urutan ini, layar diam akan memicu reconfigure setiap 3 detik dan
+     * justru merusak tampilan.
+     */
+    private val watchdog = ProjectionWatchdog(ProjectionWatchdog.DEFAULT_STALL_MS)
+
+    private val watchdogTicker = object : Runnable {
+        override fun run() {
+            if (projection == null || projectionDead) return
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (LocalWebServer.hasClients && watchdog.isStalled(now)) {
+                val stalledFor = now - watchdog.lastFrameAt()
+                if (stalledFor < RECONFIGURE_AFTER_MS) {
+                    // Layar mungkin hanya diam. Minta keyframe, jangan bongkar pipeline.
+                    if (stalledFor >= ProjectionWatchdog.DEFAULT_STALL_MS) {
+                        requestKeyFrame()
+                    }
+                } else {
+                    android.util.Log.w(
+                        "CaptureService",
+                        "Pipeline mandek ${stalledFor}ms (total frame ${watchdog.totalFrames()}) " +
+                            "— memicu reconfigure"
+                    )
+                    LocalWebServer.broadcastText(
+                        """{"type":"capture_error","reason":"stalled",""" +
+                        """"message":"Streaming mandek, mencoba memulihkan otomatis."}"""
+                    )
+                    watchdog.reset(now)
+                    reconfigure()
+                }
+            }
+            handler.postDelayed(this, 1000L)
+        }
+    }
 
     private var targetWidth = 720
     private var targetKbps = 2500
@@ -164,6 +210,8 @@ class CaptureService : Service() {
         handler.post {
             reconfigure()
             startAudioCapture(p)
+            handler.removeCallbacks(watchdogTicker)
+            handler.postDelayed(watchdogTicker, 2000L)
         }
         return START_NOT_STICKY
     }
@@ -354,6 +402,7 @@ class CaptureService : Service() {
 
                             // Broadcast directly and exclusively to local high-speed web server (Port 8765)
                             LocalWebServer.broadcastBinary(payload)
+                            watchdog.onFrame(android.os.SystemClock.elapsedRealtime())
                         }
                         mc.releaseOutputBuffer(idx, false)
                     } catch (_: Exception) {}
