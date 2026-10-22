@@ -19,7 +19,7 @@ CARA UTAMA (1-tap, tanpa mengetik):
 CARA CADANGAN (HP lain dari browser):
 - Ketik kode 8 karakter di aplikasi agent.
   URL server sudah terisi otomatis
-  (default produksi wss://api.bamsbung.id).
+  (host diisi lewat konfigurasi, bukan di-hardcode).
 
 Detail teknis (kedua cara berujung sama):
 4. Koneksi WS KELUAR (outbound) ────────►  upgrade WebSocket

@@ -13,7 +13,7 @@
 ## 1. Analisis Arsitektur: Dua Opsi Kecepatan Remote
 
 ### Opsi A: Lewat Cloud WSS / API Relay (Bawaan GoSosmed)
-- **Topologi**: HP menghubungi keluar (*outbound*) ke `wss://api.bamsbung.id/v1/agent/ws`. Operator web membuka dashboard GoSosmed dan menerima stream lewat multiplexer backend.
+- **Topologi**: HP menghubungi keluar (*outbound*) ke `wss://<GOSOSMED_AGENT_HOST>/v1/agent/ws`. Operator web membuka dashboard GoSosmed dan menerima stream lewat multiplexer backend.
 - **Karakteristik**: Tembus NAT/CGNAT seluler (4G/5G), tidak membutuhkan Wi-Fi yang sama, nol port forwarding pada router.
 - **Latensi**: 80–180 ms.
 

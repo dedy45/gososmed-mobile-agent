@@ -34,7 +34,7 @@ dihilangkan hanyalah **aplikasi pihak ketiga** (Shizuku), bukan langkah ADB.
 ### 2.1 Wireless Debugging = koneksi LOKAL
 
 Pairing terjadi antara HP dan **dirinya sendiri** lewat `127.0.0.1`. Tidak
-menyentuh server `api.bamsbung.id`. Server hanya menerima WebSocket **keluar**
+menyentuh server backend. Server hanya menerima WebSocket **keluar**
 dari HP. Jadi tidak ada port masuk yang dibuka ke internet.
 
 ## 3. Arsitektur dua tingkat
