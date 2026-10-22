@@ -23,3 +23,8 @@ var/
 # pemilik (lihat CHANGELOG v0.6.0).
 keystore/
 *.jks
+
+# Internal developer scratchpad, audit trails, and agent working files (Public hygiene)
+.audit/
+docs/superpowers/
+docs/5-testing/

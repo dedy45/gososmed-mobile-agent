@@ -94,27 +94,51 @@ data class SnapshotImage(
     val format: String,
     val width: Int,
     val height: Int,
-    val quality: Int,
-    val binaryMessageId: String? = null
+    val quality: Int?,
+    val binaryMessageId: String? = null,
+    val sourceWidth: Int = width,
+    val sourceHeight: Int = height,
+    val sourceScale: Float = 1.0f
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("format", format)
         put("width", width)
         put("height", height)
-        put("quality", quality)
+        if (quality != null) {
+            put("quality", quality)
+        } else {
+            put("quality", JSONObject.NULL)
+        }
         if (binaryMessageId != null) {
             put("binary_message_id", binaryMessageId)
         }
+        put("source_width", sourceWidth)
+        put("source_height", sourceHeight)
+        put("source_scale", sourceScale.toDouble())
     }
 
     companion object {
         fun fromJson(json: JSONObject): SnapshotImage {
+            val quality = if (json.has("quality") && !json.isNull("quality")) {
+                json.getInt("quality")
+            } else {
+                null
+            }
+            val width = json.getInt("width")
+            val height = json.getInt("height")
+            val sourceWidth = json.optInt("source_width", width)
+            val sourceHeight = json.optInt("source_height", height)
+            val sourceScale = json.optDouble("source_scale", 1.0).toFloat()
+
             return SnapshotImage(
                 format = json.getString("format"),
-                width = json.getInt("width"),
-                height = json.getInt("height"),
-                quality = json.getInt("quality"),
-                binaryMessageId = if (json.has("binary_message_id")) json.getString("binary_message_id") else null
+                width = width,
+                height = height,
+                quality = quality,
+                binaryMessageId = if (json.has("binary_message_id")) json.getString("binary_message_id") else null,
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                sourceScale = sourceScale
             )
         }
     }

@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- killApp: kill background processes of a target app (force-stop is
          shell-only; this is the honest subset the agent can do). -->
@@ -46,6 +47,8 @@
     <!-- Kamera untuk pemindai QR Code pairing instan (opsional) -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Audio playback capture (Android 10+) untuk streaming audio internal game/app -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- v0.9.0 TRANSPORT TIER 1 (ADB lokal).
          v0.8.0 memakai aplikasi pihak ketiga Shizuku; mulai v0.9.0 Shizuku
@@ -156,7 +159,9 @@
              the executor for tap/text/swipe — no root, no adb required. -->
         <service
             android:name=".AgentAccessibilityService"
-            android:exported="false"
+            android:enabled="true"
+            android:exported="true"
+            android:priority="1000"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -170,7 +175,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -190,6 +196,12 @@
                     android:host="pair" />
             </intent-filter>
         </activity>
+
+        <!-- Service MediaProjection Hardware H.264 Zero-Copy Streaming -->
+        <service
+            android:name=".capture.CaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"

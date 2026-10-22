@@ -71,7 +71,6 @@
     <string name="telemetry_temp_format">🌡️ Suhu HP     : %1$s°C (%2$s)</string>
     <string name="telemetry_network_waiting">Menunggu ping…</string>
     <string name="telemetry_network_format">📶 Jaringan    : %1$s\n⏱️ Latensi RTT : %2$s</string>
-    <string name="telemetry_target_prefix">📱 Platform Terpasang:\n</string>
     <string name="server_overlay_info_format">Baterai: %1$d%% • Suhu: %2$s°C • Latensi: %3$s</string>
 
     <!-- Langkah 3-Langkah Setup -->

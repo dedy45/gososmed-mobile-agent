@@ -27,6 +27,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import okio.ByteString.Companion.toByteString
+import com.gososmed.agent.stream.LiveFrameSession
+import com.gososmed.agent.stream.NormalizedImageConfig
+
 /**
  * Outbound WebSocket client to the GoSosmed agenthub.
  *
@@ -67,6 +70,21 @@ class AgentWsClient(
 
         @Volatile var lastPingLatencyMs: Long = -1L
         @Volatile var lastPongTimestamp: Long = 0L
+        @Volatile var instance: AgentWsClient? = null
+            internal set
+
+        fun sendBinary(bytes: ByteArray): Boolean {
+            return instance?.sendBinary(bytes) ?: false
+        }
+    }
+
+    fun sendBinary(bytes: ByteArray): Boolean {
+        val socket = ws ?: return false
+        return try {
+            socket.send(bytes.toByteString())
+        } catch (_: Exception) {
+            false
+        }
     }
 
     @Volatile private var missedPongs = 0
@@ -87,58 +105,51 @@ class AgentWsClient(
     private var ws: WebSocket? = null
     private var reconnectJob: Job? = null
     private var heartbeatJob: Job? = null
-    private var debugStreamingJob: Job? = null
-    private var debugSessionId: String? = null
-
-    private fun stopDebugStreaming() {
-        debugStreamingJob?.cancel()
-        debugStreamingJob = null
-        debugSessionId = null
+    val liveFrameSession: LiveFrameSession by lazy {
+        LiveFrameSession(
+            captureProvider = {
+                val svc = AgentAccessibilityService.instance
+                    ?: return@LiveFrameSession AgentAccessibilityService.RawScreenshotResult(
+                        null, 0, 0, "accessibility_not_ready"
+                    )
+                svc.takeScreenshotRawBytes(
+                    scale = 1f,
+                    format = NormalizedImageConfig.FORMAT_JPEG,
+                    quality = NormalizedImageConfig.DEFAULT_QUALITY,
+                    maxWidth = NormalizedImageConfig.DEFAULT_MAX_WIDTH
+                )
+            },
+            frameSender = { metaJson, rawBytes ->
+                ws?.let { socket ->
+                    socket.send(metaJson.toString())
+                    socket.send(rawBytes.toByteString())
+                }
+            },
+            scope = scope
+        )
     }
 
-    private fun startDebugStreaming(webSocket: WebSocket, args: JSONObject, requestId: String) {
-        val fps = args.optInt("fps", 3).coerceIn(1, 10)
-        val quality = args.optInt("quality", 70).coerceIn(10, 100)
-        val scale = args.optDouble("scale", 0.5).toFloat().coerceIn(0.2f, 1.0f)
-        val format = args.optString("format", "jpeg")
+    private fun stopDebugStreaming(sessionId: String? = null) {
+        liveFrameSession.stop(sessionId)
+    }
+
+    private suspend fun startDebugStreaming(args: JSONObject, requestId: String) {
         val sessionId = args.optString("session_id", requestId.ifEmpty { "debug-stream" })
+        val fps = args.optDouble("fps", LiveFrameSession.SessionConfig.DEFAULT_FPS)
+            .coerceIn(LiveFrameSession.SessionConfig.MIN_FPS, LiveFrameSession.SessionConfig.MAX_FPS)
+        val quality = args.optInt("quality", NormalizedImageConfig.DEFAULT_QUALITY)
+            .coerceIn(NormalizedImageConfig.MIN_QUALITY, NormalizedImageConfig.MAX_QUALITY)
+        val maxWidth = args.optInt("max_width", NormalizedImageConfig.DEFAULT_MAX_WIDTH)
+            .coerceIn(NormalizedImageConfig.MIN_MAX_WIDTH, NormalizedImageConfig.MAX_MAX_WIDTH)
 
-        stopDebugStreaming()
-        debugSessionId = sessionId
-
-        var frameSeq = 1L
-        debugStreamingJob = scope.launch {
-            while (isActive) {
-                AgentCommand.debugFrameQueue.evictExpiredAcks()
-                val svc = AgentAccessibilityService.instance
-                if (svc != null) {
-                    val (bytes, width, height) = svc.takeScreenshotRawBytes(scale, format, quality)
-                    if (bytes != null) {
-                        val binMsgId = "debug-$sessionId-$frameSeq"
-                        val meta = DebugFrameEncoder.FrameMetadata(
-                            binaryMessageId = binMsgId,
-                            frameSeq = frameSeq++,
-                            timestampMs = System.currentTimeMillis(),
-                            format = format,
-                            width = width,
-                            height = height,
-                            quality = quality,
-                            byteLength = bytes.size
-                        )
-                        AgentCommand.debugFrameQueue.enqueue(bytes, meta)
-                        val polled = AgentCommand.debugFrameQueue.poll()
-                        if (polled != null) {
-                            try {
-                                webSocket.send(polled.data.toByteString())
-                            } catch (t: Throwable) {
-                                Log.w(TAG, "send debug frame error: ${t.message}", t)
-                            }
-                        }
-                    }
-                }
-                delay(1000L / fps)
-            }
-        }
+        val config = LiveFrameSession.SessionConfig(
+            sessionId = sessionId,
+            fps = fps,
+            format = NormalizedImageConfig.FORMAT_JPEG,
+            quality = quality,
+            maxWidth = maxWidth
+        )
+        liveFrameSession.start(config)
     }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var closed = false
@@ -176,6 +187,7 @@ class AgentWsClient(
         heartbeatJob?.cancel()
         ws?.close(1000, "client stop")
         ws = null
+        if (instance === this) instance = null
     }
 
     fun destroy() {
@@ -212,6 +224,7 @@ class AgentWsClient(
                 reconnectJob = null
                 onStatus("connected")
                 AgentLog.event("tersambung ke server")
+                instance = this@AgentWsClient
                 register(webSocket)
                 startHeartbeat()
             }
@@ -250,6 +263,7 @@ class AgentWsClient(
                     if (obj.optString("type") == "ack_frame" || obj.optString("cmd") == "ack_frame") {
                         val binId = obj.optString("binary_message_id", obj.optString("id", ""))
                         if (binId.isNotEmpty()) {
+                            liveFrameSession.onAck(binId)
                             AgentCommand.debugFrameQueue.acknowledge(binId)
                         }
                         return
@@ -266,24 +280,21 @@ class AgentWsClient(
                     if (obj.has("protocol_version") && obj.optInt("protocol_version") == 2) {
                         scope.launch {
                             try {
-                                val resp = AgentCommand.executeV2(obj)
-                                webSocket.send(resp.toString())
+                                val execResult = AgentCommand.executeV2WithBinary(obj)
+                                webSocket.send(execResult.responseJson.toString())
+                                execResult.observeBinaryPayload?.let { payload ->
+                                    webSocket.send(payload.metadataJson.toString())
+                                    webSocket.send(payload.binaryBytes.toByteString())
+                                }
 
                                 val cmdName = obj.optString("cmd", "")
                                 val args = obj.optJSONObject("args") ?: JSONObject()
                                 val reqId = obj.optString("request_id", "")
 
                                 if (cmdName == ProtocolV2.Commands.START_DEBUG_FRAMES) {
-                                    startDebugStreaming(webSocket, args, reqId)
+                                    startDebugStreaming(args, reqId)
                                 } else if (cmdName == ProtocolV2.Commands.STOP_DEBUG_FRAMES) {
-                                    stopDebugStreaming()
-                                } else if (cmdName == ProtocolV2.Commands.OBSERVE) {
-                                    var queued = AgentCommand.debugFrameQueue.poll()
-                                    while (queued != null) {
-                                        webSocket.send(queued.data.toByteString())
-                                        AgentCommand.debugFrameQueue.acknowledge(queued.metadata.binaryMessageId)
-                                        queued = AgentCommand.debugFrameQueue.poll()
-                                    }
+                                    stopDebugStreaming(args.optString("session_id").ifEmpty { null })
                                 }
                             } catch (e: Exception) {
                                 Log.w(TAG, "cmd exec (v2) error", e)

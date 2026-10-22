@@ -144,13 +144,13 @@ class AgentForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val a11yReady = AgentAccessibilityService.isReady()
+        val a11yAlive = AgentAccessibilityService.isServiceAlive()
         val a11yEnabled = AgentAccessibilityService.isEnabled()
         val adbStatus = AdbPairingController.status()
         val wsConnected = ws?.isConnected() == true
 
         val a11yText = when {
-            a11yReady -> "A11y: AKTIF ✓"
+            a11yAlive -> "A11y: AKTIF ✓"
             a11yEnabled -> "A11y: MENUNGGU..."
             else -> "A11y: MATI ⚠️"
         }

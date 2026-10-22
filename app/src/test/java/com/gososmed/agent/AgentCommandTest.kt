@@ -316,4 +316,22 @@ class AgentCommandTest {
         assertTrue("err must contain errorCode and reason", err!!.contains("errorCode=3"))
         assertTrue(err.contains("ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT"))
     }
+
+    @Test
+    fun `swipe command requires service and echoes id when service absent`() {
+        assertEquals("swipe", AgentCommand.CMD_SWIPE)
+        val req = JSONObject().apply {
+            put("id", 88)
+            put("cmd", AgentCommand.CMD_SWIPE)
+            put("x1", 100)
+            put("y1", 200)
+            put("x2", 100)
+            put("y2", 800)
+            put("duration", 250)
+        }
+        val resp = AgentCommand.execute(req)
+        assertEquals(88, resp.getInt("id"))
+        assertFalse(resp.optBoolean("ok"))
+        assertEquals("accessibility service not connected/ready", resp.getString("error"))
+    }
 }

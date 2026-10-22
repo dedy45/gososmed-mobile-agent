@@ -232,4 +232,101 @@ class ProtocolV2IntegrationTest {
         // V1 response schema doesn't have protocol_version
         assertFalse(resp.has("protocol_version"))
     }
+
+    @Test
+    fun testV2ObserveRejectsWebPWithImageConfigException() {
+        val req = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-obs-webp")
+            put("cmd", "observe")
+            put("args", JSONObject().apply {
+                put("include_image", true)
+                put("format", "webp")
+            })
+        }
+        val res = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2WithBinary(req)
+        }
+        assertFalse(res.responseJson.getBoolean("ok"))
+        assertEquals("unsupported_image_format", res.responseJson.getString("reason_code"))
+        assertNull(res.observeBinaryPayload)
+    }
+
+    @Test
+    fun testV2ObserveRejectsQualityOutOfRange() {
+        val req = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-obs-quality")
+            put("cmd", "observe")
+            put("args", JSONObject().apply {
+                put("include_image", true)
+                put("quality", 0)
+            })
+        }
+        val res = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2WithBinary(req)
+        }
+        assertFalse(res.responseJson.getBoolean("ok"))
+        assertEquals("invalid_image_arg", res.responseJson.getString("reason_code"))
+        assertNull(res.observeBinaryPayload)
+    }
+
+    @Test
+    fun testV2ObserveRejectsOptionsWithoutIncludeImage() {
+        val req = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-obs-no-inc")
+            put("cmd", "observe")
+            put("args", JSONObject().apply {
+                put("quality", 75)
+            })
+        }
+        val res = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2WithBinary(req)
+        }
+        assertFalse(res.responseJson.getBoolean("ok"))
+        assertEquals("image_options_require_include_image", res.responseJson.getString("reason_code"))
+        assertNull(res.observeBinaryPayload)
+    }
+
+    @Test
+    fun testV2ObserveWithoutServiceReturnsDeviceBusy() {
+        val req = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-obs-no-svc")
+            put("cmd", "observe")
+            put("args", JSONObject().apply {
+                put("include_image", false)
+            })
+        }
+        val res = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2WithBinary(req)
+        }
+        assertFalse(res.responseJson.getBoolean("ok"))
+        assertEquals("device_busy", res.responseJson.getString("reason_code"))
+        assertEquals("accessibility_not_ready", res.responseJson.getJSONObject("result").getString("error"))
+        assertNull(res.observeBinaryPayload)
+    }
+
+    @Test
+    fun testV2ExecuteV2WithBinaryMatchesExecuteV2Response() {
+        val req = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-obs-match")
+            put("cmd", "observe")
+            put("args", JSONObject().apply {
+                put("include_image", false)
+            })
+        }
+        val resWithBinary = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2WithBinary(req)
+        }
+        val resPlain = kotlinx.coroutines.runBlocking {
+            AgentCommand.executeV2(req)
+        }
+        assertEquals(resWithBinary.responseJson.getBoolean("ok"), resPlain.getBoolean("ok"))
+        assertEquals(resWithBinary.responseJson.getString("request_id"), resPlain.getString("request_id"))
+        assertEquals(resWithBinary.responseJson.getString("reason_code"), resPlain.getString("reason_code"))
+        assertEquals(resWithBinary.responseJson.getJSONObject("result").getString("error"), resPlain.getJSONObject("result").getString("error"))
+    }
 }

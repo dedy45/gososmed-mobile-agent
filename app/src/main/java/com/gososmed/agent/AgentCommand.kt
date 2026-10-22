@@ -7,12 +7,45 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.gososmed.agent.privileged.AdbPairingController
 import com.gososmed.agent.privileged.PrivilegedShellHolder
+import com.gososmed.agent.stream.ImageConfigException
+import com.gososmed.agent.stream.ImageConfigNormalizer
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+
 /**
- * Command protocol between the GoSosmed agenthub (server) and the agent.
+ * Payload for binary messages emitted during OBSERVE execution.
+ */
+data class ObserveBinaryPayload(
+    val metadataJson: JSONObject,
+    val binaryBytes: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as ObserveBinaryPayload
+        if (metadataJson.toString() != other.metadataJson.toString()) return false
+        if (!binaryBytes.contentEquals(other.binaryBytes)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = metadataJson.toString().hashCode()
+        result = 31 * result + binaryBytes.contentHashCode()
+        return result
+    }
+}
+
+/**
+ * Combined result of V2 execution containing JSON response and optional binary payload.
+ */
+data class V2ExecutionResult(
+    val responseJson: JSONObject,
+    val observeBinaryPayload: ObserveBinaryPayload? = null
+)
+
+/**
  *
  * We define a small JSON-over-WebSocket protocol so the server-side
  * `AgentHub` can drive the device exactly the way the adb `Device` driver
@@ -36,10 +69,15 @@ object AgentCommand {
     const val CMD_TAP = "tap"
     const val CMD_TAP_BY_TEXT = "tapByText"
     const val CMD_TAP_FIRST_CLICKABLE = "tapFirstClickable"
+    const val CMD_SWIPE = "swipe"
     const val CMD_SET_TEXT = "setText"
     const val CMD_BACK = "back"
     const val CMD_HOME = "home"
     const val CMD_RECENTS = "recents"
+    const val CMD_VOLUME_UP = "volume_up"
+    const val CMD_VOLUME_DOWN = "volume_down"
+    const val CMD_POWER = "power"
+    const val CMD_ROTATE = "rotate"
     const val CMD_NOTIFY = "notify"
     const val CMD_PACKAGE = "package"
     const val CMD_PING = "ping"
@@ -77,9 +115,9 @@ object AgentCommand {
     const val CMD_WAIT_FOR_NODE = "waitForNode"
     const val CMD_REPLACE_TEXT = "replaceText"
     const val CMD_ANNOTATED_SCREENSHOT = "annotatedScreenshot"
-    // v1.0.2: Compound Action clickAndWait (50% faster LLM turn).
     const val CMD_CLICK_AND_WAIT = "clickAndWait"
-
+    const val CMD_START_LOCAL_SERVER = "startLocalServer"
+    const val CMD_STOP_LOCAL_SERVER = "stopLocalServer"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      *
@@ -104,9 +142,9 @@ object AgentCommand {
      */
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
-        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA
+        CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
+        CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER
     )
-
     /**
      * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
      * tetapi tidak memerlukan main looper UI tree. Dijalankan di coroutine
@@ -215,9 +253,25 @@ object AgentCommand {
     }
 
     /**
+     * Dispatches Protocol V2 commands and returns execution result with optional binary payload.
+     */
+    suspend fun executeV2WithBinary(req: JSONObject): V2ExecutionResult {
+        var observePayload: ObserveBinaryPayload? = null
+        val respJson = executeV2Internal(req) { payload ->
+            observePayload = payload
+        }
+        return V2ExecutionResult(respJson, observePayload)
+    }
+
+    /**
      * Dispatches Protocol V2 commands (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
      */
-    suspend fun executeV2(req: JSONObject): JSONObject {
+    suspend fun executeV2(req: JSONObject): JSONObject = executeV2WithBinary(req).responseJson
+
+    private suspend fun executeV2Internal(
+        req: JSONObject,
+        onObservePayload: (ObserveBinaryPayload) -> Unit = {}
+    ): JSONObject {
         val startTime = System.currentTimeMillis()
         val v2Req = ProtocolV2.Request.fromJson(req)
         val requestId = v2Req.requestId
@@ -269,8 +323,19 @@ object AgentCommand {
                     ).toJson()
                 }
 
-
                 ProtocolV2.Commands.OBSERVE -> {
+                    val imgConfig = try {
+                        ImageConfigNormalizer.normalize(args)
+                    } catch (e: ImageConfigException) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = e.reasonCode,
+                            result = JSONObject().apply { put("error", e.message) },
+                            timing = timing
+                        ).toJson()
+                    }
+
                     val svc = AgentAccessibilityService.instance
                     if (svc == null) {
                         val timing = ProtocolV2.Timing.create(startTime)
@@ -281,38 +346,57 @@ object AgentCommand {
                             timing = timing
                         ).toJson()
                     }
+
+                    var image: SnapshotImage? = null
+                    if (imgConfig.includeImage) {
+                        val res = svc.takeScreenshotRawBytes(
+                            scale = imgConfig.scale ?: 1f,
+                            format = imgConfig.format,
+                            quality = imgConfig.quality ?: 75,
+                            maxWidth = imgConfig.maxWidth
+                        )
+                        val bytes = res.bytes ?: return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.SCREENSHOT_FAILED,
+                            result = JSONObject().apply {
+                                put("error", res.error ?: "screenshot_failed")
+                            },
+                            timing = ProtocolV2.Timing.create(startTime)
+                        ).toJson()
+                        val binMsgId = "snap-img-$requestId"
+                        image = SnapshotImage(
+                            format = imgConfig.format,
+                            width = res.width,
+                            height = res.height,
+                            quality = imgConfig.quality,
+                            binaryMessageId = binMsgId,
+                            sourceWidth = res.sourceWidth,
+                            sourceHeight = res.sourceHeight,
+                            sourceScale = res.sourceScale
+                        )
+
+                        val meta = JSONObject().apply {
+                            put("type", "frame_meta")
+                            put("session_id", "observe_$requestId")
+                            put("binary_message_id", binMsgId)
+                            put("frame_seq", 1L)
+                            put("format", imgConfig.format)
+                            put("width", res.width)
+                            put("height", res.height)
+                            put("source_width", res.sourceWidth)
+                            put("source_height", res.sourceHeight)
+                            put("source_scale", res.sourceScale.toDouble())
+                            if (imgConfig.quality != null) {
+                                put("quality", imgConfig.quality)
+                            }
+                            put("byte_length", bytes.size)
+                            put("timestamp_ms", System.currentTimeMillis())
+                        }
+                        onObservePayload(ObserveBinaryPayload(meta, bytes))
+                    }
+
                     val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
                     val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
-                    val includeScreenshot = args.optBoolean("screenshot", false)
-                    var image: SnapshotImage? = null
-                    if (includeScreenshot) {
-                        val scale = args.optDouble("scale", 0.5).toFloat()
-                        val format = args.optString("format", "jpeg")
-                        val quality = args.optInt("quality", 75)
-                        val (bytes, width, height) = svc.takeScreenshotRawBytes(scale, format, quality)
-                        if (bytes != null) {
-                            val binMsgId = "snap-img-$requestId"
-                            image = SnapshotImage(
-                                format = format,
-                                width = width,
-                                height = height,
-                                quality = quality,
-                                binaryMessageId = binMsgId
-                            )
-                            // Stage frame in bounded queue if needed
-                            val meta = DebugFrameEncoder.FrameMetadata(
-                                binaryMessageId = binMsgId,
-                                frameSeq = 1L,
-                                timestampMs = System.currentTimeMillis(),
-                                format = format,
-                                width = width,
-                                height = height,
-                                quality = quality,
-                                byteLength = bytes.size
-                            )
-                            debugFrameQueue.enqueue(bytes, meta)
-                        }
-                    }
                     val snapshot = SnapshotCollector.capture(
                         displayProvider = displayProvider,
                         treeSource = treeSource,
@@ -810,10 +894,49 @@ object AgentCommand {
                     }
                 }
             }
+            CMD_START_LOCAL_SERVER -> {
+                val ctx = appContext()
+                val detectedIp = resolveDeviceIp()
+                com.gososmed.agent.capture.LocalWebServer.start(
+                    port = com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT,
+                    hostIp = detectedIp,
+                    context = ctx
+                )
+                resp.put("ok", true).put("result", JSONObject().put("url", com.gososmed.agent.capture.LocalWebServer.getLocalUrl()))
+            }
+            CMD_STOP_LOCAL_SERVER -> {
+                com.gososmed.agent.capture.LocalWebServer.stop()
+                resp.put("ok", true)
+            }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }
         return resp
     }
+    private fun resolveDeviceIp(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+            val sorted = interfaces.sortedByDescending {
+                val n = it.name.lowercase()
+                when {
+                    n.startsWith("wlan") -> 3
+                    n.startsWith("eth") -> 2
+                    !it.isLoopback && it.isUp -> 1
+                    else -> 0
+                }
+            }
+            for (intf in sorted) {
+                if (intf.isLoopback || !intf.isUp) continue
+                for (addr in intf.inetAddresses) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val host = addr.hostAddress
+                        if (!host.isNullOrBlank() && host != "127.0.0.1") return host
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "127.0.0.1"
+    }
+
 
     /**
      * v0.5.0: keterangan jujur ke mana DATA sebuah command pergi, supaya log
@@ -874,6 +997,18 @@ object AgentCommand {
                     resp.put("ok", true).put("result", JSONObject().put("ok", svc.tap(x, y)))
                 }
             }
+            CMD_SWIPE -> {
+                val x1 = req.optInt("x1", req.optInt("fromX", -1))
+                val y1 = req.optInt("y1", req.optInt("fromY", -1))
+                val x2 = req.optInt("x2", req.optInt("toX", -1))
+                val y2 = req.optInt("y2", req.optInt("toY", -1))
+                val dur = req.optLong("duration", req.optLong("duration_ms", 200L))
+                if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) {
+                    resp.put("ok", false).put("error", "swipe requires x1,y1,x2,y2")
+                } else {
+                    resp.put("ok", true).put("result", JSONObject().put("ok", svc.swipe(x1, y1, x2, y2, dur)))
+                }
+            }
             CMD_TAP_BY_TEXT -> {
                 val text = req.optString("text", "")
                 if (text.isEmpty()) {
@@ -902,6 +1037,10 @@ object AgentCommand {
             CMD_HOME -> resp.put("ok", true).put("result", JSONObject().put("ok", svc.pressHome()))
             CMD_RECENTS -> resp.put("ok", true).put("result", JSONObject().put("ok", svc.openRecents()))
             CMD_NOTIFY -> resp.put("ok", true).put("result", JSONObject().put("ok", svc.notifyAction()))
+            CMD_VOLUME_UP -> resp.put("ok", true).put("result", JSONObject().put("ok", com.gososmed.agent.control.RemoteControlManager.handleCommand("volume_up")))
+            CMD_VOLUME_DOWN -> resp.put("ok", true).put("result", JSONObject().put("ok", com.gososmed.agent.control.RemoteControlManager.handleCommand("volume_down")))
+            CMD_POWER -> resp.put("ok", true).put("result", JSONObject().put("ok", com.gososmed.agent.control.RemoteControlManager.handleCommand("power")))
+            CMD_ROTATE -> resp.put("ok", true).put("result", JSONObject().put("ok", com.gososmed.agent.control.RemoteControlManager.handleCommand("rotate")))
             CMD_PACKAGE -> resp.put("ok", true).put("result", JSONObject().put("package", svc.currentPackage()))
             CMD_START_APP -> {
                 val pkg = req.optString("package", "")

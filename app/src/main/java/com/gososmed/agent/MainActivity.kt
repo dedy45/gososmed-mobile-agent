@@ -110,16 +110,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var restrictedGuideLayout: View
     private lateinit var openOverlayBtn: Button
     private lateinit var debugSection: View
-    private lateinit var updateInfoTv: TextView
-    private lateinit var checkUpdateBtn: Button
-    private lateinit var downloadUpdateBtn: Button
 
     // Telemetri Live & Kontrol Ekstrem
     private lateinit var tvTelemetryBattery: TextView
     private lateinit var tvTelemetryTemp: TextView
     private lateinit var tvTelemetryBatteryAlert: TextView
     private lateinit var tvTelemetryNetwork: TextView
-    private lateinit var tvTelemetryApps: TextView
     private lateinit var btnEchoTest: Button
     private lateinit var btnScanQr: Button
 
@@ -131,6 +127,33 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverStatusTv: TextView
     private lateinit var serverInfoTv: TextView
 
+    // Remote Controller & Live Streaming (MediaCodec & Local Server)
+    private lateinit var switchRemoteController: MaterialSwitch
+    private lateinit var tvRemoteSubtitle: TextView
+    private lateinit var layoutRemoteActiveBanner: View
+    private lateinit var tvRemoteClients: TextView
+    private lateinit var tvRemoteLocalUrl: TextView
+    private lateinit var btnOpenLocalBrowser: Button
+
+    private val projectionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val localIp = getLocalIpAddress()
+            com.gososmed.agent.capture.CaptureService.start(this, result.resultCode, result.data!!)
+            com.gososmed.agent.capture.LocalWebServer.start(
+                port = com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT,
+                hostIp = localIp,
+                context = applicationContext
+            )
+            applyRemoteState(true)
+            toast("Remote Controller aktif (Port 8765)")
+        } else {
+            switchRemoteController.isChecked = false
+            applyRemoteState(false)
+            toast("Izin tangkapan layar dibatalkan")
+        }
+    }
     // Optimasi Pabrikan HP (OEM)
     private lateinit var tvOemTitle: TextView
     private lateinit var tvOemDesc: TextView
@@ -313,16 +336,11 @@ class MainActivity : AppCompatActivity() {
         restrictedGuideLayout = findViewById(R.id.restrictedGuideLayout)
         openOverlayBtn = findViewById(R.id.openOverlayBtn)
         debugSection = findViewById(R.id.debugSection)
-        updateInfoTv = findViewById(R.id.updateInfoTv)
-        checkUpdateBtn = findViewById(R.id.checkUpdateBtn)
-        downloadUpdateBtn = findViewById(R.id.downloadUpdateBtn)
-
         // Telemetri
         tvTelemetryBattery = findViewById(R.id.tvTelemetryBattery)
         tvTelemetryTemp = findViewById(R.id.tvTelemetryTemp)
         tvTelemetryBatteryAlert = findViewById(R.id.tvTelemetryBatteryAlert)
         tvTelemetryNetwork = findViewById(R.id.tvTelemetryNetwork)
-        tvTelemetryApps = findViewById(R.id.tvTelemetryApps)
         btnEchoTest = findViewById(R.id.btnEchoTest)
         btnScanQr = findViewById(R.id.btnScanQr)
 
@@ -334,6 +352,14 @@ class MainActivity : AppCompatActivity() {
         serverStatusTv = findViewById(R.id.serverStatusTv)
         serverInfoTv = findViewById(R.id.serverInfoTv)
 
+        // Remote Controller
+        switchRemoteController = findViewById(R.id.switchRemoteController)
+        tvRemoteSubtitle = findViewById(R.id.tvRemoteSubtitle)
+        layoutRemoteActiveBanner = findViewById(R.id.layoutRemoteActiveBanner)
+        tvRemoteClients = findViewById(R.id.tvRemoteClients)
+        tvRemoteLocalUrl = findViewById(R.id.tvRemoteLocalUrl)
+        btnOpenLocalBrowser = findViewById(R.id.btnOpenLocalBrowser)
+
         // OEM
         tvOemTitle = findViewById(R.id.tvOemTitle)
         tvOemDesc = findViewById(R.id.tvOemDesc)
@@ -343,11 +369,11 @@ class MainActivity : AppCompatActivity() {
         btnScanQr.setOnClickListener { startQrScan() }
         setupServerMode()
         setupGlobalDim()
+        setupRemoteControllerSwitch()
+        // SECURITY: the local server is NOT started here. It is started only when
+        // the user turns the Remote Controller switch ON and grants MediaProjection,
+        // so the LAN viewer is never reachable while the app merely sits open.
         setupOemCard()
-        checkUpdateBtn.setOnClickListener { checkUpdateNow() }
-        downloadUpdateBtn.setOnClickListener { openApkDownload() }
-        // Jalur manual cadangan: tahan teks versi (tap biasa tetap mode debug).
-        versionTv.setOnLongClickListener { checkUpdateNow(); true }
         refreshUpdateState()
 
         setupTabs()
@@ -363,6 +389,8 @@ class MainActivity : AppCompatActivity() {
                 if (debugSection.visibility == View.VISIBLE && wsUrlEt.text.isEmpty()) {
                     loadWsUrl().takeIf { it.isNotEmpty() }?.let { wsUrlEt.setText(it) }
                 }
+            } else {
+                showVersionUpdateDialog()
             }
         }
 
@@ -422,24 +450,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---- Cek update APK (v0.7.0) ----
+    private fun showVersionUpdateDialog() {
+        val current = BuildConfig.VERSION_NAME
+        val latest = AgentUpdateState.latestVersion
+        val hasUpdate = latest.isNotEmpty() && AgentUpdateState.isNewer(current)
+        val msg = buildString {
+            append("Versi Terpasang: v$current (${BuildConfig.VERSION_CODE})\n")
+            if (hasUpdate) {
+                append("Status: Tersedia Pembaruan v$latest ✨")
+            } else if (latest.isNotEmpty()) {
+                append("Status: Aplikasi Sudah Versi Terbaru ✓")
+            } else {
+                append("Status: Belum Memeriksa Pembaruan")
+            }
+        }
+
+        val builder = MaterialAlertDialogBuilder(this)
+            .setTitle("Versi & Pembaruan GoSosmed")
+            .setMessage(msg)
+            .setPositiveButton("Cek Update") { _, _ ->
+                checkUpdateNow()
+            }
+            .setNegativeButton("Tutup", null)
+
+        if (hasUpdate && AgentUpdateState.apkUrl.isNotEmpty()) {
+            builder.setNeutralButton("Unduh Update") { _, _ ->
+                openApkDownload()
+            }
+        }
+        builder.show()
+    }
 
     private fun refreshUpdateState() {
         val current = BuildConfig.VERSION_NAME
-        when {
-            AgentUpdateState.isNewer(current) -> {
-                updateInfoTv.text = "Update tersedia: v${AgentUpdateState.latestVersion} (terpasang v$current)."
-                downloadUpdateBtn.visibility =
-                    if (AgentUpdateState.apkUrl.isNotEmpty()) View.VISIBLE else View.GONE
-            }
-            AgentUpdateState.latestVersion.isNotEmpty() -> {
-                updateInfoTv.text = "Sudah versi terbaru (v$current)."
-                downloadUpdateBtn.visibility = View.GONE
-            }
+        val hasUpdate = AgentUpdateState.isNewer(current)
+        versionTv.text = if (hasUpdate) {
+            "v$current (Update ✨)"
+        } else {
+            "v$current (${BuildConfig.VERSION_CODE})"
         }
     }
 
     private fun checkUpdateNow() {
-        updateInfoTv.text = "Memeriksa update…"
+        toast("Memeriksa pembaruan...")
         Thread {
             try {
                 val userAgent = "GoSosmedAgent/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE}; ${Build.MODEL})"
@@ -531,10 +584,11 @@ class MainActivity : AppCompatActivity() {
                     refreshUpdateState()
                     Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                     AgentLog.event("cek update: $msg")
+                    showVersionUpdateDialog()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    updateInfoTv.text = "Gagal cek update: ${e.message}"
+                    toast("Gagal cek update: ${e.message}")
                     AgentLog.event("cek update gagal: ${e.message}")
                 }
             }
@@ -1356,17 +1410,6 @@ class MainActivity : AppCompatActivity() {
         val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else getString(R.string.telemetry_network_waiting)
         tvTelemetryNetwork.text = getString(R.string.telemetry_network_format, snap.wifiSsid, latencyStr)
 
-        // Status platform aplikasi terpasang (terstruktur 2 baris rapi)
-        fun statusIcon(installed: Boolean): String = if (installed) "✓" else "—"
-        tvTelemetryApps.text = buildString {
-            append(getString(R.string.telemetry_target_prefix))
-            append("• TikTok [${statusIcon(snap.isTiktokInstalled)}]   ")
-            append("• IG [${statusIcon(snap.isInstagramInstalled)}]   ")
-            append("• FB [${statusIcon(snap.isFacebookInstalled)}]\n")
-            append("• Threads [${statusIcon(snap.isThreadsInstalled)}]   ")
-            append("• YouTube [${statusIcon(snap.isYoutubeInstalled)}]")
-        }
-
         // Sinkronisasi data ke Server Mode Overlay jika sedang aktif
         if (serverModeOverlay.visibility == View.VISIBLE) {
             serverClockTv.text = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
@@ -1378,24 +1421,43 @@ class MainActivity : AppCompatActivity() {
         btnEchoTest.isEnabled = false
         btnEchoTest.text = getString(R.string.btn_echo_testing)
         val client = AgentForegroundService.instance?.getWsClient()
-        if (client == null || !client.isConnected()) {
-            btnEchoTest.isEnabled = true
-            btnEchoTest.text = getString(R.string.btn_echo_test)
-            toast("Perangkat belum terhubung ke server GoSosmed")
-            return
-        }
-        client.sendEchoPing { rttMs ->
-            runOnUiThread {
-                btnEchoTest.isEnabled = true
-                btnEchoTest.text = getString(R.string.btn_echo_test)
-                vibrateFeedback()
-                if (rttMs >= 0) {
-                    toast("✓ Koneksi Server Berhasil! Latensi: ${rttMs}ms")
-                } else {
-                    toast("Gagal mendapatkan respons echo dari server")
+        if (client != null && client.isConnected()) {
+            client.sendEchoPing { rttMs ->
+                runOnUiThread {
+                    btnEchoTest.isEnabled = true
+                    btnEchoTest.text = getString(R.string.btn_echo_test)
+                    vibrateFeedback()
+                    if (rttMs >= 0) {
+                        toast("✓ Latensi Ping RTT Server: ${rttMs}ms")
+                    } else {
+                        toast("Gagal mendapatkan respons echo dari server")
+                    }
+                    refreshTelemetry()
                 }
-                refreshTelemetry()
             }
+        } else {
+            // Pengukuran latensi soket jaringan nyata jika server WebSocket GoSosmed belum tersambung
+            Thread {
+                val start = System.currentTimeMillis()
+                val reachable = try {
+                    val sock = java.net.Socket()
+                    sock.connect(java.net.InetSocketAddress("1.1.1.1", 53), 2500)
+                    sock.close()
+                    true
+                } catch (_: Exception) { false }
+                val rtt = System.currentTimeMillis() - start
+                runOnUiThread {
+                    btnEchoTest.isEnabled = true
+                    btnEchoTest.text = getString(R.string.btn_echo_test)
+                    vibrateFeedback()
+                    if (reachable) {
+                        toast("✓ Latensi Internet: ${rtt}ms (WebSocket Server belum login)")
+                    } else {
+                        toast("Perangkat offline — periksa koneksi internet/Wi-Fi")
+                    }
+                    refreshTelemetry()
+                }
+            }.start()
         }
     }
 
@@ -1605,6 +1667,108 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun setupRemoteControllerSwitch() {
+        // WAJIB DEFAULT FALSE: tidak pernah membaca dari prefs, selalu mulai OFF
+        switchRemoteController.isChecked = false
+        applyRemoteState(false)
+
+        switchRemoteController.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                // Prasyarat: Aksesibilitas wajib aktif
+                val a11yAlive = AgentAccessibilityService.isServiceAlive()
+                if (!a11yAlive) {
+                    switchRemoteController.isChecked = false
+                    toast("Aktifkan Aksesibilitas (Langkah 1) terlebih dahulu!")
+                    return@setOnCheckedChangeListener
+                }
+
+                val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? android.media.projection.MediaProjectionManager
+                if (mpm != null) {
+                    projectionLauncher.launch(mpm.createScreenCaptureIntent())
+                } else {
+                    switchRemoteController.isChecked = false
+                    toast("MediaProjection tidak didukung di perangkat ini")
+                }
+            } else {
+                applyRemoteState(false)
+                com.gososmed.agent.capture.CaptureService.stop(this)
+                com.gososmed.agent.capture.LocalWebServer.stop()
+                toast("Remote Controller dinonaktifkan")
+            }
+        }
+
+        findViewById<View>(R.id.cardRemoteController)?.setOnClickListener {
+            switchRemoteController.isChecked = !switchRemoteController.isChecked
+        }
+
+        btnOpenLocalBrowser.setOnClickListener {
+            val ip = getLocalIpAddress()
+            val url = "http://$ip:${com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT}"
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (e: Exception) {
+                toast("Gagal membuka browser: ${e.message}")
+            }
+        }
+
+        if (intent?.getBooleanExtra("start_remote", false) == true) {
+            switchRemoteController.isChecked = true
+        }
+    }
+
+    private fun applyRemoteState(active: Boolean) {
+        val localIp = getLocalIpAddress()
+        val port = com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT
+        val httpsPort = port + 1
+        layoutRemoteActiveBanner.visibility = View.VISIBLE
+        if (active) {
+            val url = "http://$localIp:$port"
+            val httpsUrl = "https://$localIp:$httpsPort"
+            val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
+            tvRemoteSubtitle.text = "Aktif • $localIp"
+            tvRemoteLocalUrl.text = buildString {
+                append(url).append('\n').append(httpsUrl).append(" (HTTPS)")
+                if (pin.isNotEmpty()) {
+                    append("\n\nPIN: ").append(pin)
+                    append("\nMasukkan PIN ini di browser PC.")
+                }
+            }
+            tvRemoteClients.text = "Port $port / $httpsPort"
+        } else {
+            val displayIp = if (localIp != "127.0.0.1") localIp else "Wi-Fi"
+            val url = if (localIp != "127.0.0.1") "http://$localIp:$port" else "Menghubungkan ke Wi-Fi..."
+            tvRemoteSubtitle.text = "Siap diaktifkan • $displayIp"
+            tvRemoteLocalUrl.text = url
+            tvRemoteClients.text = "Port $port"
+        }
+    }
+
+    fun getLocalIpAddress(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+            val sorted = interfaces.sortedByDescending {
+                val n = it.name.lowercase()
+                when {
+                    n.startsWith("wlan") -> 3
+                    n.startsWith("eth") -> 2
+                    !it.isLoopback && it.isUp -> 1
+                    else -> 0
+                }
+            }
+            for (intf in sorted) {
+                if (intf.isLoopback || !intf.isUp) continue
+                for (addr in intf.inetAddresses) {
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val host = addr.hostAddress
+                        if (!host.isNullOrBlank() && host != "127.0.0.1") {
+                            return host
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "127.0.0.1"
+    }
     private fun setupOemCard() {
         val oemName = OemOptimizationHelper.getOemName()
         tvOemTitle.text = getString(R.string.oem_title_format, oemName)
@@ -1678,6 +1842,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshStatus()
         refreshUpdateState()
+        // SECURITY: do not start the LAN server on resume. Only the Remote
+        // Controller switch may start it (see setupRemoteControllerSwitch).
+        applyRemoteState(com.gososmed.agent.capture.CaptureService.instance != null)
         window.decorView.removeCallbacks(liveStatusTicker)
         window.decorView.postDelayed(liveStatusTicker, 1500L)
         // v0.7.1: izin overlay = pengecualian Background Activity Launch.

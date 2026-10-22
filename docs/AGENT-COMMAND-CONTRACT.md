@@ -9,7 +9,8 @@
 > (aplikasi pihak ketiga). Mulai v0.9.0, Shizuku **dihapus total** dan
 > digantikan transport ADB lokal milik sendiri.
 > Repo APK: `gososmed-mobile-agent`. Transport: WebSocket ke
-> `wss://api.bamsbung.id/v1/agent/ws`.
+> `wss://<GOSOSMED_AGENT_HOST>/v1/agent/ws` (host diisi lewat konfigurasi
+> server, tidak di-hardcode di repo publik).
 >
 > **Catatan urutan kerja:** dokumen ini ditulis SEBELUM kode diubah (prinsip
 > dokumentasi-dulu). Bila membaca dokumen ini saat kode masih v0.8.0, ambil
@@ -112,6 +113,7 @@ Legenda kolom **T**: `A` = accessibility cukup, `S` = butuh shell (ADB),
 | 19 | `screenshot` **[DEPRECATED for new app cards; retained for backward compatibility]** | `scale?`, `format?`, `quality?` | `{format, data}` | A |
 | 20 | `shell` | `command`, `timeoutMs?` | `{ok, exit_code, stdout, stderr, transport, reason?}` | S |
 | 21 | **`adbPair`** (baru) | `host`, `port`, `code` | `{ok, paired, adb_connected, reason?}` | — |
+| 22 | **`swipe`** (baru) | `x1`, `y1`, `x2`, `y2`, `duration?` | `{ok}` | A→S |
 | ~~—~~ | ~~`shizukuRequest`~~ | — | **DIHAPUS** | — |
 
 ### 3.1 `shell` — batas keamanan (TIDAK berubah)
@@ -494,9 +496,66 @@ APK melaporkan dukungan protokol secara eksplisit kepada server melalui array `p
 - **WebSocket Hello (`register`):** Pesan registrasi menyertakan field `"protocol_versions": [1, 2]`.
 - **Command `capabilities`:** Snapshot kapabilitas menyertakan field `"protocol_versions": [1, 2]`.
 
-### 10.9 Rujukan Fixture Netral (JSON Contracts)
+### 10.9 Protokol Streaming Live & Dua Pesan Berpasangan (Two-Message Protocol)
+
+Streaming frame layar (melalui `startDebugFrames` maupun payload `observe`) menggunakan protokol dua pesan berpasangan yang deterministik dan efisien memori:
+
+1. **Format Gambar Resmi: Pure JPEG (dan PNG untuk Lossless)**:
+   - Standar: `format = "jpeg"`, `maxWidth = 480`, `quality = 75` (dibatasi ketat di rentang 30–95).
+   - Resolusi asli layar (misal 1080x2400) di-downscale secara proporsional sebelum kompresi sehingga memori uncompressed turun dari 10.3 MB ke ~2 MB dan waktu kompresi CPU turun dari 45 ms ke ~8 ms.
+   - **WebP DILARANG KERAS**: Format WebP telah usang. Permintaan dengan `format: "webp"` langsung ditolak dengan `reason_code: "unsupported_image_format"`.
+2. **Nol Magic Byte di WebSocket Binary**:
+   - Frame binary WebSocket murni 100% byte JPEG (`0xFF, 0xD8, ...`) tanpa prefiks magic byte byte-header. Browser dapat langsung memanggil `createImageBitmap(blob)` tanpa perlu operasi byte slicing di JavaScript.
+3. **Pesan Berpasangan (Two-Message Sequence)**:
+   - **Pesan 1 (WebSocket Text - JSON `frame_meta`)**:
+     ```json
+     {
+       "type": "frame_meta",
+       "session_id": "sess_live_1",
+       "binary_message_id": "sess_live_1:1",
+       "frame_seq": 1,
+       "format": "jpeg",
+       "width": 480,
+       "height": 1066,
+       "source_width": 1080,
+       "source_height": 2400,
+       "source_scale": 0.4444,
+       "quality": 75,
+       "byte_length": 22450,
+       "timestamp_ms": 1729500000000
+     }
+     ```
+   - **Pesan 2 (WebSocket Binary Frame)**: Raw JPEG bytes.
+   - **Acknowledge dari Browser**: `{"type": "ack_frame", "session_id": "sess_live_1", "binary_message_id": "sess_live_1:1"}`.
+   - **Pencegahan Kebocoran VRAM Browser**: Browser wajib memanggil `bitmap.close()` segera setelah `ctx.drawImage()` dijalankan.
+4. **Scheduler Deterministik 1–2 FPS & Flow Control 1-in-Flight (`FrameFlow`)**:
+   - Maksimal 1 frame in-flight per sesi live streaming.
+   - Timeout 2000 ms auto-unblock jika ACK hilang atau terlambat di jaringan.
+   - Kebijakan *drop-newest*: jika browser belum mengirimkan ACK dan interval FPS berikutnya tiba, frame baru dibatalkan agar tidak membebani buffer TCP/WebSocket.
+   - Guard sesi tunggal: jika ada request streaming baru saat sesi lain aktif dengan ID berbeda, request ditolak dengan `reason_code: "device_busy"`.
+   - Preflight capture: frame pertama diambil dan divalidasi sebelum mengembalikan respons sukses start.
+
+### 10.10 Protokol Kontrol Interaktif Realtime (Touch, Gestures, Navigation)
+
+Selain command AI terstruktur Protocol v2, antarmuka web viewer (`tools/browser-viewer/index.html`) dan operator manusia dapat mengirimkan command kontrol interaktif realtime berikut:
+
+1. **`tap` (Ketukan Layar)**:
+   - Request: `{"id": 101, "cmd": "tap", "x": 540, "y": 1200}`
+   - Jalur eksekusi: Shell ADB `input tap x y` bila UID 2000 siap; fallback `dispatchGesture()` aksesibilitas.
+2. **`swipe` (Geseran / Scroll Layar)**:
+   - Request: `{"id": 102, "cmd": "swipe", "x1": 540, "y1": 1800, "x2": 540, "y2": 600, "duration": 250}`
+   - Jalur eksekusi: Shell ADB `input swipe x1 y1 x2 y2 duration` bila siap; fallback `dispatchGesture()` garis lurus.
+3. **Navigasi Tombol Sistem**:
+   - `back`: `{"id": 103, "cmd": "back"}` → `GLOBAL_ACTION_BACK`
+   - `home`: `{"id": 104, "cmd": "home"}` → `GLOBAL_ACTION_HOME`
+   - `recents`: `{"id": 105, "cmd": "recents"}` → `GLOBAL_ACTION_RECENTS`
+   - `wake`: `{"id": 106, "cmd": "wake"}` → Menyalakan layar bila padam / mengunci bila hidup.
+4. **Pengetikan Teks Langsung**:
+   - `setText`: `{"id": 107, "cmd": "setText", "text": "halo dunia"}` → Mengetik teks ke node input yang sedang fokus.
+
+### 10.11 Rujukan Fixture Netral (JSON Contracts)
 
 Spesifikasi data lengkap, payload request/response, dan skenario pengujian disimpan secara netral di:
 - `docs/contracts/v1-fixtures.json` : Fixture lengkap command legacy v1 (termasuk kasus kegagalan dan envelope kontradiktif).
-- `docs/contracts/v2-fixtures.json` : Fixture lengkap Protocol Version 2 untuk seluruh command baru dan ke-18 canonical reason codes.
+- `docs/contracts/v2-fixtures.json` : Fixture lengkap Protocol Version 2 untuk seluruh command baru, two-message protocol, dan ke-18 canonical reason codes.
 - `docs/contracts/capability-fixture.json` : Snapshot referensi respon `capabilities` aktual dengan `protocol_versions: [1, 2]`.

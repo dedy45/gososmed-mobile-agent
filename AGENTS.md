@@ -137,9 +137,9 @@ Do not attach a `RemoteInput` action before the pairing port is known, and do no
 ## 7. Documentation map
 
 | File | Contents |
-|---|---|
 | `README.md` | Public-facing: why the repo is open, setup, release channels, feature checklist |
 | `CHANGELOG.md` | Keep a Changelog + SemVer. **Release notes are generated from this** by `release.yml` — keep the `## [X.Y.Z]` heading format exact |
+| `docs/README.md` | **Public Documentation Hub & Trust Center** — open tools catalog, security boundaries, and document directory index |
 | `docs/PAIRING-FLOW.md` | Pairing flow design |
 | `docs/TRANSPORT-ADB-LOKAL.md` | Local ADB transport |
 | `docs/SHIZUKU-TRANSPORT.md` | Legacy Shizuku transport (deprecated path) |
@@ -147,3 +147,4 @@ Do not attach a `RemoteInput` action before the pairing port is known, and do no
 | `docs/DB-AND-API-MAP.md` | How this app maps onto backend tables/endpoints |
 | `docs/SETUP-3-LANGKAH.md` | User-facing 3-step setup guide |
 | `docs/F0-LIBRARY-VALIDATION.md` | Library validation notes |
+| `docs/plans/` | Architecture plans: MediaCodec H.264 zero-copy streaming, Deterministic Android Portal v2, and browser viewer analysis |

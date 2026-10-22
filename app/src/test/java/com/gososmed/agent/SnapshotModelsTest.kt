@@ -127,6 +127,56 @@ class SnapshotModelsTest {
     }
 
     @Test
+    fun testSnapshotImageSerialization() {
+        val jpegImg = SnapshotImage(
+            format = "jpeg",
+            width = 480,
+            height = 1066,
+            quality = 75,
+            binaryMessageId = "snap-img-01",
+            sourceWidth = 1080,
+            sourceHeight = 2400,
+            sourceScale = 0.444f
+        )
+        val jsonJpeg = jpegImg.toJson()
+        assertEquals("jpeg", jsonJpeg.getString("format"))
+        assertEquals(480, jsonJpeg.getInt("width"))
+        assertEquals(1066, jsonJpeg.getInt("height"))
+        assertEquals(75, jsonJpeg.getInt("quality"))
+        assertEquals("snap-img-01", jsonJpeg.getString("binary_message_id"))
+        assertEquals(1080, jsonJpeg.getInt("source_width"))
+        assertEquals(2400, jsonJpeg.getInt("source_height"))
+        assertEquals(0.444, jsonJpeg.getDouble("source_scale"), 0.001)
+
+        val parsedJpeg = SnapshotImage.fromJson(jsonJpeg)
+        assertEquals(jpegImg.format, parsedJpeg.format)
+        assertEquals(jpegImg.width, parsedJpeg.width)
+        assertEquals(jpegImg.height, parsedJpeg.height)
+        assertEquals(jpegImg.quality, parsedJpeg.quality)
+        assertEquals(jpegImg.binaryMessageId, parsedJpeg.binaryMessageId)
+        assertEquals(jpegImg.sourceWidth, parsedJpeg.sourceWidth)
+        assertEquals(jpegImg.sourceHeight, parsedJpeg.sourceHeight)
+        assertEquals(jpegImg.sourceScale, parsedJpeg.sourceScale, 0.001f)
+
+        // PNG with null quality
+        val pngImg = SnapshotImage(
+            format = "png",
+            width = 1080,
+            height = 2400,
+            quality = null,
+            binaryMessageId = "snap-img-02",
+            sourceWidth = 1080,
+            sourceHeight = 2400,
+            sourceScale = 1.0f
+        )
+        val jsonPng = pngImg.toJson()
+        assertTrue(jsonPng.isNull("quality"))
+        val parsedPng = SnapshotImage.fromJson(jsonPng)
+        assertNull(parsedPng.quality)
+        assertEquals("png", parsedPng.format)
+    }
+
+    @Test
     fun testSnapshotResultSerialization() {
         val display = SnapshotDisplay(id = 0, width = 1220, height = 2712, rotation = 0, densityDpi = 440)
         val foreground = SnapshotForeground(packageName = "com.facebook.katana", windowId = 12)

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoSosmed Remote Controller — Ember 2048 Dark (Dual-Engine)</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Top Title Bar -->
+  <header class="title-bar">
+    <div class="title-left">
+      <div class="app-icon">G</div>
+      <div class="app-title">
+        GoSosmed Remote Controller
+        <span class="badge-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Disconnected</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="title-right">
+      <select id="selectResolution" class="input-ws" style="width: 155px; cursor: pointer;">
+        <option value="1080">1080p (FHD 5M)</option>
+        <option value="720" selected>720p (HD 2.5M)</option>
+        <option value="540">540p (SD 1.2M)</option>
+        <option value="480">480p (Smooth 800k)</option>
+      </select>
+      <input type="text" id="wsUrlInput" class="input-ws" style="width: 220px;" placeholder="ws://[IP-HP]:8765/ws">
+      <button id="btnConnect" class="btn">Connect</button>
+      <button id="btnDisconnect" class="btn btn-secondary" style="display: none;">Disconnect</button>
+    </div>
+  </header>
+
+  <!-- HTTPS Upgrade Banner (for WebCodecs 60 FPS on Wi-Fi) -->
+  <div id="httpsUpgradeBanner" class="https-upgrade-banner" style="display: none;">
+    <span>⚡ Buka Mode Super Smooth 60 FPS (Hardware WebCodecs HTTPS)</span>
+    <button class="btn btn-primary" id="btnUpgradeHttps" style="padding: 4px 12px; font-size: 0.75rem;">Buka Port 8766 ↗</button>
+  </div>
+
+  <!-- Main Workspace Area -->
+  <main class="workspace-area">
+
+    <!-- Phone Viewport Stage -->
+    <div class="phone-container">
+
+      <!-- Phone Bezel Mockup -->
+      <div class="phone-frame" id="phoneFrame">
+        <div class="phone-notch"></div>
+
+        <!-- Screen Viewport with Dual-Engine Surfaces -->
+        <div class="screen-viewport" id="screenViewport">
+          <!-- Engine 1: Video Element (MSE fMP4 Muxer for plain HTTP LAN) -->
+          <video id="screenVideo" autoplay playsinline muted></video>
+
+          <!-- Engine 2: Canvas Element (WebCodecs VideoDecoder for Localhost/HTTPS) -->
+          <canvas id="screenCanvas"></canvas>
+
+          <!-- Engine 3: Img Element (Pure JPEG Fallback) -->
+          <img id="screenImg" alt="Live Screen Stream">
+
+          <!-- Waiting Placeholder -->
+          <div class="stream-waiting-tip" id="streamWaitingTip">
+            <div class="spinner-ring"></div>
+            <div>
+              <strong style="color: var(--text-primary); font-size: 0.95rem;">Menunggu Sinyal Layar...</strong><br>
+              <small style="color: var(--text-muted); font-size: 0.78rem;">Nyalakan switch "Remote Controller" di HP</small>
+            </div>
+          </div>
+
+          <!-- Game Keymapping Overlay (dynamic, draggable, persisted) -->
+          <div id="keymapOverlay" class="keymap-overlay" style="display: none;"></div>
+
+          <!-- Keymap Editor Bar (shown in edit mode) -->
+          <div id="keymapEditor" class="keymap-editor" style="display: none;">
+            <div class="km-row">
+              <span class="km-title">Editor Keymap</span>
+              <button class="km-btn" id="kmAddKey" title="Tambah tombol key">+ Key</button>
+              <button class="km-btn" id="kmAddTap" title="Tambah tombol tap">+ Tap</button>
+              <button class="km-btn" id="kmReset" title="Reset ke preset default">Reset</button>
+              <button class="km-btn" id="kmExport" title="Salin JSON keymap">Export</button>
+              <button class="km-btn km-done" id="kmDone" title="Selesai edit">Selesai</button>
+            </div>
+            <div class="km-row" id="kmInspector" style="display: none;">
+              <label class="km-label">Label
+                <input class="km-input" id="kmLabel" maxlength="8" placeholder="W">
+              </label>
+              <label class="km-label" id="kmValueWrap">Kode
+                <input class="km-input" id="kmValue" maxlength="10" placeholder="51">
+              </label>
+              <label class="km-label">Ukuran
+                <input class="km-input km-range" id="kmSize" type="range" min="28" max="90" value="44">
+              </label>
+              <label class="km-label">Transparansi
+                <input class="km-input km-range" id="kmAlpha" type="range" min="15" max="100" value="55">
+              </label>
+              <button class="km-btn km-del" id="kmDelete" title="Hapus tombol">Hapus</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Android Softkeys Bar (Inside Phone) -->
+        <nav class="android-nav-bar">
+          <button class="nav-key" id="btnNavBack" title="Android Back (Esc)">◀</button>
+          <button class="nav-key" id="btnNavHome" title="Android Home">⌂</button>
+          <button class="nav-key" id="btnNavRecent" title="Android Recent Tasks">▢</button>
+          <button class="nav-key" id="btnNavLock" title="Kunci / Buka Layar">🔒</button>
+          <button class="nav-key" id="btnNavPower" title="Power Menu">⚡</button>
+        </nav>
+
+        <!-- Direct Typing Input Bar -->
+        <div class="typing-bar">
+          <input type="text" id="typeInput" class="input-text" placeholder="Ketik teks untuk dikirim ke HP..." autocomplete="off">
+          <button id="btnSendText" class="btn btn-secondary">Kirim</button>
+        </div>
+      </div>
+
+      <!-- Floating Sidebar Toolbar (1:1 iMyFone Style) -->
+      <aside class="sidebar-toolbar">
+        <button class="side-btn active" id="btnToggleMouse" data-tooltip="Kontrol Mouse (Drag/Tap)">🖱️</button>
+        <button class="side-btn" id="btnRotateScreen" data-tooltip="Putar Layar (Portrait / Landscape)">⟳</button>
+        <button class="side-btn" id="btnScreenshot" data-tooltip="Ambil Screenshot (PNG)">📷</button>
+        <button class="side-btn" id="btnRestScreen" data-tooltip="Padamkan Layar HP (Rest Screen)">🌙</button>
+        <button class="side-btn" id="btnVolUp" data-tooltip="Volume Up (keyevent 24)">🔊</button>
+        <button class="side-btn" id="btnVolDown" data-tooltip="Volume Down (keyevent 25)">🔉</button>
+        <button class="side-btn" id="btnRecordScreen" data-tooltip="Rekam Layar (PC 60 FPS)">⏺️</button>
+        <button class="side-btn" id="btnAudioToggle" data-tooltip="Audio HP (Mute/Unmute)">🔈</button>
+        <button class="side-btn" id="btnToggleKeymap" data-tooltip="Game Keymapping (WASD)">🎮</button>
+        <button class="side-btn" id="btnKeymapConfig" data-tooltip="Konfigurasi Gamepad (Layout, Tombol, Preset)">⚙️</button>
+        <button class="side-btn" id="btnClipboardSync" data-tooltip="Kirim Clipboard PC ke HP">📋</button>
+        <button class="side-btn" id="btnFullscreen" data-tooltip="Layar Penuh (Fullscreen)">⛶</button>
+        <button class="side-btn" id="btnTelemetryToggle" data-tooltip="Statistik Streaming">⚙</button>
+      </aside>
+    </div>
+
+    <!-- Telemetry & Diagnostic Panel -->
+    <div class="drawer-panel" id="telemetryPanel">
+      <div class="panel-header">
+        <span>STATISTIK STREAMING</span>
+        <span style="font-size: 0.72rem; color: var(--text-muted);" id="engineBadge">Auto-Detect</span>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <span class="metric-label">FPS RENDERED</span>
+          <span class="metric-val" id="valFps">0.0</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">LATENSI EST.</span>
+          <span class="metric-val" id="valLatency">~15 ms</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">RESOLUSI STREAM</span>
+          <span class="metric-val" id="valRes">-</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">ENGINE AKTIF</span>
+          <span class="metric-val" id="valEngine">Waiting</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">AUDIO</span>
+          <span class="metric-val" id="valAudio">Muted</span>
+          <div class="audio-meter"><div class="audio-meter-fill" id="audioMeter"></div></div>
+        </div>
+      </div>
+
+      <div class="panel-header" style="margin-top: 4px;">
+        <span>LOG SISTEM & EVENT</span>
+        <span class="log-head-right">
+          <span id="logErrorCount" class="log-badge">0 err / 0 warn</span>
+          <button class="log-clear" id="btnClearLog" title="Bersihkan log">✕</button>
+        </span>
+      </div>
+
+      <div class="terminal-box" id="terminalLog"></div>
+    </div>
+
+  </main>
+
+  <!-- Gamepad Configuration Modal (DeskIn presetkeyboard pattern) -->
+  <div class="gpc-backdrop" id="gpcBackdrop" style="display: none;">
+    <div class="gpc-modal" role="dialog" aria-modal="true" aria-label="Konfigurasi Gamepad">
+      <header class="gpc-head" id="gpcHead">
+        <span class="gpc-title">Konfigurasi Gamepad</span>
+        <span class="gpc-drag-hint">⋮⋮ geser</span>
+        <div class="gpc-head-actions">
+          <button class="gpc-icon-btn" id="gpcCollapse" title="Kecilkan / Besarkan">▾</button>
+          <button class="gpc-icon-btn" id="gpcClose" title="Tutup">✕</button>
+        </div>
+      </header>
+
+      <div class="gpc-tabs">
+        <button class="gpc-tab active" data-tab="presets">Preset</button>
+        <button class="gpc-tab" data-tab="keys">Tombol</button>
+        <button class="gpc-tab" data-tab="style">Tampilan</button>
+      </div>
+
+      <!-- TAB: Presets -->
+      <section class="gpc-pane active" data-pane="presets">
+        <p class="gpc-hint">Pilih preset siap pakai, lalu sesuaikan posisi tombol di tab <b>Tombol</b>.</p>
+        <div class="gpc-preset-grid" id="gpcPresetGrid"></div>
+        <div class="gpc-row">
+          <button class="gpc-btn" id="gpcExport">Export JSON</button>
+          <button class="gpc-btn" id="gpcImport">Import JSON</button>
+          <button class="gpc-btn gpc-danger" id="gpcResetAll">Reset Semua</button>
+        </div>
+        <textarea class="gpc-json" id="gpcJson" spellcheck="false"
+          placeholder="Tempel JSON layout di sini lalu klik Import..."></textarea>
+      </section>
+
+      <!-- TAB: Keys -->
+      <section class="gpc-pane" data-pane="keys">
+        <p class="gpc-hint">Pilih tombol untuk mengatur posisi, ukuran, label, dan keycode Android.</p>
+        <div class="gpc-row">
+          <button class="gpc-btn gpc-primary" id="gpcAddKey">+ Tombol Key</button>
+          <button class="gpc-btn" id="gpcAddTap">+ Tombol Tap</button>
+          <button class="gpc-btn gpc-danger" id="gpcDelete">Hapus Terpilih</button>
+        </div>
+        <div class="gpc-keylist" id="gpcKeyList"></div>
+        <div class="gpc-inspector" id="gpcInspector" style="display: none;">
+          <div class="gpc-field">
+            <label for="gpcLabel">Label</label>
+            <input id="gpcLabel" maxlength="8" placeholder="W">
+          </div>
+          <div class="gpc-field" id="gpcCodeWrap">
+            <label for="gpcCode">Keycode Android</label>
+            <input id="gpcCode" type="number" min="0" max="300" placeholder="51">
+          </div>
+          <div class="gpc-field">
+            <label for="gpcX">Posisi X <span id="gpcXVal">0%</span></label>
+            <input id="gpcX" type="range" min="0" max="100" value="50">
+          </div>
+          <div class="gpc-field">
+            <label for="gpcY">Posisi Y <span id="gpcYVal">0%</span></label>
+            <input id="gpcY" type="range" min="0" max="100" value="50">
+          </div>
+          <div class="gpc-field">
+            <label for="gpcSize">Ukuran <span id="gpcSizeVal">48px</span></label>
+            <input id="gpcSize" type="range" min="28" max="96" value="48">
+          </div>
+          <div class="gpc-field">
+            <label for="gpcAlpha">Transparansi <span id="gpcAlphaVal">85%</span></label>
+            <input id="gpcAlpha" type="range" min="20" max="100" value="85">
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Style -->
+      <section class="gpc-pane" data-pane="style">
+        <p class="gpc-hint">Atur tampilan seluruh overlay gamepad.</p>
+        <div class="gpc-field">
+          <label for="gpcGlobalAlpha">Transparansi Global <span id="gpcGlobalAlphaVal">85%</span></label>
+          <input id="gpcGlobalAlpha" type="range" min="20" max="100" value="85">
+        </div>
+        <div class="gpc-field">
+          <label for="gpcScale">Skala Overlay <span id="gpcScaleVal">100%</span></label>
+          <input id="gpcScale" type="range" min="60" max="140" value="100">
+        </div>
+        <div class="gpc-row">
+          <label class="gpc-check"><input type="checkbox" id="gpcHaptics" checked> Getar saat tombol ditekan</label>
+        </div>
+        <div class="gpc-row">
+          <label class="gpc-check"><input type="checkbox" id="gpcShowLabels" checked> Tampilkan label tombol</label>
+        </div>
+      </section>
+
+      <footer class="gpc-foot">
+        <span class="gpc-count" id="gpcCount">0 tombol</span>
+        <button class="gpc-btn gpc-primary" id="gpcSave">Simpan &amp; Tutup</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Modular Scripts -->
+  <script src="/js/stream.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/control.js"></script>
+</body>
+</html>

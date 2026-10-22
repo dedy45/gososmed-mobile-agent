@@ -23,6 +23,30 @@
       }
     }
   },
+  "two_message_frame_protocol": {
+    "description": "Deterministic paired text-meta + binary-data protocol for live streaming and OBSERVE screenshots",
+    "text_message": {
+      "type": "frame_meta",
+      "session_id": "string",
+      "binary_message_id": "string",
+      "frame_seq": "long",
+      "format": "string (pure 'jpeg' or 'png', webp is forbidden)",
+      "width": "int",
+      "height": "int",
+      "source_width": "int",
+      "source_height": "int",
+      "source_scale": "double",
+      "quality": "int (clamped 30-95, default 75)",
+      "byte_length": "int",
+      "timestamp_ms": "long"
+    },
+    "binary_message": "Raw JPEG/PNG bytes without magic byte prefix (100% pure image bytes)",
+    "ack_message": {
+      "type": "ack_frame",
+      "session_id": "string",
+      "binary_message_id": "string"
+    }
+  },
   "commands": {
     "observe": [
       {
