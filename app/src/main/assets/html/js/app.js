@@ -219,6 +219,22 @@
                 if (s) s.textContent = 'Izin tangkapan layar kedaluwarsa';
               }
               if (window.GoStream) window.GoStream.reset();
+            } else if (msg.type === 'codec') {
+              // The phone negotiated a codec at runtime (AV1/HEVC/AVC).
+              // Verify the browser can decode it; if not, ask for AVC fallback.
+              const viewerCodec = msg.viewer || 'avc1';
+              const probe = viewerCodec === 'hvc1'
+                ? 'video/mp4; codecs="hvc1.1.6.L93.B0"'
+                : viewerCodec === 'av01'
+                  ? 'video/mp4; codecs="av01.0.05M.08"'
+                  : 'video/mp4; codecs="avc1.42E01E"';
+              const supported = (typeof MediaSource !== 'undefined')
+                && MediaSource.isTypeSupported(probe);
+              log(`Codec HP: ${msg.mime} (${viewerCodec}) — ${supported ? 'didukung browser' : 'TIDAK didukung, minta AVC'}`,
+                  supported ? 'success' : 'warn');
+              if (!supported) {
+                sendControl(JSON.stringify({ cmd: 'setCodec', mime: 'video/avc' }));
+              }
             } else if (msg.type === 'frame_meta') {
               if (valRes) valRes.textContent = `${msg.width}x${msg.height}`;
               if (msg.width && msg.height) {

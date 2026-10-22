@@ -641,6 +641,10 @@ button:active{transform:translateY(1px)}
                                         }
                                     }
                                 }
+                                "setCodec" -> {
+                                    val mime = json.optString("mime", "video/avc")
+                                    CaptureService.instance?.requestCodecFallback(mime)
+                                }
                                 "setResolution" -> {
                                     val width = json.optInt("width", 720)
                                     val kbps = json.optInt("kbps", 2500)

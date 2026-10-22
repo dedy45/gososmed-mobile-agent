@@ -83,6 +83,15 @@ class CaptureService : Service() {
     /** Set once the MediaProjection token is rejected; prevents endless retries. */
     @Volatile private var projectionDead = false
 
+    /** Codec yang sedang dipakai pipeline ini (hasil negosiasi). */
+    @Volatile private var currentCodecKind: CodecKind = CodecKind.AVC
+
+    /**
+     * Codec yang diminta viewer (mis. browser tidak bisa decode HEVC).
+     * Null = biarkan perangkat memilih urutan terbaik.
+     */
+    @Volatile private var preferredCodec: CodecKind? = null
+
     private var targetWidth = 720
     private var targetKbps = 2500
     private var targetFps = 30
@@ -194,6 +203,28 @@ class CaptureService : Service() {
         } catch (_: Exception) {}
     }
 
+    /**
+     * Viewer meminta codec tertentu (biasanya AVC karena browsernya tidak bisa
+     * decode HEVC/AV1). Hanya bereaksi bila codec benar-benar berbeda, supaya
+     * tidak memicu reconfigure berulang.
+     */
+    fun requestCodecFallback(mime: String) = handler.post {
+        val target = when (mime.lowercase()) {
+            "video/avc", "avc", "avc1" -> CodecKind.AVC
+            "video/hevc", "hevc", "hvc1" -> CodecKind.HEVC
+            "video/av01", "av1", "av01" -> CodecKind.AV1
+            else -> return@post
+        }
+        if (target != currentCodecKind) {
+            android.util.Log.i(
+                "CaptureService",
+                "Viewer meminta codec ${mime} (sekarang ${currentCodecKind.name}) — reconfigure"
+            )
+            preferredCodec = target
+            reconfigure()
+        }
+    }
+
     private fun reconfigure() {
         val p = projection ?: return
         if (projectionDead) return
@@ -256,19 +287,18 @@ class CaptureService : Service() {
             try { oldCodec?.release() } catch (_: Exception) {}
             try { oldSurface?.release() } catch (_: Exception) {}
 
-            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, tw, th).apply {
-                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, targetKbps * 1000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, targetFps)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
-                setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 40_000L)
-                if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0)
-                if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
-                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
-            }
+            // ---- Codec negotiation with real configure() attempts -------------
+            // CodecCapability.negotiate() only checks whether an encoder is
+            // REGISTERED. An AV1/HEVC encoder can be registered yet reject our
+            // resolution/bitrate. EncoderPipeline tries each codec for real and
+            // falls back to AVC, which is guaranteed present on every device.
+            //
+            // IMPORTANT: setCallback() must be called BEFORE configure() —
+            // Android throws IllegalStateException otherwise.
+            var chosenKind = CodecKind.AVC
+            var newCodec: MediaCodec? = null
 
-            val newCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            newCodec.setCallback(object : MediaCodec.Callback() {
+            val encoderCallback = object : MediaCodec.Callback() {
                 override fun onInputBufferAvailable(mc: MediaCodec, idx: Int) {}
 
                 override fun onOutputFormatChanged(mc: MediaCodec, fmt: MediaFormat) {
@@ -321,18 +351,72 @@ class CaptureService : Service() {
 
                 override fun onError(mc: MediaCodec, e: MediaCodec.CodecException) {
                     handler.post {
-                        if (mc === codec) {
+                        if (mc === activeCodec) {
                             reconfigure()
                         }
                     }
                 }
-            }, handler)
+            }
 
-            newCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            val newSurface = newCodec.createInputSurface()
+            // When the viewer requested a specific codec, try it first but keep
+            // AVC as a guaranteed last resort (preferenceOrder always ends there).
+            val order = preferredCodec?.let { pref ->
+                listOf(pref) + CodecCapability.preferenceOrder.filter { it != pref }
+            } ?: CodecCapability.preferenceOrder
+
+            val report = EncoderPipeline.attemptWithReport(order = order) { kind ->
+                val mime = CodecCapability.mimeOf(kind)
+                val fmt = MediaFormat.createVideoFormat(mime, tw, th).apply {
+                    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                    setInteger(MediaFormat.KEY_BIT_RATE, targetKbps * 1000)
+                    setInteger(MediaFormat.KEY_FRAME_RATE, targetFps)
+                    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
+                    setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 40_000L)
+                    if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0)
+                    if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
+                    // Profile is AVC-specific; HEVC/AV1 use the encoder default.
+                    if (kind == CodecKind.AVC) {
+                        setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+                    }
+                }
+                val candidate = MediaCodec.createEncoderByType(mime)
+                try {
+                    // setCallback MUST precede configure().
+                    candidate.setCallback(encoderCallback, handler)
+                    candidate.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                } catch (e: Throwable) {
+                    try { candidate.release() } catch (_: Throwable) {}
+                    throw e
+                }
+                newCodec = candidate
+                chosenKind = kind
+                currentCodecKind = kind
+            }
+
+            if (report.failures.isNotEmpty()) {
+                android.util.Log.w("CaptureService", "Codec fallback: ${report.failures.joinToString("; ")}")
+            }
+            android.util.Log.i(
+                "CaptureService",
+                "Codec ternegosiasi: ${CodecCapability.mimeOf(chosenKind)} (percobaan: ${report.attempted})"
+            )
+
+            val newCodecRef = newCodec ?: run {
+                android.util.Log.e("CaptureService", "Tidak ada encoder yang bisa dikonfigurasi")
+                return
+            }
+
+            // Advertise the codec to the viewer so it can pick the right decoder.
+            LocalWebServer.broadcastText(
+                """{"type":"codec","kind":"${chosenKind.name.lowercase()}",""" +
+                """"mime":"${CodecCapability.mimeOf(chosenKind)}",""" +
+                """"viewer":"${CodecCapability.viewerCodecOf(chosenKind)}"}"""
+            )
+
+            val newSurface = newCodecRef.createInputSurface()
             // Claim ownership BEFORE start() so the first output callbacks are accepted.
-            activeCodec = newCodec
-            newCodec.start()
+            activeCodec = newCodecRef
+            newCodecRef.start()
 
             val existing = virtualDisplay
             if (existing == null) {
@@ -349,7 +433,7 @@ class CaptureService : Service() {
                 existing.resize(tw, th, dm.densityDpi)
             }
 
-            codec = newCodec
+            codec = newCodecRef
             inputSurface = newSurface
             currentConfigKey = key
         } catch (e: Exception) {
