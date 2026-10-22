@@ -70,6 +70,42 @@ Plan ini mengikuti pola tersebut.
 | **Virtual display tambahan** | Butuh `VIRTUAL_DISPLAY_FLAG_PUBLIC` atau `OWN_CONTENT_ONLY`; di Android 14+ display tambahan bisa dibatasi OEM | Uji di perangkat nyata |
 | **Satu token MediaProjection = satu VirtualDisplay** | Sudah ditangani di `CaptureService` | Jangan pernah `release()` lalu buat ulang |
 
+### ⚠️ Temuan penting saat implementasi: muxer fMP4 hanya untuk H.264
+
+Negosiasi codec **sudah berjalan** dan terbukti di perangkat:
+
+```
+CaptureService: Codec ternegosiasi: video/av01 (percobaan: [AV1])
+```
+
+Namun pada saat itu **layar viewer kosong**. Akar masalahnya bukan negosiasi,
+melainkan muxer di sisi browser (`stream.js`):
+
+- Muxer membangun sample entry `avc1` + box `avcC` dari **SPS (NALU tipe 7)**
+  dan **PPS (tipe 8)**.
+- **AV1 tidak memakai SPS/PPS sama sekali** — ia memakai OBU sequence header.
+- **HEVC memakai VPS/SPS/PPS (tipe 32/33/34)** dan sample entry `hvc1`.
+
+Akibatnya `onConfig()` langsung `return` saat SPS/PPS tidak ditemukan, dan
+tidak ada frame yang pernah didekode.
+
+**Keputusan:** `preferredCodec` di `CaptureService` di-set default ke **AVC**.
+Negosiasi tetap dijalankan dan dicatat di log untuk diagnostik, tetapi pipeline
+tidak beralih ke AV1/HEVC sampai muxer-nya siap.
+
+**Verifikasi setelah perbaikan:**
+
+```
+CaptureService: Codec ternegosiasi: video/avc (percobaan: [AVC])
+Viewer: MSE fMP4, readyState=4, 720x1600, buffered=5.68s, peak 81.2 FPS
+```
+
+**Konsekuensi untuk rencana:** Task 3 dan 4 di bawah **belum** menghasilkan
+penghematan bandwidth. Untuk benar-benar memakai AV1/HEVC, muxer fMP4 harus
+diperluas lebih dulu — itu pekerjaan terpisah yang jauh lebih besar (lihat
+"Pekerjaan Lanjutan" di akhir dokumen).
+
+
 ---
 
 ## Arsitektur Target
@@ -763,3 +799,35 @@ git commit -am "docs: add capture modes guide for end users"
 6. **Task 9** (dokumentasi) — terakhir
 
 Setiap task diakhiri commit, sehingga kegagalan bisa di-rollback per fitur.
+
+---
+
+## Pekerjaan Lanjutan (di luar cakupan plan ini)
+
+### Muxer fMP4 untuk AV1/HEVC
+
+Supaya AV1/HEVC benar-benar bisa dipakai di browser, muxer di `stream.js`
+harus diperluas:
+
+| Codec | Sample entry | Config box | Parameter set |
+|---|---|---|---|
+| AVC (sekarang) | `avc1` | `avcC` | SPS (7) + PPS (8) |
+| HEVC | `hvc1` | `hvcC` | VPS (32) + SPS (33) + PPS (34) |
+| AV1 | `av01` | `av1C` | OBU sequence header (tanpa NALU) |
+
+Perubahan yang diperlukan:
+1. `initSeg()` menerima jenis codec dan membangun box yang sesuai.
+2. `nalus()` diganti parser per-codec (AV1 memakai OBU, bukan start code `00 00 01`).
+3. `fragment()` menyesuaikan flag sample (HEVC punya `sync` flag berbeda).
+4. `onConfig()` tidak boleh `return` saat SPS/PPS tidak ada — harus memakai
+   `av1C`/`hvcC` dari `csd-0`.
+
+Ini pekerjaan besar dan berisiko. Sampai selesai, **AVC tetap default** dan
+itu adalah pilihan yang benar, bukan kekurangan.
+
+### Watchdog MediaProjection (Task 5)
+
+Belum dikerjakan. Pola dari DeskIn (`MediaScreenService$startPeriodicCheck`
+dengan `numCapturedFrames`) tetap valid dan direkomendasikan sebagai
+pekerjaan berikutnya karena meningkatkan keandalan tanpa menyentuh codec.
+
