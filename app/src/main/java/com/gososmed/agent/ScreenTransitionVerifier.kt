@@ -33,7 +33,7 @@ object ScreenTransitionVerifier {
         postconditionQuery: SelectorQuery? = null,
         requireScreenChange: Boolean = true,
         timeoutMs: Long = 3000L,
-        pollIntervalMs: Long = 50L,
+        pollIntervalMs: Long = ProtocolV2.DEFAULT_POLL_INTERVAL_MS,
         timeSource: () -> Long = { System.currentTimeMillis() },
         isCancelled: () -> Boolean = { false },
         sleeper: (Long) -> Unit = { Thread.sleep(it) },
@@ -109,9 +109,17 @@ object ScreenTransitionVerifier {
                     }
                 }
             }
-
-            if (pollIntervalMs > 0) {
-                sleeper(pollIntervalMs)
+            val effectivePollInterval = ProtocolV2.clampPollInterval(pollIntervalMs)
+            if (isCancelled()) {
+                return TransitionResult(
+                    isSettled = false,
+                    reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                    beforeTreeHash = beforeSnapshot.treeHash,
+                    afterSnapshot = lastSnapshot
+                )
+            }
+            if (effectivePollInterval > 0) {
+                sleeper(effectivePollInterval)
             }
             if (isCancelled()) {
                 return TransitionResult(
@@ -154,7 +162,7 @@ object ScreenTransitionVerifier {
         postconditionQuery: SelectorQuery? = null,
         requireScreenChange: Boolean = true,
         timeoutMs: Long = 3000L,
-        pollIntervalMs: Long = 50L,
+        pollIntervalMs: Long = ProtocolV2.DEFAULT_POLL_INTERVAL_MS,
         timeSource: () -> Long = { System.currentTimeMillis() },
         isCancelled: () -> Boolean = { false },
         snapshotProvider: suspend () -> SnapshotResult
@@ -229,9 +237,17 @@ object ScreenTransitionVerifier {
                     }
                 }
             }
-
-            if (pollIntervalMs > 0) {
-                kotlinx.coroutines.delay(pollIntervalMs)
+            val effectivePollInterval = ProtocolV2.clampPollInterval(pollIntervalMs)
+            if (isCancelled()) {
+                return TransitionResult(
+                    isSettled = false,
+                    reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                    beforeTreeHash = beforeSnapshot.treeHash,
+                    afterSnapshot = lastSnapshot
+                )
+            }
+            if (effectivePollInterval > 0) {
+                kotlinx.coroutines.delay(effectivePollInterval)
             }
             if (isCancelled()) {
                 return TransitionResult(

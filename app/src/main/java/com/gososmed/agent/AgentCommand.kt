@@ -598,7 +598,7 @@ object AgentCommand {
                     }
                     val selector = if (args.has("selector")) SelectorQuery.fromJson(args.getJSONObject("selector")) else SelectorQuery()
                     val timeoutMs = args.optLong("timeout_ms", 5000L)
-                    val pollIntervalMs = args.optLong("poll_interval_ms", 100L)
+                    val pollIntervalMs = ProtocolV2.clampPollInterval(args.optLong("poll_interval_ms", ProtocolV2.DEFAULT_POLL_INTERVAL_MS))
                     val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
                     val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
 
@@ -670,7 +670,7 @@ object AgentCommand {
                         ).toJson()
                     }
                     val timeoutMs = args.optLong("timeout_ms", 5000L)
-                    val pollIntervalMs = args.optLong("poll_interval_ms", 100L)
+                    val pollIntervalMs = ProtocolV2.clampPollInterval(args.optLong("poll_interval_ms", ProtocolV2.DEFAULT_POLL_INTERVAL_MS))
                     val expectedPackage = if (args.has("expected_package")) args.getString("expected_package") else null
                     val postQuery = if (args.has("postcondition")) SelectorQuery.fromJson(args.getJSONObject("postcondition")) else null
                     val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)

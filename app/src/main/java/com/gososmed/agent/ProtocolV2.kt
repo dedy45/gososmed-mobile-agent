@@ -10,6 +10,14 @@ object ProtocolV2 {
     const val CURRENT_VERSION: Int = 2
     const val LEGACY_VERSION: Int = 1
 
+    // Cadence constants & clamping (system-design-feedback-orpv-2026-10-23.md ADR-06 & §2.9.a)
+    const val DEFAULT_POLL_INTERVAL_MS: Long = 100L
+    const val MIN_POLL_INTERVAL_MS: Long = 50L
+    const val MAX_POLL_INTERVAL_MS: Long = 200L
+
+    fun clampPollInterval(requestedMs: Long): Long =
+        requestedMs.coerceIn(MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS)
+
     object Commands {
         const val OBSERVE = "observe"
         const val RESOLVE = "resolve"

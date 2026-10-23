@@ -145,4 +145,48 @@ class ScreenTransitionVerifierTest {
         assertFalse(result.isSettled)
         assertEquals(ProtocolV2.ReasonCodes.CANCELLED, result.reasonCode)
     }
+
+    @Test
+    fun testPollIntervalClamping() {
+        assertEquals(50L, ProtocolV2.clampPollInterval(10L))
+        assertEquals(50L, ProtocolV2.clampPollInterval(0L))
+        assertEquals(100L, ProtocolV2.clampPollInterval(100L))
+        assertEquals(200L, ProtocolV2.clampPollInterval(200L))
+        assertEquals(200L, ProtocolV2.clampPollInterval(500L))
+        assertEquals(200L, ProtocolV2.clampPollInterval(60000L))
+    }
+
+    @Test
+    fun testCancelBeforeSleepAbortsImmediatelyWithoutSleeping() {
+        val initial = createDummySnapshot("snap-1", "sha256:hash-1")
+        var sleeperCalled = false
+        var cancelTriggered = false
+
+        var virtualTime = 0L
+        val result = ScreenTransitionVerifier.verifyTransition(
+            beforeSnapshot = initial,
+            requireScreenChange = true,
+            timeoutMs = 1000L,
+            pollIntervalMs = 100L,
+            timeSource = {
+                virtualTime += 10L
+                virtualTime
+            },
+            isCancelled = {
+                cancelTriggered
+            },
+            sleeper = {
+                sleeperCalled = true
+            },
+            snapshotProvider = {
+                // Trigger cancel right after first snapshot capture, before sleep
+                cancelTriggered = true
+                initial
+            }
+        )
+
+        assertFalse(result.isSettled)
+        assertEquals(ProtocolV2.ReasonCodes.CANCELLED, result.reasonCode)
+        assertFalse("Sleeper should NOT be called when cancelled before sleep", sleeperCalled)
+    }
 }
