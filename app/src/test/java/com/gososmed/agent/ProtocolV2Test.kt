@@ -211,7 +211,8 @@ class ProtocolV2Test {
             "waitForScreen",
             "cancelAction",
             "startDebugFrames",
-            "stopDebugFrames"
+            "stopDebugFrames",
+            "scrollUntilVisible"
         )
 
         for (cmd in expectedCommands) {
