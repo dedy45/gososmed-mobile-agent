@@ -41,6 +41,7 @@ android {
         // scrollUntilVisible), implementasi globalDim, dan lolos uji stres fisik 17/17.
         versionCode = 42
         versionName = "1.2.6"
+        val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)
