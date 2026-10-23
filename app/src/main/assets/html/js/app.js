@@ -16,6 +16,8 @@
   let ws = null;
   let manualDisconnect = false;
   let reconnectTimer = null;
+  // String codec WebCodecs dari server (mis. `hev1.1.6.L120.B0`).
+  let lastCodec = null;
 
   // Auto-detect dynamic WS host based on current page address (zero hardcode).
   // The auth token issued by the PIN gate is forwarded to the WebSocket so the
@@ -200,6 +202,9 @@
           try {
             const msg = JSON.parse(event.data);
             if (msg.type === 'status') {
+              // Codec aktif dikirim server supaya viewer tahu sebelum
+              // paket config pertama tiba.
+              if (typeof msg.codec === 'string') lastCodec = msg.codec;
               if (!msg.captureActive) {
                 log('CaptureService HP standby. Nyalakan switch Remote Controller di HP.', 'warn');
                 const tip = document.getElementById('streamWaitingTip');
@@ -253,8 +258,8 @@
           if (!data.length) return;
 
           const t = data[0];
-          if (t === 3) { // MSG_CONFIG (SPS+PPS)
-            if (window.GoStream) window.GoStream.onConfig(data);
+          if (t === 3) { // MSG_CONFIG (VPS/SPS/PPS)
+            if (window.GoStream) window.GoStream.onConfig(data, lastCodec);
           } else if (t === 4) { // MSG_FRAME (NALU)
             if (window.GoStream) window.GoStream.onFrame(data);
           } else if (t === 5) { // MSG_AUDIO (PCM 16-bit 44100Hz Stereo)

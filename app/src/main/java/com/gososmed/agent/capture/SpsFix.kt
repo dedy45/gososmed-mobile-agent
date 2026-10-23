@@ -10,11 +10,17 @@ import java.io.ByteArrayOutputStream
  */
 object SpsFix {
 
-    fun annexB(data: ByteArray): ByteArray {
+    /**
+     * @param rewriteSps true hanya untuk H.264. Untuk HEVC, `nal[0] and 0x1f`
+     *   bukan tipe NALU (HEVC memakai 6 bit: `(b shr 1) and 0x3F`), sehingga
+     *   NALU lain seperti AUD (35) akan salah dianggap SPS dan dirusak.
+     */
+    fun annexB(data: ByteArray, rewriteSps: Boolean = true): ByteArray {
         val out = ByteArrayOutputStream(data.size + 16)
         for (nal in split(data)) {
             out.write(byteArrayOf(0, 0, 0, 1))
-            out.write(if (nal.isNotEmpty() && nal[0].toInt() and 0x1f == 7) sps(nal) else nal)
+            val isH264Sps = rewriteSps && nal.isNotEmpty() && nal[0].toInt() and 0x1f == 7
+            out.write(if (isH264Sps) sps(nal) else nal)
         }
         return out.toByteArray()
     }

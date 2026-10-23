@@ -44,6 +44,10 @@ object LocalWebServer {
     @Volatile var cachedConfig: ByteArray? = null
         internal set
 
+    /** String codec WebCodecs (`hev1.…`) untuk config yang sedang berlaku. */
+    @Volatile var codec: String? = null
+        internal set
+
     // ---------------------------------------------------------------------
     // Access control
     //
@@ -164,8 +168,9 @@ object LocalWebServer {
         }
     }
 
-    fun setConfig(payload: ByteArray) {
+    fun setConfig(payload: ByteArray, codecString: String? = null) {
         cachedConfig = payload
+        codec = codecString
         broadcastBinary(payload)
     }
     val isRunning: Boolean
@@ -500,6 +505,9 @@ button:active{transform:translateY(1px)}
                         put("captureActive", CaptureService.instance != null)
                         put("model", android.os.Build.MODEL)
                         put("manufacturer", android.os.Build.MANUFACTURER)
+                        // Codec yang sedang aktif, supaya viewer bisa memilih
+                        // decoder sebelum paket config pertama tiba.
+                        codec?.let { put("codec", it) }
                     }
                     wsClient.sendRaw(encodeWsFrame(statusObj.toString().toByteArray(Charsets.UTF_8), isBinary = false))
                 } catch (_: Exception) {}

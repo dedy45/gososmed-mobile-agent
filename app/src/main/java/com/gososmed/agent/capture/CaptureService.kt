@@ -41,9 +41,19 @@ import com.gososmed.agent.R
 class CaptureService : Service() {
 
     companion object {
-        const val MSG_CONFIG = 3 // Binary [3][w:2][h:2][SPS+PPS Annex-B]
+        const val MSG_CONFIG = 3 // Binary [3][w:2][h:2][codecId:1][VPS/SPS/PPS Annex-B]
         const val MSG_FRAME = 4  // Binary [4][key:1][NALU Annex-B]
         const val MSG_AUDIO = 5  // Binary [5][PCM 16-bit 44100Hz Stereo bytes]
+
+        /** Byte [5] pada MSG_CONFIG. Viewer memilih decoder dari nilai ini. */
+        const val CODEC_ID_AVC = 1
+        const val CODEC_ID_HEVC = 2
+        const val CODEC_ID_AV1 = 3
+        private val CODEC_IDS = mapOf(
+            CodecKind.AVC to CODEC_ID_AVC,
+            CodecKind.HEVC to CODEC_ID_HEVC,
+            CodecKind.AV1 to CODEC_ID_AV1
+        )
 
         /** Jeda sebelum reconfigure penuh saat pipeline mandek. */
         const val RECONFIGURE_AFTER_MS = 10_000L
@@ -92,18 +102,17 @@ class CaptureService : Service() {
     /**
      * Codec yang diminta viewer (mis. browser tidak bisa decode HEVC).
      *
-     * DEFAULT = AVC. Alasannya konkret: muxer fMP4 di viewer (`stream.js`)
-     * membangun sample entry `avc1` + `avcC` dari SPS/PPS NALU. AV1 tidak
-     * memakai SPS/PPS sama sekali, dan HEVC memakai VPS/SPS/PPS (tipe NALU
-     * 32/33/34) dengan sample entry `hvc1`. Selama muxer itu belum punya
-     * dukungan AV1/HEVC, mengirim AV1/HEVC ke browser menghasilkan layar
-     * kosong — bukan hemat bandwidth.
+     * DEFAULT = HEVC. Alasannya: jalur utama viewer adalah WebCodecs
+     * (port 8766 / HTTPS), yang menerima Annex-B mentah tanpa muxer — pola
+     * yang sama dengan ya-webadb/Tango. Di jalur itu HEVC didukung penuh:
+     * viewer memakai string `hev1.…` yang dibangun [HevcCodecString].
      *
-     * Negosiasi tetap berjalan dan tercatat di log, tetapi default tetap AVC
-     * sampai muxer AV1/HEVC selesai (lihat docs/plans/2026-10-23-ADVANCED-
-     * CAPTURE-MODES.md, Task lanjutan).
+     * Muxer MSE (`avc1` + `avcC`) tetap H.264-saja dan hanya dipakai sebagai
+     * fallback di HTTP :8765 atau saat browser menolak HEVC. Karena itu
+     * viewer mengirim `setCodec` → AVC bila decode HEVC gagal, dan
+     * [CodecCapability.preferenceOrder] selalu berakhir di AVC.
      */
-    @Volatile private var preferredCodec: CodecKind? = CodecKind.AVC
+    @Volatile private var preferredCodec: CodecKind? = CodecKind.HEVC
 
     /**
      * Mendeteksi pipeline mandek dan memulihkannya.
@@ -312,9 +321,15 @@ class CaptureService : Service() {
                 val w = ((realW.toLong() * h / realH).toInt() / 16 * 16)
                 w to h
             }
-            val key = "$tw:$th:$targetKbps:$targetFps"
+            // Kunci HARUS menyertakan codec: tanpa itu, perpindahan
+            // HEVC -> AVC hanya mengubah bitrate pada encoder lama, dan
+            // viewer tetap menerima HEVC walau sudah meminta AVC.
+            val key = "$tw:$th:$targetKbps:$targetFps:${preferredCodec ?: currentCodecKind}"
 
-            if (codec != null && currentConfigKey.startsWith("$tw:$th:")) {
+            val canReuse = codec != null &&
+                currentConfigKey.startsWith("$tw:$th:") &&
+                currentConfigKey.endsWith(":${preferredCodec ?: currentCodecKind}")
+            if (canReuse) {
                 try {
                     codec!!.setParameters(Bundle().apply {
                         putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, targetKbps * 1000)
@@ -360,9 +375,19 @@ class CaptureService : Service() {
                 override fun onInputBufferAvailable(mc: MediaCodec, idx: Int) {}
 
                 override fun onOutputFormatChanged(mc: MediaCodec, fmt: MediaFormat) {
-                    val sps = fmt.getByteBuffer("csd-0") ?: return
-                    val pps = fmt.getByteBuffer("csd-1")
-                    val rawConfig = if (pps != null) toByteArray(sps) + toByteArray(pps) else toByteArray(sps)
+                    // AVC mengirim csd-0 (SPS) + csd-1 (PPS). HEVC bisa
+                    // mengirim VPS/SPS/PPS sebagai csd-0 gabungan, atau
+                    // terpisah di csd-0..csd-2 tergantung pabrikan. Kumpulkan
+                    // semua csd-N yang ada, berurutan.
+                    val parts = ArrayList<ByteArray>(3)
+                    var i = 0
+                    while (true) {
+                        val buf = fmt.getByteBuffer("csd-$i") ?: break
+                        parts.add(toByteArray(buf))
+                        i++
+                    }
+                    if (parts.isEmpty()) return
+                    val rawConfig = parts.reduce { a, b -> a + b }
                     publishConfig(tw, th, rawConfig)
                 }
                 override fun onOutputBufferAvailable(mc: MediaCodec, idx: Int, info: MediaCodec.BufferInfo) {
@@ -512,18 +537,27 @@ class CaptureService : Service() {
     }
 
     private fun publishConfig(w: Int, h: Int, raw: ByteArray) {
-        val fixedConfig = SpsFix.annexB(raw)
+        val kind = currentCodecKind
+        val isAvc = kind == CodecKind.AVC
+        val fixedConfig = SpsFix.annexB(raw, rewriteSps = isAvc)
         cachedRawConfig = fixedConfig
 
-        val payload = ByteArray(5 + fixedConfig.size).apply {
+        // Codec string dibangun sekali di sini supaya viewer tidak perlu
+        // mem-parse bitstream. Hanya HEVC yang butuh; AVC dihitung viewer
+        // dari SPS[1..3] seperti sebelumnya.
+        val codecStr = if (kind == CodecKind.HEVC) HevcCodecString.fromAnnexB(fixedConfig) else null
+        val id = CODEC_IDS[kind] ?: 0
+
+        val payload = ByteArray(6 + fixedConfig.size).apply {
             this[0] = MSG_CONFIG.toByte()
             this[1] = (w shr 8).toByte()
             this[2] = (w and 0xFF).toByte()
             this[3] = (h shr 8).toByte()
             this[4] = (h and 0xFF).toByte()
-            System.arraycopy(fixedConfig, 0, this, 5, fixedConfig.size)
+            this[5] = id.toByte()
+            System.arraycopy(fixedConfig, 0, this, 6, fixedConfig.size)
         }
-        LocalWebServer.setConfig(payload)
+        LocalWebServer.setConfig(payload, codecStr)
     }
 
     private fun toByteArray(buffer: java.nio.ByteBuffer): ByteArray {

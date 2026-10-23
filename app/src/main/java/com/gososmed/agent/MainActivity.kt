@@ -1842,7 +1842,10 @@ class MainActivity : AppCompatActivity() {
 
         btnOpenLocalBrowser.setOnClickListener {
             val ip = getLocalIpAddress()
-            val url = "http://$ip:${com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT}"
+            // Default ke HTTPS :8766 — secure context, jadi WebCodecs
+            // (hardware decode, HEVC) aktif. HTTP :8765 tetap tersedia
+            // sebagai fallback MSE bila sertifikat ditolak.
+            val url = "https://$ip:${com.gososmed.agent.capture.LocalWebServer.DEFAULT_PORT + 1}"
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (e: Exception) {
@@ -1875,13 +1878,14 @@ class MainActivity : AppCompatActivity() {
         val httpsPort = port + 1
         layoutRemoteActiveBanner.visibility = View.VISIBLE
         if (active) {
-            val url = "http://$localIp:$port"
-            val httpsUrl = "https://$localIp:$httpsPort"
+            val url = "https://$localIp:$httpsPort"
+            val httpUrl = "http://$localIp:$port"
             val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
             val pinRequired = com.gososmed.agent.capture.LocalWebServer.isAuthEnabled
             tvRemoteSubtitle.text = "Aktif • $localIp"
             tvRemoteLocalUrl.text = buildString {
-                append(url).append('\n').append(httpsUrl).append(" (HTTPS)")
+                append(url).append(" (HTTPS, WebCodecs)")
+                append('\n').append(httpUrl).append(" (HTTP, fallback MSE)")
                 if (pinRequired && pin.isNotEmpty()) {
                     append("\n\nPIN: ").append(pin)
                     append("\nMasukkan PIN ini di browser PC.")
@@ -1889,7 +1893,7 @@ class MainActivity : AppCompatActivity() {
                     append("\n\n⚠️ Tanpa PIN — siapa pun di Wi-Fi ini bisa masuk.")
                 }
             }
-            tvRemoteClients.text = "Port $port / $httpsPort"
+            tvRemoteClients.text = "Port $httpsPort / $port"
         } else {
             val displayIp = if (localIp != "127.0.0.1") localIp else "Wi-Fi"
             val url = if (localIp != "127.0.0.1") "http://$localIp:$port" else "Menghubungkan ke Wi-Fi..."

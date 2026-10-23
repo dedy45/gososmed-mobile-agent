@@ -9,6 +9,60 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [Unreleased]
+
+### Added — HEVC/H.265 di WebCodecs, HTTPS :8766 sebagai default, fallback MSE otomatis
+
+Viewer sekarang memakai **HEVC lewat WebCodecs** di port 8766 (HTTPS/secure
+context), dengan AVC/MSE sebagai fallback otomatis. Ini menyusul audit
+`docs/plans/2026-10-23-CODEC-AUDIT.md` yang menunjukkan jalur WebCodecs
+Annex-B adalah pola yang sama dipakai Tango/ya-webadb.
+
+1. **Negosiasi codec default ke HEVC.** `CaptureService.preferredCodec` kini
+   `HEVC` (sebelumnya dipatok `AVC`). `CodecCapability.preferenceOrder` tetap
+   `[AV1, HEVC, AVC]`, dan AVC selalu jadi fallback terakhir.
+2. **String codec HEVC dibangun di server** (`HevcCodecString`), bukan di
+   viewer. Parser membaca `profile_tier_level()` dari VPS dan menghasilkan
+   `hev1.<profile>.<compat>.<tier><level>[.<constraint>]` — format RFC 6381.
+   Dipakai `hev1` (bukan `hvc1`) karena parameter set dikirim in-band di
+   Annex-B, tanpa box `hvcC`.
+3. **Protokol config bertambah 1 byte.** `MSG_CONFIG` sekarang
+   `[3][w:2][h:2][codecId:1][parameter set Annex-B]`. `codecId`: 1=AVC,
+   2=HEVC, 3=AV1. Paket lama tanpa id tetap dibaca sebagai AVC.
+4. **Viewer memilih decoder dari `codecId`.** HEVC → `VideoDecoder` dengan
+   `hev1.…`; AVC → jalur lama (WebCodecs AVC atau MSE fMP4). Auto-configure
+   dari keyframe dan jalur MSE dikunci ke AVC, karena header NALU HEVC
+   memakai 6 bit (`(b>>1)&0x3F`) sehingga `n[0]&31` salah mengenali tipe.
+5. **Fallback berjenjang tanpa intervensi.** Tanpa WebCodecs (HTTP :8765) atau
+   bila `configure()`/decode HEVC gagal, viewer mengirim `setCodec` → AVC
+   sekali saja, server melakukan reconfigure, dan viewer pindah ke MSE.
+6. **`onOutputFormatChanged` mengumpulkan semua `csd-N`.** AVC mengirim
+   `csd-0`/`csd-1`; sebagian encoder HEVC memakai `csd-0..csd-2`. Sebelumnya
+   hanya dua yang dibaca, sehingga VPS atau PPS bisa hilang.
+7. **`SpsFix` tidak lagi merusak HEVC.** Rewrite "no frame reordering" hanya
+   untuk H.264; pada HEVC `nal[0] and 0x1f` bukan tipe NALU dan bisa merusak
+   AUD (35).
+8. **UI default ke HTTPS :8766.** Tombol "Buka di Browser" membuka
+   `https://<ip>:8766`; banner menampilkan HTTPS sebagai URL utama dan HTTP
+   :8765 sebagai fallback MSE.
+
+**Diverifikasi di perangkat nyata** (Redmi Note 13 Pro 5G, Android 15,
+`c2.qti.hevc.encoder`):
+
+| Jalur | Engine | Codec string | Hasil |
+|---|---|---|---|
+| `https://192.168.1.125:8766` | WebCodecs HEVC | `hev1.1.00000060.L120.B0` | 720x1600, gambar bergerak, **88 fps** saat scroll |
+| `http://192.168.1.125:8765` | MSE fMP4 | turun ke AVC otomatis | `readyState=2`, video 720x1600 berjalan |
+
+**Yang belum diverifikasi:** perangkat non-Qualcomm (MediaTek/Exynos) dan
+browser selain Chromium. HEVC hanya tersedia di secure context, jadi Firefox
+via HTTP :8765 akan selalu memakai fallback AVC/MSE.
+
+**Bug yang ditemukan dan diperbaiki saat validasi:** `currentConfigKey` tidak
+memuat identitas codec, sehingga permintaan HEVC→AVC hanya mengubah bitrate
+pada encoder lama dan viewer tetap menerima HEVC. Kunci kini menyertakan
+codec.
+
 ## [1.2.3-dev.1] - 2026-10-21
 
 ### Added & Enhanced — Pure JPEG Two-Message Wire Protocol, Isolated OBSERVE, LiveFrameSession & 1-in-Flight Flow Control

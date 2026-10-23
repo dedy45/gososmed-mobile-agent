@@ -115,9 +115,18 @@ flag sample di `fragment()`. Ini perubahan besar dan berisiko tinggi, dan
 
 ## Rekomendasi
 
-1. **Tetap pakai AVC.** Ini pilihan yang sama dengan ketiga aplikasi produksi
-   yang diaudit. Bukan kekurangan, melainkan konsensus industri.
-2. **Hemat bandwidth lewat jalur lain**: turunkan bitrate, resolusi adaptif,
-   atau H.264 High profile (bukan Baseline) — semua tanpa mengubah muxer.
-3. **HEVC/AV1 hanya relevan untuk relay berbayar** yang menanggung biaya
-   bandwidth. Untuk LAN, H.264 sudah optimal.
+> **KOREKSI (2026-10-23, setelah implementasi).** Bagian ini awalnya
+> menyimpulkan "tetap pakai AVC" karena keliru menganggap GoSosmed hanya punya
+> jalur fMP4/MSE. Faktanya viewer **WebCodecs-first** (`stream.js` Mode A,
+> port 8766/HTTPS) dan menerima Annex-B mentah tanpa muxer — sama seperti
+> Tango. HEVC karena itu **bisa dan sudah** diaktifkan di jalur tersebut.
+> Lihat `CHANGELOG.md` [Unreleased].
+
+1. **HEVC aktif di WebCodecs (:8766), AVC di MSE (:8765).** Bukan saling
+   menggantikan: HEVC butuh secure context, MSE fMP4 tetap H.264-only.
+2. **Jangan bangun muxer `hvcC`.** Untuk HEVC, WebCodecs menerima Annex-B
+   dengan parameter set in-band dan `description` kosong. Ini menghapus
+   seluruh kebutuhan muxer HEVC.
+3. **AV1 belum didukung.** Butuh parser OBU sequence header + codec string
+   `av01.…`; belum ada kebutuhan mendesak karena HEVC sudah menghemat
+   bandwidth setara di perangkat yang mendukungnya.

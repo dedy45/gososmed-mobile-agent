@@ -92,6 +92,8 @@
   const P = { ms: null, sb: null, queue: [], ready: false, key: false, seq: 1, dts: 0, dur: 33, w: 0, h: 0 };
   // WebCodecs State
   const WC = { dec: null, csd: null, key: false, ts: 0 };
+  // Codec aktif: 1 AVC, 2 HEVC, 3 AV1. Dipakai untuk memilih jalur frame.
+  let curCodecId = 1;
   const hasWebCodecs = ('VideoDecoder' in window);
 
   const log = (msg, type = 'info') => {
@@ -134,17 +136,15 @@
   // =========================================================================
   // Engine Pipeline: onConfig & onFrame (H.264 Annex-B)
   // =========================================================================
-  function onConfig(d) {
+  function onConfig(d, serverCodec) {
     const w = (d[1] << 8) | d[2];
     const h = (d[3] << 8) | d[4];
-    let sps, pps;
-
-    for (const n of nalus(d.subarray(5))) {
-      const t = n[0] & 31;
-      if (t === 7) sps = n;
-      else if (t === 8) pps = n;
-    }
-    if (!sps || !pps) return;
+    // Byte 5 = codec id (1 AVC, 2 HEVC, 3 AV1). Paket lama tanpa id
+    // diperlakukan sebagai AVC supaya viewer lama tetap jalan.
+    const codecId = d.length > 6 ? d[5] : 1;
+    const body = d.subarray(6);
+    curCodecId = codecId;
+    window.__gosoCodec = serverCodec || null;
 
     if (valRes) valRes.textContent = `${w}x${h}`;
     if (w > 0 && h > 0) {
@@ -152,6 +152,151 @@
       document.documentElement.style.setProperty('--stream-aspect', aspect);
       if (phoneFrame) phoneFrame.classList.toggle('landscape', w > h);
     }
+
+    if (codecId === 2) return onConfigHevc(body, w, h);
+    return onConfigAvc(body, w, h);
+  }
+
+  // ---------------------------------------------------------------------
+  // HEVC: WebCodecs saja. Annex-B dikirim mentah, parameter set ikut di
+  // dalam keyframe, jadi `description` tidak perlu (dan tidak boleh) diisi.
+  // Muxer MSE tidak dipakai karena belum membangun box hvcC.
+  // ---------------------------------------------------------------------
+  function onConfigHevc(body, w, h) {
+    let vps = null, sps = null, pps = null;
+    for (const n of nalus(body)) {
+      const t = (n[0] >> 1) & 0x3F;
+      if (t === 32) vps = n;
+      else if (t === 33) sps = n;
+      else if (t === 34) pps = n;
+    }
+    if (!sps) { log('HEVC: SPS tidak ditemukan di paket config', 'error'); return; }
+
+    if (!hasWebCodecs) {
+      // HTTP LAN: tidak ada VideoDecoder. Minta AVC, satu-satunya codec
+      // yang bisa dimux ke fMP4.
+      log('HEVC butuh WebCodecs (HTTPS :8766) — meminta AVC', 'warn');
+      requestCodec('video/avc');
+      return;
+    }
+
+    const codecStr = window.__gosoCodec || hevcCodecString(vps, sps);
+    if (!codecStr) { log('HEVC: gagal membangun codec string — meminta AVC', 'error'); requestCodec('video/avc'); return; }
+
+    WC.key = false;
+    WC.cfgW = w;
+    WC.cfgH = h;
+    WC.codecStr = codecStr;
+
+    try { if (WC.dec) WC.dec.close(); } catch (_) {}
+    WC.dec = new VideoDecoder({
+      output: (f) => {
+        try {
+          if (cv.width !== f.displayWidth || cv.height !== f.displayHeight) {
+            cv.width = f.displayWidth;
+            cv.height = f.displayHeight;
+          }
+          if (cx) cx.drawImage(f, 0, 0, cv.width, cv.height);
+          onFrameRendered('canvas', 'WebCodecs HEVC');
+        } finally {
+          f.close();
+        }
+      },
+      error: (e) => {
+        log(`HEVC decoder error: ${e && e.message ? e.message : e} — meminta AVC`, 'error');
+        try { WC.dec.close(); } catch (_) {}
+        WC.dec = null;
+        WC.key = false;
+        requestCodec('video/avc');
+      }
+    });
+
+    try {
+      WC.dec.configure({ codec: codecStr, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' });
+      if (valEngine) valEngine.textContent = 'WebCodecs HEVC';
+      if (engineBadge) engineBadge.textContent = 'HEVC Hardware';
+      log(`VideoDecoder HEVC dikonfigurasi: ${codecStr} (${w}x${h})`, 'success');
+    } catch (err) {
+      try {
+        WC.dec.configure({ codec: codecStr, optimizeForLatency: true, hardwareAcceleration: 'prefer-software' });
+        if (valEngine) valEngine.textContent = 'WebCodecs HEVC SW';
+        if (engineBadge) engineBadge.textContent = 'HEVC Software';
+        log(`HEVC HW gagal, memakai software: ${codecStr}`, 'warn');
+      } catch (_) {
+        log(`HEVC configure gagal: ${err.message} — meminta AVC`, 'error');
+        WC.dec = null;
+        WC.key = false;
+        requestCodec('video/avc');
+      }
+    }
+  }
+
+  /** Minta server berganti codec, sekali saja (hindari loop reconfigure). */
+  let lastRequestedCodec = null;
+  function requestCodec(mime) {
+    if (lastRequestedCodec === mime) return;
+    lastRequestedCodec = mime;
+    try {
+      if (window.GoApp && typeof window.GoApp.sendControl === 'function') {
+        window.GoApp.sendControl(JSON.stringify({ cmd: 'setCodec', mime }));
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Fallback: bangun `hev1.P.T.L` dari VPS/SPS bila server tidak mengirim
+   * string codec (mis. klien lama). Bukan pengganti parser penuh — cukup
+   * untuk profile Main 8-bit yang dipakai encoder Android.
+   */
+  function hevcCodecString(vps, sps) {
+    try {
+      const rbsp = unescapeRbsp(sps.subarray(2));
+      let bitPos = 0;
+      const bit = () => {
+        const v = (rbsp[bitPos >> 3] >> (7 - (bitPos & 7))) & 1;
+        bitPos++;
+        return v;
+      };
+      const bits = (n) => { let v = 0; for (let i = 0; i < n; i++) v = (v << 1) | bit(); return v; };
+      bits(4); bits(1); bits(1); bits(6);          // sps_video_parameter_set_id..max_sub_layers
+      const maxSub = bits(3);
+      bits(1); bits(16);                            // temporal_id_nesting + reserved 0xffff
+      const space = bits(2), tier = bit(), profile = bits(5);
+      const compat = [bits(8), bits(8), bits(8), bits(8)];
+      const cons = [];
+      for (let i = 0; i < 6; i++) cons.push(bits(8));
+      const level = bits(8);
+      const hex = (v) => v.toString(16).toUpperCase().padStart(2, '0');
+      const compatVal = (compat[0] | (compat[1] << 8) | (compat[2] << 16) | (compat[3] << 24)) >>> 0;
+      let out = 'hev1.' + ['', 'A', 'B', 'C'][space] + profile + '.' +
+        compatVal.toString(16).toUpperCase().padStart(8, '0') + '.' +
+        (tier ? 'H' : 'L') + level;
+      while (cons.length && cons[cons.length - 1] === 0) cons.pop();
+      for (const c of cons) out += '.' + hex(c);
+      return out;
+    } catch (_) { return null; }
+  }
+
+  function unescapeRbsp(d) {
+    const out = [];
+    let zeros = 0;
+    for (let i = 0; i < d.length; i++) {
+      const b = d[i];
+      if (zeros >= 2 && b === 3) { zeros = 0; continue; }
+      out.push(b);
+      zeros = b === 0 ? zeros + 1 : 0;
+    }
+    return Uint8Array.from(out);
+  }
+
+  function onConfigAvc(body, w, h) {
+    let sps, pps;
+    for (const n of nalus(body)) {
+      const t = n[0] & 31;
+      if (t === 7) sps = n;
+      else if (t === 8) pps = n;
+    }
+    if (!sps || !pps) return;
 
     // Mode A: WebCodecs VideoDecoder (Secure Context: HTTPS / localhost)
     if (hasWebCodecs) {
@@ -293,8 +438,10 @@
   function onFrame(d) {
     const key = (d[1] === 1);
 
-    // Auto-configure from keyframe if decoder is not yet configured (vitRemote benchmark)
-    if (!WC.dec && !P.ms && key) {
+    // Auto-configure from keyframe if decoder is not yet configured (vitRemote benchmark).
+    // Hanya untuk AVC: header NALU HEVC memakai 6 bit, jadi `n[0] & 31` akan
+    // salah mengenali VPS(32)/SPS(33) sebagai tipe H.264.
+    if (curCodecId === 1 && !WC.dec && !P.ms && key) {
       const frameNalus = nalus(d.subarray(2));
       let sps = null, pps = null;
       for (const n of frameNalus) {
@@ -347,7 +494,9 @@
       }
     }
 
-    // MSE fMP4 path
+    // MSE fMP4 path — hanya AVC. Muxer membangun `avc1`+`avcC`; HEVC butuh
+    // `hvc1`+`hvcC` yang belum ada, jadi HEVC tidak boleh masuk sini.
+    if (curCodecId !== 1) return;
     if (!P.ms || (!P.key && !key)) return;
     P.key = true;
     const parts = [];
