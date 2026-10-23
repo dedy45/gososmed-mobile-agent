@@ -107,6 +107,17 @@ class AgentAccessibilityService : AccessibilityService() {
             private set
 
         /**
+         * True bila pengguna sendiri mematikan layanan dari Setelan.
+         *
+         * Dipakai `onUnbind()` untuk menahan auto-revive: tanpa flag ini,
+         * setiap kali pengguna mematikan aksesibilitas, watchdog langsung
+         * menyalakannya kembali lewat `settings put secure` — pengguna melihat
+         * sakelar yang tidak bisa dimatikan.
+         */
+        @Volatile
+        var userDisabled: Boolean = false
+
+        /**
          * Callback saat status koneksi layanan berubah (connected/unbound/destroyed).
          * Digunakan oleh MainActivity agar UI Langkah 1 langsung terbarui seketika
          * tanpa menunggu pengguna berpindah layar.
@@ -577,13 +588,25 @@ class AgentAccessibilityService : AccessibilityService() {
         bound = false
         instance = null
         notifyStateChanged()
+        // Auto-revive hanya bila pengguna memang mengaktifkan layanan ini.
+        //
+        // Bahaya tanpa penjagaan: `settings put secure accessibility_enabled 1`
+        // dipanggil setiap unbind. Bila pengguna sengaja MEMATIKAN layanan,
+        // unbind berikutnya akan menyalakannya lagi — perang setting yang tidak
+        // pernah berhenti dan membuat tombol mati di Setelan terasa rusak.
+        // Karena itu hanya dijalankan bila (a) ADB shell tersedia, dan
+        // (b) penonaktifan bukan berasal dari pengguna (ditandai flag).
+        if (userDisabled) return super.onUnbind(intent)
         kotlin.concurrent.thread(name = "a11y-watchdog") {
             try {
                 Thread.sleep(800)
+                val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                if (!shell.status().available) return@thread
+                if (userDisabled) return@thread
                 val cmd = "settings put secure enabled_accessibility_services " +
                           "com.gososmed.agent/com.gososmed.agent.AgentAccessibilityService && " +
                           "settings put secure accessibility_enabled 1"
-                com.gososmed.agent.privileged.PrivilegedShellHolder.get().exec(cmd)
+                shell.exec(cmd)
             } catch (_: Exception) {}
         }
         return super.onUnbind(intent)

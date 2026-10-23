@@ -1,12 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  typeAllMask (0xFFFFFFFF) membuat layanan menerima SEMUA event, termasuk
+  TYPE_TOUCH_INTERACTION_*, TYPE_GESTURE_DETECTION_*, TYPE_VIEW_SCROLLED, dan
+  TYPE_VIEW_TEXT_CHANGED. Handler kita hanya memakai event untuk mendeteksi
+  dialog pairing dan perubahan window, jadi mask selebar itu hanya menambah
+  beban binder + wakeup tanpa manfaat.
+
+  Tiga tipe berikut menutup seluruh kebutuhan nyata:
+    - typeWindowStateChanged   : activity/window berganti
+    - typeWindowContentChanged : isi layar berubah (dasar dump/tap)
+    - typeWindowsChanged       : daftar window berubah (dialog sistem)
+
+  notificationTimeout dikembalikan ke 100 ms (dari 50 ms): mempercepat callback
+  dua kali lipat tidak menambah akurasi, karena handler sendiri sudah membatasi
+  pemindaian dialog pairing ke 250 ms sekali.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
     android:canTakeScreenshot="true"
-    android:notificationTimeout="50"
+    android:notificationTimeout="100"
     android:settingsActivity="com.gososmed.agent.MainActivity"
     android:summary="@string/accessibility_service_summary"
     android:description="@string/accessibility_service_description" />
