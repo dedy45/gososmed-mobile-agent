@@ -16,6 +16,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -92,9 +94,8 @@ class AgentWsClient(
     @Volatile private var awaitingHeartbeatPong = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // Accessibility API (rootInActiveWindow / performAction / dispatchGesture)
-    // must run on the main thread, but OkHttp invokes onMessage on its own
-    // reader thread. We post inbound command execution to the main looper.
+    // Mutex to sequence incoming command executions on Dispatchers.IO without blocking Main Looper (Anti-ANR)
+    private val commandExecutionMutex = Mutex()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val http = OkHttpClient.Builder()
         .connectionSpecs(listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.RESTRICTED_TLS))
@@ -305,51 +306,15 @@ class AgentWsClient(
 
                     if (obj.has("cmd")) {
                         val cmdName = obj.optString("cmd", "")
-                        if (cmdName in AgentCommand.SERVICE_FREE_COMMANDS) {
-                            // v0.9.0 — command ini TIDAK menyentuh UI perangkat,
-                            // tetapi bisa memakan waktu lama (`adbPair` sampai
-                            // ~20 dtk, `shell` sampai 60 dtk). Menjalankannya di
-                            // main thread = ANR. Kita jalan di thread IO dan
-                            // mengirim balasan dari sana. `webSocket.send` aman
-                            // dipanggil dari thread mana pun.
-                            scope.launch {
-                                try {
-                                    val resp = AgentCommand.execute(obj)
-                                    webSocket.send(resp.toString())
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "cmd exec (io) error", e)
-                                }
-                            }
-                            return
-                        }
-                        // Command yang berpotensi memakan waktu (startApp dengan awaitForeground,
-                        // killApp dengan shell force-stop, wake dengan keyevent) dijalankan di
-                        // coroutine latar belakang agar main looper tidak pernah terblokir (anti-ANR & ringan).
-                        if (cmdName in AgentCommand.ASYNC_BACKGROUND_COMMANDS) {
-                            scope.launch {
+                        scope.launch(Dispatchers.IO) {
+                            commandExecutionMutex.withLock {
                                 var tries = 0
-                                while (AgentAccessibilityService.instance == null && tries < 10) {
-                                    delay(200)
-                                    tries++
+                                if (cmdName !in AgentCommand.SERVICE_FREE_COMMANDS) {
+                                    while (AgentAccessibilityService.instance == null && tries < 10) {
+                                        delay(200)
+                                        tries++
+                                    }
                                 }
-                                try {
-                                    val resp = AgentCommand.execute(obj)
-                                    webSocket.send(resp.toString())
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "cmd exec (bg) error", e)
-                                }
-                            }
-                            return
-                        }
-                        // Command yang menyentuh UI tree / gestures langsung (dump, tap, setText, screenshot, ...)
-                        // tetap dieksekusi di main thread sesuai syarat Android Accessibility API.
-                        scope.launch {
-                            var tries = 0
-                            while (AgentAccessibilityService.instance == null && tries < 10) {
-                                delay(200)
-                                tries++
-                            }
-                            mainHandler.post {
                                 try {
                                     val resp = AgentCommand.execute(obj)
                                     webSocket.send(resp.toString())

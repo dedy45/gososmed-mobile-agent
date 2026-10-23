@@ -819,9 +819,9 @@ class AgentAccessibilityService : AccessibilityService() {
         )
 
         try {
-            val completed = latch.await(8, TimeUnit.SECONDS)
+            val completed = latch.await(4, TimeUnit.SECONDS)
             if (!completed) {
-                val err = "screenshot latch await timed out after 8s"
+                val err = "screenshot latch await timed out after 4s"
                 Log.e(TAG, "takeScreenshotRawBytes failed: $err")
                 return RawScreenshotResult(null, 0, 0, err)
             }

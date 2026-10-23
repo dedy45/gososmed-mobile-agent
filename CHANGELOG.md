@@ -35,6 +35,10 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - Memperbarui label emoji tombol dan persistensi sinkron `commit()`.
 - **Penajaman Retry Policy `screen_not_changed`**:
   - Memastikan aksi klik navigasi biasa (`isSubmitAction = false`) tetap memiliki `retryable = true` saat menghadapi lag sementara, sementara aksi submit (`isSubmitAction = true`) tetap diproteksi ketat dengan `retryable = false` guna mencegah *double post*.
+- **Anti-ANR & Eliminasi Freeze Main Looper (P0)**:
+  - Menghapus pemanggilan `mainHandler.post` pada eksekusi command inbound di `AgentWsClient.kt`. Semua eksekusi command (termasuk `annotatedScreenshot`, `tap`, `clickAndWait`) dialihkan ke `scope.launch(Dispatchers.IO)` berpelindung `commandExecutionMutex`.
+  - Mencegah deadlock dan pemblokiran Main Looper saat UI dashboard menguji/mengetuk tombol node secara beruntun (`[⚡ Test]`), sehingga popup sistem Android "Agent GoSosmed isn't responding (Wait / Close app)" tidak akan pernah terpicu.
+  - Memperketat batas tunggu screenshot latch dari 8 detik ke 4 detik.
 
 ## [1.2.5] - 2026-10-23
 
