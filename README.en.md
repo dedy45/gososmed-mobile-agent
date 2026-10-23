@@ -13,10 +13,9 @@ This application connects physical Android smartphones directly to the GoSosmed 
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Active Version: v1.2.2 (Stable).**  
+> **Active Version: v1.2.6-dev.2 (Dev Channel) / v1.2.5 (Stable).**  
 > Single Source of Truth (SSoT): `app/build.gradle.kts` (`versionName`) and [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Standalone & Fully Integrated:** Since v0.9.0, privileged shell capabilities equivalent to ADB UID 2000 are built directly into this APK. You **no longer need Shizuku** or external pairing utilities.
-
 ---
 
 ## 📱 Application Screenshots (Production Mode v1.2.1)
@@ -67,11 +66,34 @@ This APK provides **28+ high-performance native commands** designed specifically
 | **Input & Forms** | `replaceText` | Clears target fields, inputs Unicode text (Indonesian language & emojis), auto-dismisses soft keyboards, and supports `submit: true` for one-shot search execution. |
 | **Media Lifecycle** | `stageMedia` | Autonomous HTTP streaming of video/image assets directly into shared storage (`DCIM/Camera`) with byte length and SHA-256 integrity validation. |
 | **Gallery Scrubber** | `cleanupMedia` | Cleans duplicate testing media legally via `ContentResolver.delete()` and triggers `MediaScannerConnection` to prevent phantom thumbnails. |
-| **Deterministic v2** | `observe`, `resolve`, `actAndVerify` | Stable `snapshot_id`-based execution, settle state verification, clickable-ancestor propagation, and zero ambiguous taps. |
+| **Deterministic v2** | `observe`, `resolve`, `actAndVerify` | Stable `snapshot_id`-based execution, settle state verification, clickable-ancestor propagation, and zero ambiguous taps. Emits `verified`, `action_performed`, and deterministic `nodes_digest`. |
+| **Maestro Parity** | `scrollUntilVisible`, `spatialFilter` | Native in-memory scroll-and-search within safe viewport (15%–85% of display height) and 2D relative spatial element filtering (`below`, `above`, `leftOf`, `rightOf`) based on nearest Euclidean distance. |
+| **Live Remote Control** | `startLocalServer`, `remoteControl` | Hardware-accelerated 60 FPS H.264 screen streaming (WebCodecs/MSE) and real-time touch injection over local Wi-Fi browser (Port 8765/8766). |
 | **Power Management** | `globalDim` | Locks global Android brightness to 1% via ADB shell, keeping batteries cool and preventing AMOLED display burn-in during 24/7 automation. |
 | **System Diagnostics**| `health`, `capabilities` | Full diagnostic telemetry reporting WebSocket link status, Accessibility readiness, battery level, temperature, and OEM device specifications. |
+---
+## 🎮 Remote Live Streaming & Control (Dual-Engine H.264 / WebCodecs)
+
+GoSosmed Agent incorporates a zero-copy hardware screen streaming engine and real-time touch injection. For operational clarity and network efficiency, access is divided into **two distinct pathways**:
+
+### 1. Local Browser Access (LAN User-End) — Active & Unlimited
+* **Access URLs:** `http://[PHONE-IP]:8765` (HTTP Mode / MSE fMP4 Muxer) or `https://[PHONE-IP]:8766` (HTTPS Mode / WebCodecs 60 FPS).
+* **Target Use Case:** Users wanting to monitor and operate the smartphone directly from their desktop or laptop browser on the same Wi-Fi network.
+* **Highlights:**
+  * **Sub-50ms Ultra-Low Latency:** Zero-copy MediaCodec hardware encoding (*Qualcomm/MediaTek/Exynos*) with `SpsFix.annexB` buffer-reorder bypass.
+  * **Zero Cloud Bandwidth:** Video traffic streams exclusively over your local router, consuming 0 KB of internet or cellular data.
+  * **Per-Session Security:** Protected by a dynamic 6-digit session PIN displayed on the phone, a 192-bit HttpOnly authentication cookie (`SameSite=Strict`), and an automatic lockout after 8 failed attempts.
+
+### 2. Remote Relay via Cloud Web Dashboard — Disabled (Enterprise Plans Only)
+* **Status:** **Disabled by default** in this open-source build.
+* **Transparent Rationale:**
+  * Continuous 60 FPS high-definition video streaming (720p/1080p) consumes **2 to 5 Mbps of continuous upstream bandwidth per active device**.
+  * Relaying live streams for dozens of devices across public cloud servers incurs severe server bandwidth costs and demands dedicated WebRTC/TURN infrastructure.
+  * As a consequence, remote relay through the central cloud dashboard (`https://dev-app.bamsbung.id/byod`) is reserved exclusively for paid enterprise subscription plans.
+  * Open-source and BYOD users can utilize the local LAN browser viewer for unlimited, unmetered access.
 
 ---
+
 
 ## 🔒 Enterprise Trust & Privacy Center
 

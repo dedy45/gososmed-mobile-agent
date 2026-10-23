@@ -13,10 +13,9 @@ Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa P
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Versi Aktif: v1.2.5 (Stabil).**  
+> **Versi Aktif: v1.2.6-dev.2 (Dev Channel) / v1.2.5 (Stabil).**  
 > Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Mandiri & Terintegrasi Penuh:** Sejak v0.9.0, transport shell setara ADB UID 2000 terintegrasi langsung di dalam APK. Anda **tidak lagi membutuhkan Shizuku** atau perkakas tambahan pihak ketiga.
-
 ---
 
 ## 📱 Tangkapan Layar Aplikasi (Mode Produksi v1.2.1)
@@ -67,11 +66,34 @@ APK ini menyediakan **28+ perintah native** berkinerja tinggi yang dirancang khu
 | **Teks & Formulir** | `replaceText` | Mengosongkan kolom, mengetik teks unicode (emoji & karakter lokal), otomatis menyembunyikan keyboard, dan opsi `submit: true` untuk eksekusi pencarian instan. |
 | **Siklus Media** | `stageMedia` | Pengunduhan aset video/foto via HTTP mandiri langsung ke MediaStore (`DCIM/Camera`) dengan validasi ukuran byte dan checksum SHA-256. |
 | **Pembersih Galeri** | `cleanupMedia` | Pembersihan berkas duplikat/sementara secara legal melalui `ContentResolver.delete()` dan `MediaScannerConnection` agar galeri bersih tanpa file hantu. |
-| **Deterministik v2** | `observe`, `resolve`, `actAndVerify` | Eksekusi berbasis `snapshot_id`, verifikasi transisi settle, resolusi *clickable ancestor*, dan proteksi ambiguitas (*zero ambiguous taps*). |
+| **Deterministik v2** | `observe`, `resolve`, `actAndVerify` | Eksekusi berbasis `snapshot_id`, verifikasi transisi settle, resolusi *clickable ancestor*, dan proteksi ambiguitas (*zero ambiguous taps*). Memancarkan `verified`, `action_performed`, dan `nodes_digest` deterministik. |
+| **Paritas Maestro** | `scrollUntilVisible`, `spatialFilter` | Pengguliran native in-memory hingga elemen masuk area aman viewport (15%–85% layar) dan seleksi elemen 2D geometris relatif (`below`, `above`, `leftOf`, `rightOf`) berbasis jarak Euclidean terdekat. |
+| **Live Remote Control** | `startLocalServer`, `remoteControl` | Streaming layar H.264 perangkat keras 60 FPS (WebCodecs/MSE) dan injeksi input sentuhan langsung melalui browser lokal Wi-Fi (Port 8765/8766). |
 | **Manajemen Daya** | `globalDim` | Mengunci kecerahan sistem ke 1% via shell ADB agar baterai dingin dan layar AMOLED bebas *burn-in* selama automasi 24/7. |
 | **Diagnostik Sistem** | `health`, `capabilities` | Pelaporan komprehensif status koneksi WS, kesiapan Accessibility, baterai, suhu, dan lisensi pabrikan (OEM). |
+---
+## 🎮 Remote Live Streaming & Kontrol Jarak Jauh (Dual-Engine H.264 / WebCodecs)
+
+GoSosmed Agent menyertakan engine streaming layar perangkat keras (*hardware-accelerated screen streaming*) dan injeksi sentuhan real-time. Untuk transparansi operasional dan efisiensi sumber daya, terdapat **dua jalur akses dengan batasan yang jelas**:
+
+### 1. Jalur Akses Browser Lokal (LAN User-End) — Aktif & Gratis
+* **URL Akses:** `http://[IP-HP]:8765` (Mode HTTP / MSE fMP4 Muxer) atau `https://[IP-HP]:8766` (Mode HTTPS / WebCodecs 60 FPS).
+* **Target Pengguna:** Pengguna yang ingin memantau dan mengontrol HP langsung dari laptop atau PC pada jaringan Wi-Fi lokal yang sama.
+* **Karakteristik & Keunggulan:**
+  * **Latensi Ultra-Rendah (<50ms):** Menggunakan encoder perangkat keras H.264 (*MediaCodec Surface zero-copy*) dengan bypass buffer *no-frame-reordering* via `SpsFix.annexB`.
+  * **Nol Bandwidth Cloud (Zero Cloud Bandwidth):** Seluruh data video mengalir langsung di jaringan lokal tanpa keluar ke internet, menghemat kuota seluler 100%.
+  * **Keamanan Berlapis:** Setiap sesi dilindungi PIN 6-digit acak yang dibuat dinamis pada layar HP, cookie autentikasi 192-bit HttpOnly (`SameSite=Strict`), dan proteksi lockout otomatis setelah 8 kali percobaan salah.
+
+### 2. Jalur Remote Relay via Web Cloud Dashboard — Dinonaktifkan (Khusus Paket Enterprise)
+* **Status:** **Dinonaktifkan secara default** pada biner open-source ini.
+* **Batasan & Desain Arsitektur:**
+  * Streaming video resolusi tinggi (720p/1080p pada 60 FPS) secara kontinu membutuhkan *bandwidth* konstan sebesar **2 s/d 5 Mbps per HP aktif**.
+  * Melakukan relay streaming video untuk puluhan HP secara simultan melalui server cloud publik menimbulkan lonjakan beban bandwidth server dan menuntut infrastruktur WebRTC/TURN dedicated berbiaya tinggi.
+  * Jalur remote relay melalui dasbor cloud web (`https://dev-app.bamsbung.id/byod`) hanya disediakan khusus untuk paket langganan enterprise / user plan berbayar.
+  * Pengguna open-source dapat menggunakan jalur browser lokal LAN secara penuh tanpa batasan kuota.
 
 ---
+
 
 ## 🔒 Pusat Kepercayaan & Privasi (Enterprise Trust Center)
 
