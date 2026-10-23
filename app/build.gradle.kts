@@ -36,10 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 38 = 1.2.4 (STABIL) — pre-release security audit,
-        // HEVC/H.265 via WebCodecs, HTTPS :8766 default.
-        versionCode = 38
-        versionName = "1.2.4"
+        // versionCode 39 = 1.2.5 (STABIL) — perbaikan anotasi (maxWidth cap),
+        // regresi core aksesibilitas (event mask + unbind watchdog), dan
+        // pemisahan koordinat bitmap vs layar fisik.
+        versionCode = 39
+        versionName = "1.2.5"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

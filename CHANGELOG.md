@@ -9,6 +9,82 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.5] - 2026-10-23
+
+> **Catatan penomoran: kenapa 1.2.2 langsung ke 1.2.4?**
+>
+> `1.2.3` tidak pernah terbit dan tidak pernah di-tag. Kodenya ada: commit
+> `9704d78` menaikkan `versionName` ke `1.2.3-dev.1` (versionCode 37), tetapi
+> tag `v1.2.3` / `v1.2.3-dev.1` tidak pernah dibuat — `git tag -l` dan GitHub
+> Releases sama-sama tidak memuatnya, jadi CI tidak pernah membangun APK-nya.
+> Nomor itu hanya hidup di CHANGELOG dan di `versionName` saat dikerjakan.
+>
+> Saat audit pra-rilis, versi dinaikkan langsung ke `1.2.4` (versionCode 38)
+> karena isinya sudah mencakup seluruh pekerjaan `1.2.3-dev.1` ditambah
+> perbaikan keamanan. Nomor `1.2.3` karena itu **dilewati**, bukan gagal:
+> tidak ada APK `1.2.3` yang pernah ada. SemVer mengizinkan lompatan nomor;
+> yang tidak boleh adalah memakai ulang nomor yang sudah terbit.
+>
+> Rilis yang benar-benar ada di GitHub: `v1.2.2` (36), `v1.2.4` (38),
+> `v1.2.5` (39).
+
+### Fixed — Anotasi Kacau Setelah `maxWidth`, Regresi Core Aksesibilitas
+
+Rilis ini menutup regresi yang muncul di v1.2.4. Dua kelompok masalah, keduanya
+ditemukan lewat audit menyeluruh dan divalidasi di perangkat fisik.
+
+**1. Anotasi (Set-of-Marks) tergambar di luar gambar**
+
+`takeScreenshotRawBytes` mendapat parameter baru `maxWidth: Int = 480` di
+commit `c6fc187`. Hanya call site `annotatedScreenshot` yang tidak mengirimnya,
+sehingga bitmap tangkapan menyusut `1220×2712 → 480×1067` sementara
+`AnnotatedScreenshotHelper` tetap menggambar kotak memakai koordinat **layar
+fisik**. Semua kotak di x > 480 jatuh di luar gambar — inilah tampilan "kacau"
+yang dilaporkan.
+
+`AnnotatedScreenshotHelper.kt` sendiri **tidak berubah sama sekali** antara
+v1.2.2 dan v1.2.4 (`git diff --stat` kosong), jadi regresi datang dari
+pemanggil, bukan dari renderer. Itu juga sebabnya downgrade ke v1.2.2 kembali
+rapi: versi itu belum punya `maxWidth`.
+
+- `CMD_ANNOTATED_SCREENSHOT` kini mengirim `maxWidth = 0` (tanpa batas).
+- `annotate()` kini menurunkan skala koordinat sendiri dari elemen terjauh,
+  sehingga pemanggil mana pun yang mengecilkan bitmap tetap mendapat kotak di
+  dalam gambar (pertahanan berlapis).
+- `elements` JSON **tidak** ikut diskalakan — tetap koordinat fisik karena
+  dipakai untuk tap. Men-skala JSON akan membuat tap salah sasaran.
+
+Divalidasi di Redmi Note 13 Pro 5G (Android 15):
+`takeScreenshotRawBytes success: (1220x2712, s=1.0)`, 33 elemen, dan di
+inspector dasbor `Nodes (32)` dengan kotak 1–32 sejajar.
+
+**2. Dua regresi core dari pekerjaan remote controller**
+
+- `accessibility_service_config.xml` melebar ke `typeAllMask` +
+  `notificationTimeout=50`. `typeAllMask` (`0xFFFFFFFF`) berlangganan
+  `TYPE_TOUCH_INTERACTION_*`, `TYPE_GESTURE_DETECTION_*`, `TYPE_VIEW_SCROLLED`,
+  dan `TYPE_VIEW_TEXT_CHANGED` — tidak satu pun dipakai `onAccessibilityEvent`
+  (handler hanya memindai dialog pairing, dibatasi 250 ms sekali). Kembali ke
+  tiga tipe yang benar-benar dipakai + `notificationTimeout` 100 ms.
+  Flag baru dari commit itu (`flagIncludeNotImportantViews`,
+  `flagReportViewIds`) **dipertahankan** karena benar-benar membantu visibilitas
+  node.
+- `onUnbind()` menambah auto-revive yang menjalankan
+  `settings put secure accessibility_enabled 1` tanpa syarat. Bila pengguna
+  mematikan aksesibilitas dari Setelan, unbind berikutnya langsung
+  menyalakannya lagi — sakelar terasa rusak. Kini dijaga flag `userDisabled`
+  dan ketersediaan shell.
+
+**Yang diaudit dan tidak berubah** (tidak perlu tindakan):
+`healthSnapshot()` dan `capabilitiesJson()` nol diff terhadap v1.2.2, jadi
+kontrak server dan permukaan MCP tool tetap. Permukaan command 28 → 35, murni
+aditif. `CaptureService` tetap hanya start dari switch eksplisit + izin
+MediaProjection, tanpa auto-start.
+
+**Diverifikasi:** 209 unit test (termasuk 5 test regresi geometri anotasi),
+`assembleDebug`, `assembleRelease`, `lintVitalRelease`, dan validasi perangkat
++ browser.
+
 ## [1.2.4] - 2026-10-23
 
 ### Fixed & Hardened — Pre-release Security Audit, HEVC/H.265 via WebCodecs, HTTPS :8766 Default
