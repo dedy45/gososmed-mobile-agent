@@ -306,7 +306,74 @@ class SnapshotCollectorTest {
             rootNode = root
         )
 
-        val rawNodes = WindowRootCollector.collectRawNodes(MockTreeSource(listOf(window)))
-        assertEquals(WindowRootCollector.MAX_NODES, rawNodes.size)
+        val rawResult = WindowRootCollector.collectRawNodesWithCount(MockTreeSource(listOf(window)))
+        assertEquals(WindowRootCollector.MAX_NODES, rawResult.nodes.size)
+        assertEquals(2501, rawResult.totalCount) // 1 root + 2500 children
+        assertTrue(rawResult.truncated)
+    }
+
+    @Test
+    fun testNodesDigestBoundsSensitivity() {
+        val nodeA = SnapshotNode(
+            nodeId = "node-1", windowId = 1, packageName = "pkg", className = "btn",
+            resourceId = "id1", text = "hello", bounds = SnapshotBounds(10, 10, 50, 50)
+        )
+        val nodeB = SnapshotNode(
+            nodeId = "node-2", windowId = 1, packageName = "pkg", className = "btn",
+            resourceId = "id1", text = "hello", bounds = SnapshotBounds(20, 20, 60, 60)
+        )
+        val digestA = SnapshotCollector.computeNodesDigest(listOf(nodeA))
+        val digestB = SnapshotCollector.computeNodesDigest(listOf(nodeB))
+        assertNotEquals(digestA, digestB)
+    }
+
+    @Test
+    fun testNodesDigestTextSensitivity() {
+        val nodeA = SnapshotNode(
+            nodeId = "node-1", windowId = 1, packageName = "pkg", className = "btn",
+            resourceId = "id1", text = "hello", bounds = SnapshotBounds(10, 10, 50, 50)
+        )
+        val nodeB = nodeA.copy(text = "world")
+        val digestA = SnapshotCollector.computeNodesDigest(listOf(nodeA))
+        val digestB = SnapshotCollector.computeNodesDigest(listOf(nodeB))
+        assertNotEquals(digestA, digestB)
+    }
+
+    @Test
+    fun testNodesDigestNullVsEmptyTextNonCollision() {
+        val nodeEmpty = SnapshotNode(
+            nodeId = "node-1", windowId = 1, packageName = "pkg", className = "btn",
+            resourceId = "id1", text = "", bounds = SnapshotBounds(10, 10, 50, 50)
+        )
+        val nodeNull = SnapshotNode(
+            nodeId = "node-2", windowId = 1, packageName = "pkg", className = "btn",
+            resourceId = "id1", text = null, bounds = SnapshotBounds(10, 10, 50, 50)
+        )
+        val digestEmpty = SnapshotCollector.computeNodesDigest(listOf(nodeEmpty))
+        val digestNull = SnapshotCollector.computeNodesDigest(listOf(nodeNull))
+        assertNotEquals(digestEmpty, digestNull)
+    }
+
+    @Test
+    fun testNodesDigestOrderIndependence() {
+        val node1 = SnapshotNode(
+            nodeId = "node-1", windowId = 1, packageName = "pkg", className = "btn1",
+            resourceId = "id1", text = "A", bounds = SnapshotBounds(10, 10, 50, 50)
+        )
+        val node2 = SnapshotNode(
+            nodeId = "node-2", windowId = 1, packageName = "pkg", className = "btn2",
+            resourceId = "id2", text = "B", bounds = SnapshotBounds(60, 60, 100, 100)
+        )
+        val node3 = SnapshotNode(
+            nodeId = "node-3", windowId = 1, packageName = "pkg", className = "btn3",
+            resourceId = "id3", text = "C", bounds = SnapshotBounds(110, 110, 150, 150)
+        )
+
+        val listNormal = listOf(node1, node2, node3)
+        val listShuffled = listOf(node3, node1, node2)
+
+        val digestNormal = SnapshotCollector.computeNodesDigest(listNormal)
+        val digestShuffled = SnapshotCollector.computeNodesDigest(listShuffled)
+        assertEquals(digestNormal, digestShuffled)
     }
 }

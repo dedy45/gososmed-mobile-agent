@@ -200,13 +200,27 @@ object WindowRootCollector {
         }
     }
 
+    data class RawNodesResult(
+        val nodes: List<ActionableNodeRegistry.RawNodeInput>,
+        val totalCount: Int,
+        val truncated: Boolean = totalCount > MAX_NODES
+    )
+
     /**
      * Collects raw nodes across all interactive windows.
      * Rejects agent's package and non-interactive window types.
      */
     fun collectRawNodes(source: WindowTreeSource): List<ActionableNodeRegistry.RawNodeInput> {
+        return collectRawNodesWithCount(source).nodes
+    }
+
+    /**
+     * Collects raw nodes and counts total discovered nodes before MAX_NODES cap (§2.10.j.3).
+     */
+    fun collectRawNodesWithCount(source: WindowTreeSource): RawNodesResult {
         val result = mutableListOf<ActionableNodeRegistry.RawNodeInput>()
         val windows = source.getWindows()
+        var totalDiscovered = 0
 
         // Filter relevant interactive windows
         val interactiveWindows = windows.filter { w ->
@@ -224,7 +238,7 @@ object WindowRootCollector {
                 continue
             }
 
-            traverseNode(
+            totalDiscovered += traverseNodeCounting(
                 node = root,
                 windowId = window.id,
                 ancestorPath = "",
@@ -233,16 +247,12 @@ object WindowRootCollector {
                 depth = 0,
                 collector = result
             )
-
-            if (result.size >= MAX_NODES) {
-                break
-            }
         }
 
-        return result
+        return RawNodesResult(result, totalDiscovered, totalDiscovered > MAX_NODES)
     }
 
-    private fun traverseNode(
+    private fun traverseNodeCounting(
         node: SimulatedNode,
         windowId: Int,
         ancestorPath: String,
@@ -250,57 +260,72 @@ object WindowRootCollector {
         parentIndex: Int?,
         depth: Int,
         collector: MutableList<ActionableNodeRegistry.RawNodeInput>
-    ) {
-        if (depth > MAX_DEPTH || collector.size >= MAX_NODES) {
-            return
+    ): Int {
+        if (depth > MAX_DEPTH) {
+            return 0
         }
-
-        // Reject agent package nodes
         if (node.packageName == ActionableNodeRegistry.AGENT_PACKAGE) {
-            return
+            return 0
         }
 
-        val currentIndex = collector.size
-        val simpleClassName = node.className.substringAfterLast('.')
-        val currentPath = if (ancestorPath.isEmpty()) simpleClassName else "$ancestorPath/$simpleClassName"
+        var count = 1
 
-        val rawNode = ActionableNodeRegistry.RawNodeInput(
-            windowId = windowId,
-            packageName = node.packageName,
-            className = node.className,
-            resourceId = node.resourceId,
-            text = node.text,
-            contentDescription = node.contentDescription,
-            bounds = node.bounds,
-            clickable = node.clickable,
-            longClickable = node.longClickable,
-            editable = node.editable,
-            checkable = node.checkable,
-            checked = node.checked,
-            scrollable = node.scrollable,
-            focusable = node.focusable,
-            focused = node.focused,
-            enabled = node.enabled,
-            selected = node.selected,
-            password = node.password,
-            ancestorPath = ancestorPath,
-            siblingIndex = siblingIndex,
-            childCount = node.children.size,
-            parentIndex = parentIndex
-        )
-        collector.add(rawNode)
+        if (collector.size < MAX_NODES) {
+            val currentIndex = collector.size
+            val simpleClassName = node.className.substringAfterLast('.')
+            val currentPath = if (ancestorPath.isEmpty()) simpleClassName else "$ancestorPath/$simpleClassName"
 
-        for (idx in node.children.indices) {
-            if (collector.size >= MAX_NODES) break
-            traverseNode(
-                node = node.children[idx],
+            val rawNode = ActionableNodeRegistry.RawNodeInput(
                 windowId = windowId,
-                ancestorPath = currentPath,
-                siblingIndex = idx,
-                parentIndex = currentIndex,
-                depth = depth + 1,
-                collector = collector
+                packageName = node.packageName,
+                className = node.className,
+                resourceId = node.resourceId,
+                text = node.text,
+                contentDescription = node.contentDescription,
+                bounds = node.bounds,
+                clickable = node.clickable,
+                longClickable = node.longClickable,
+                editable = node.editable,
+                checkable = node.checkable,
+                checked = node.checked,
+                scrollable = node.scrollable,
+                focusable = node.focusable,
+                focused = node.focused,
+                enabled = node.enabled,
+                selected = node.selected,
+                password = node.password,
+                ancestorPath = ancestorPath,
+                siblingIndex = siblingIndex,
+                childCount = node.children.size,
+                parentIndex = parentIndex
             )
+            collector.add(rawNode)
+
+            for (idx in node.children.indices) {
+                count += traverseNodeCounting(
+                    node = node.children[idx],
+                    windowId = windowId,
+                    ancestorPath = currentPath,
+                    siblingIndex = idx,
+                    parentIndex = currentIndex,
+                    depth = depth + 1,
+                    collector = collector
+                )
+            }
+        } else {
+            for (child in node.children) {
+                count += countDiscoveredNodes(child, depth + 1)
+            }
         }
+        return count
+    }
+
+    private fun countDiscoveredNodes(node: SimulatedNode, depth: Int): Int {
+        if (depth > MAX_DEPTH || node.packageName == ActionableNodeRegistry.AGENT_PACKAGE) return 0
+        var c = 1
+        for (child in node.children) {
+            c += countDiscoveredNodes(child, depth + 1)
+        }
+        return c
     }
 }

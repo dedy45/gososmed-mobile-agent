@@ -292,7 +292,9 @@ data class SnapshotResult(
     val quality: SnapshotQuality,
     val nodes: List<SnapshotNode>,
     val image: SnapshotImage? = null,
-    val truncated: Boolean = false
+    val truncated: Boolean = false,
+    val nodesDigest: String = "",
+    val nodeCount: Int = nodes.size
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("snapshot_id", snapshotId)
@@ -314,6 +316,8 @@ data class SnapshotResult(
             put("image", image.toJson())
         }
         put("truncated", truncated)
+        put("nodes_digest", nodesDigest)
+        put("node_count", nodeCount)
     }
 
     companion object {
@@ -343,7 +347,9 @@ data class SnapshotResult(
                 quality = quality,
                 nodes = nodesList,
                 image = image,
-                truncated = json.optBoolean("truncated", false)
+                truncated = json.optBoolean("truncated", false),
+                nodesDigest = json.optString("nodes_digest", ""),
+                nodeCount = json.optInt("node_count", nodesList.size)
             )
         }
     }

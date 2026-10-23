@@ -93,9 +93,11 @@ object SnapshotCollector {
         val preDisplay = displayProvider.getDisplayMetrics()
         val preForeground = displayProvider.getForegroundPackage()
 
-        // 2. Window enumeration and raw node collection
-        val rawNodes = WindowRootCollector.collectRawNodes(treeSource)
-
+        // 2. Window enumeration and raw node collection with pre-cap counting (§2.10.j.3)
+        val rawResult = WindowRootCollector.collectRawNodesWithCount(treeSource)
+        val rawNodes = rawResult.nodes
+        val totalDiscoveredCount = rawResult.totalCount
+        val truncated = rawResult.truncated
         // 3. Post-capture checks
         val postDisplay = displayProvider.getDisplayMetrics()
         val postForeground = displayProvider.getForegroundPackage()
@@ -142,15 +144,15 @@ object SnapshotCollector {
         // 6. Compute tree hash
         val treeHash = computeTreeHash(processedNodes)
 
+        // 6b. Compute deterministic order-independent nodes_digest (§2.8)
+        val nodesDigest = computeNodesDigest(processedNodes)
+
         // 7. Compute screen fingerprint
         val screenFingerprint = computeScreenFingerprint(
             packageName = postForeground.packageName,
             windowId = postForeground.windowId,
             nodes = processedNodes
         )
-
-        val truncated = rawNodes.size >= WindowRootCollector.MAX_NODES
-
         return SnapshotResult(
             snapshotId = snapshotId,
             frameSeq = frameSeq,
@@ -162,7 +164,9 @@ object SnapshotCollector {
             quality = quality,
             nodes = processedNodes,
             image = image,
-            truncated = truncated
+            truncated = truncated,
+            nodesDigest = nodesDigest,
+            nodeCount = totalDiscoveredCount
         )
     }
 
@@ -186,6 +190,26 @@ object SnapshotCollector {
         }
         val md = MessageDigest.getInstance("SHA-256")
         val bytes = md.digest(sb.toString().toByteArray(Charsets.UTF_8))
+        return "sha256:" + bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Deterministic, traversal-order-independent, node_id-free SHA-256 digest
+     * over canonical (resourceId, className, text, bounds) identity tuples.
+     * (system-design-feedback-orpv-2026-10-23.md §2.8 & §5.2b).
+     */
+    fun computeNodesDigest(nodes: List<SnapshotNode>): String {
+        val signatures = nodes.map { node ->
+            val res = node.resourceId ?: "\u0000NULL\u0000"
+            val cls = node.className
+            val txt = node.text ?: "\u0000NULL\u0000"
+            val b = node.bounds
+            "$res|$cls|$txt|${b.left},${b.top},${b.right},${b.bottom}"
+        }.sorted()
+
+        val joined = signatures.joinToString("\n")
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(joined.toByteArray(Charsets.UTF_8))
         return "sha256:" + bytes.joinToString("") { "%02x".format(it) }
     }
 
