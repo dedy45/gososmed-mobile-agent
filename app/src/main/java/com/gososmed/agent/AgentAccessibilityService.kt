@@ -553,11 +553,18 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val type = event?.eventType ?: return
+
+        // Capture toast notifications (Temuan #5, #7, ADR-01)
+        if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            ToastTracker.recordEvent(event)
+            return
+        }
+
         // Hierarki aplikasi target tetap dibaca on-demand. Satu-satunya reaksi
         // per-event adalah pemindai dialog pairing ADB, dan ia aktif hanya saat
         // AdbPairingService mendaftarkan listener.
         val listener = pairingDialogListener ?: return
-        val type = event?.eventType ?: return
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) {

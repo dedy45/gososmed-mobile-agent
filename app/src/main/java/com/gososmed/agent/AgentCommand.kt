@@ -625,6 +625,17 @@ object AgentCommand {
                             matchedNode = resolveResult.selectedNode
                             break
                         }
+                        // Check unexpired toasts if no window node matched (ADR-01)
+                        val toasts = ToastTracker.getRecentToasts(targetPackage = selector.packageName)
+                        for (t in toasts) {
+                            val vNode = ToastTracker.toVirtualNode(t)
+                            val res = DeterministicResolver.resolve(query = selector, nodes = listOf(vNode))
+                            if (res.selectedNode != null) {
+                                matchedNode = res.selectedNode
+                                break
+                            }
+                        }
+                        if (matchedNode != null) break
                         if (CommandCancellationRegistry.isCancelled(requestId)) {
                             val timing = ProtocolV2.Timing.create(startTime)
                             return ProtocolV2.Response.error(
@@ -640,11 +651,15 @@ object AgentCommand {
 
                     val timing = ProtocolV2.Timing.create(startTime)
                     if (matchedNode != null) {
+                        val isNonAuthoritative = matchedNode.ancestorPath == "toast" || matchedNode.className == "android.widget.Toast"
                         ProtocolV2.Response.success(
                             requestId = requestId,
                             result = JSONObject().apply {
                                 put("found", true)
                                 put("node", matchedNode.toJson())
+                                if (isNonAuthoritative) {
+                                    put("non_authoritative", true)
+                                }
                             },
                             timing = timing
                         ).toJson()
