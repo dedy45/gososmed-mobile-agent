@@ -347,7 +347,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:gravity="end"
-                                android:text="Layanan Streaming"
+                                android:text="@string/streaming_service_label"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="11sp" />
                         </LinearLayout>
@@ -358,7 +358,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:fontFamily="monospace"
-                            android:text="Menunggu jaringan Wi-Fi…"
+                            android:text="@string/waiting_wifi"
                             android:textColor="@color/text_primary"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -377,7 +377,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="Buka di Browser" />
+                            android:text="@string/open_browser" />
                     </LinearLayout>
 
                     <!-- PIN protection toggle (security) -->
@@ -397,7 +397,7 @@
                             <TextView
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:text="Wajibkan PIN"
+                                android:text="@string/require_pin"
                                 android:textColor="@color/text_primary"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
@@ -406,7 +406,7 @@
                                 android:id="@+id/tvPinHint"
                                 style="@style/GosoHint"
                                 android:layout_marginTop="2dp"
-                                android:text="Siapa pun di Wi-Fi ini harus memasukkan PIN 6 digit." />
+                                android:text="@string/pin_hint" />
                         </LinearLayout>
 
                         <com.google.android.material.materialswitch.MaterialSwitch
@@ -431,8 +431,7 @@
 
                     <TextView
                         style="@style/GosoSectionLabel"
-                        android:text="Mode debug" />
-
+                        android:text="@string/debug_mode_title" />
                     <EditText
                         android:id="@+id/wsUrlEt"
                         android:layout_width="match_parent"
@@ -655,9 +654,8 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Periksa Ulang"
+                            android:text="@string/btn_recheck"
                             android:textSize="12sp" />
-
                         <Button
                             android:id="@+id/btnHealthCopy"
                             style="@style/Widget.Material3.Button.TonalButton"
@@ -665,7 +663,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
                             android:layout_weight="1"
-                            android:text="Salin Laporan"
+                            android:text="@string/btn_copy_report"
                             android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>

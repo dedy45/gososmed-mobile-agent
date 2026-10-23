@@ -341,12 +341,9 @@ object NodeActionExecutor {
                 put("action_performed", true)
             }
             val reason = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
-            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit
-            val isRetryable = if (request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED) {
-                false
-            } else {
-                false
-            }
+            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit.
+            // Non-submit clicks remain retryable (e.g. temporary lag / tap missed).
+            val isRetryable = !request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
                 reasonCode = reason,
@@ -573,12 +570,9 @@ object NodeActionExecutor {
                 put("action_performed", true)
             }
             val reason = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
-            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit
-            val isRetryable = if (request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED) {
-                false
-            } else {
-                false
-            }
+            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit.
+            // Non-submit clicks remain retryable (e.g. temporary lag / tap missed).
+            val isRetryable = !request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
                 reasonCode = reason,

@@ -121,4 +121,14 @@
     <string name="btn_view_github">Lihat di GitHub</string>
     <string name="btn_close">Tutup</string>
     <string name="tab_menu">Legal</string>
+
+    <!-- Remote Controller & UI Controls -->
+    <string name="streaming_service_label">Layanan Streaming</string>
+    <string name="waiting_wifi">Menunggu jaringan Wi-Fi…</string>
+    <string name="open_browser">Buka di Browser</string>
+    <string name="require_pin">Wajibkan PIN</string>
+    <string name="pin_hint">Siapa pun di Wi-Fi ini harus memasukkan PIN 6 digit.</string>
+    <string name="debug_mode_title">Mode Debug</string>
+    <string name="btn_recheck">Periksa Ulang</string>
+    <string name="btn_copy_report">Salin Laporan</string>
 </resources>

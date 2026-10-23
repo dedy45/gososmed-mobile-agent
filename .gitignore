@@ -27,5 +27,4 @@ keystore/
 
 # Internal developer scratchpad, audit trails, and agent working files (Public hygiene)
 .audit/
-docs/superpowers/
 docs/5-testing/

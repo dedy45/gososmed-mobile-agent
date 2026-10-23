@@ -368,6 +368,51 @@ class NodeActionExecutorTest {
     }
 
     @Test
+    fun testNonSubmitActionScreenNotChangedIsRetryable() {
+        val reqId = "req-normal-screen-not-changed"
+        val snap = createSnapshot(
+            snapshotId = "s-normal",
+            treeHash = "sha256:same-hash",
+            nodes = listOf(
+                SnapshotNode(
+                    nodeId = "node-click",
+                    windowId = 1,
+                    packageName = "com.example.app",
+                    className = "android.widget.Button",
+                    resourceId = "com.example.app:id/next",
+                    bounds = SnapshotBounds(100, 100, 300, 200),
+                    clickable = true
+                )
+            )
+        )
+
+        val request = NodeActionExecutor.ActionRequest(
+            requestId = reqId,
+            selector = SelectorQuery(resourceId = "next"),
+            requireScreenChange = true,
+            timeoutMs = 100L,
+            isSubmitAction = false
+        )
+
+        val dispatcher = MockActionDispatcher()
+        var virtualTime = 0L
+        val response = NodeActionExecutor.execute(
+            request = request,
+            dispatcher = dispatcher,
+            currentSnapshotProvider = { snap },
+            timeSource = {
+                virtualTime += 100L
+                virtualTime
+            },
+            sleeper = {}
+        )
+
+        assertFalse(response.ok)
+        assertEquals(ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED, response.reasonCode)
+        assertTrue("Non-submit action screen_not_changed SHOULD be retryable", response.retryable)
+    }
+
+    @Test
     fun testTreeHashDivergenceReturnsStaleSnapshot() {
         val reqId = "req-stale-hash"
         val initialSnapshot = createSnapshot(

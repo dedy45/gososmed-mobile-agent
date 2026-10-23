@@ -26,6 +26,16 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - **Native `scrollUntilVisible`**: pengguliran terkalibrasi in-memory hingga elemen masuk area aman viewport (15% - 85% layar).
   - **Stale A11y Cache Refresh**: mekanisme penyegaran cache internal aksesibilitas OS (`refreshAccessibilityCache`).
 
+### Fixed — UI & Policy Hardening
+- **Perbaikan Switcher Bahasa (i18n ID ↔ EN)**:
+  - Menambahkan resource qualifier eksplisit `res/values-in/strings.xml` (dan `locales_config.xml`) agar sistem Android 13+ pada perangkat dengan default bahasa sistem Inggris (`en-US`) tidak lagi memaksa fallback ke `values-en/` ketika pengguna memilih Bahasa Indonesia.
+  - Memperbaiki `MainActivity.attachBaseContext` dan sinkronisasi preference `commit()` sebelum `recreate()`.
+- **Perbaikan Switcher Tema (Ember 2048 Dark ↔ Glacier Glass Light)**:
+  - Mengatasi penolakan recreate pada activity yang memiliki `uiMode` di `android:configChanges` dengan secara eksplisit mengeset `delegate.localNightMode` dan memicu `recreate()`.
+  - Memperbarui label emoji tombol dan persistensi sinkron `commit()`.
+- **Penajaman Retry Policy `screen_not_changed`**:
+  - Memastikan aksi klik navigasi biasa (`isSubmitAction = false`) tetap memiliki `retryable = true` saat menghadapi lag sementara, sementara aksi submit (`isSubmitAction = true`) tetap diproteksi ketat dengan `retryable = false` guna mencegah *double post*.
+
 ## [1.2.5] - 2026-10-23
 
 > **Catatan penomoran: kenapa 1.2.2 langsung ke 1.2.4?**

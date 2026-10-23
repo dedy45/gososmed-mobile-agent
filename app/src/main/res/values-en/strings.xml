@@ -121,4 +121,14 @@
     <string name="btn_view_github">View on GitHub</string>
     <string name="btn_close">Close</string>
     <string name="tab_menu">Legal</string>
+
+    <!-- Remote Controller & UI Controls -->
+    <string name="streaming_service_label">Streaming Service</string>
+    <string name="waiting_wifi">Waiting for Wi-Fi network…</string>
+    <string name="open_browser">Open in Browser</string>
+    <string name="require_pin">Require PIN</string>
+    <string name="pin_hint">Anyone on this Wi-Fi must enter the 6-digit PIN.</string>
+    <string name="debug_mode_title">Debug Mode</string>
+    <string name="btn_recheck">Recheck</string>
+    <string name="btn_copy_report">Copy Report</string>
 </resources>

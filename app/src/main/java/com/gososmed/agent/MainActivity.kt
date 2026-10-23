@@ -237,19 +237,24 @@ class MainActivity : AppCompatActivity() {
     override fun attachBaseContext(newBase: Context) {
         val savedLang = newBase.getSharedPreferences("agent", MODE_PRIVATE)
             .getString("app_lang", "id") ?: "id"
-        val locale = Locale(savedLang)
+        val locale = if (savedLang.startsWith("en", ignoreCase = true)) {
+            Locale.ENGLISH
+        } else {
+            Locale("in", "ID")
+        }
         Locale.setDefault(locale)
         val config = android.content.res.Configuration(newBase.resources.configuration)
         config.setLocales(android.os.LocaleList(locale))
-        super.attachBaseContext(newBase.createConfigurationContext(config))
+        config.locale = locale
+        val localizedContext = newBase.createConfigurationContext(config)
+        super.attachBaseContext(localizedContext)
     }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val isDark = prefs().getBoolean("theme_dark", true)
-        AppCompatDelegate.setDefaultNightMode(
-            if (isDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
+        val targetNight = if (isDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        AppCompatDelegate.setDefaultNightMode(targetNight)
+        delegate.localNightMode = targetNight
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -306,22 +311,27 @@ class MainActivity : AppCompatActivity() {
             prefs().edit()
                 .putBoolean("theme_dark", newDark)
                 .putString("theme_mode", if (newDark) "dark" else "light")
-                .apply()
+                .commit()
+
             btnThemeToggle.text = if (newDark) "🌙" else "☀️"
-            AppCompatDelegate.setDefaultNightMode(
-                if (newDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-            )
+            val targetMode = if (newDark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+            AppCompatDelegate.setDefaultNightMode(targetMode)
+            delegate.localNightMode = targetMode
+            recreate()
         }
 
         // In-App Language Switcher (i18n ID ↔ EN 1-Tap)
         val activeLang = prefs().getString("app_lang", "id") ?: "id"
-        val isEn = activeLang.startsWith("en")
+        val isEn = activeLang.startsWith("en", ignoreCase = true)
         btnLangToggle.text = if (isEn) "ID" else "EN"
         btnLangToggle.setOnClickListener {
-            val nextLang = if (isEn) "id" else "en"
-            prefs().edit().putString("app_lang", nextLang).apply()
+            val currentLang = prefs().getString("app_lang", "id") ?: "id"
+            val nextLang = if (currentLang.startsWith("en", ignoreCase = true)) "id" else "en"
+            prefs().edit().putString("app_lang", nextLang).commit()
+
+            val localeTag = if (nextLang == "id") "in-ID,id-ID" else "en-US"
             AppCompatDelegate.setApplicationLocales(
-                LocaleListCompat.forLanguageTags(nextLang)
+                LocaleListCompat.forLanguageTags(localeTag)
             )
             recreate()
         }
