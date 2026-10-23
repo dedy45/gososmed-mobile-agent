@@ -91,7 +91,7 @@
   // MSE State (Timescale 1000 / 30 FPS = ~33.3ms)
   const P = { ms: null, sb: null, queue: [], ready: false, key: false, seq: 1, dts: 0, dur: 33, w: 0, h: 0 };
   // WebCodecs State
-  const WC = { dec: null, csd: null, key: false, ts: 0 };
+  const WC = { dec: null, key: false, ts: 0 };
   // Codec aktif: 1 AVC, 2 HEVC, 3 AV1. Dipakai untuk memilih jalur frame.
   let curCodecId = 1;
   const hasWebCodecs = ('VideoDecoder' in window);
@@ -301,7 +301,6 @@
     // Mode A: WebCodecs VideoDecoder (Secure Context: HTTPS / localhost)
     if (hasWebCodecs) {
       try { if (WC.dec) WC.dec.close(); } catch (_) {}
-      WC.csd = d.subarray(5).slice();
       WC.key = false;
       WC.cfgW = w;
       WC.cfgH = h;
@@ -757,7 +756,6 @@
       if (WC.dec) {
         try { WC.dec.close(); } catch (_) {}
         WC.dec = null;
-        WC.csd = null;
         WC.key = false;
       }
       if (P.ms) {
