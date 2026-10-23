@@ -9,6 +9,22 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.6-dev.2] - 2026-10-23
+
+### Fixed — Anti-ANR & UI Hardening
+- **Anti-ANR & Eliminasi Freeze Main Looper (P0)**:
+  - Menghapus pemanggilan `mainHandler.post` pada eksekusi command inbound di `AgentWsClient.kt`. Semua eksekusi command (termasuk `annotatedScreenshot`, `tap`, `clickAndWait`) dialihkan ke `scope.launch(Dispatchers.IO)` berpelindung `commandExecutionMutex`.
+  - Mencegah deadlock dan pemblokiran Main Looper saat UI dashboard menguji/mengetuk tombol node secara beruntun (`[⚡ Test]`), sehingga popup sistem Android "Agent GoSosmed isn't responding (Wait / Close app)" tidak akan pernah terpicu.
+  - Memperketat batas tunggu screenshot latch dari 8 detik ke 4 detik.
+- **Perbaikan Switcher Bahasa (i18n ID ↔ EN)**:
+  - Menambahkan resource qualifier eksplisit `res/values-in/strings.xml` (dan `locales_config.xml`) agar sistem Android 13+ pada perangkat dengan default bahasa sistem Inggris (`en-US`) tidak lagi memaksa fallback ke `values-en/` ketika pengguna memilih Bahasa Indonesia.
+  - Memperbaiki `MainActivity.attachBaseContext` dan sinkronisasi preference `commit()` sebelum `recreate()`.
+- **Perbaikan Switcher Tema (Ember 2048 Dark ↔ Glacier Glass Light)**:
+  - Mengatasi penolakan recreate pada activity yang memiliki `uiMode` di `android:configChanges` dengan secara eksplisit mengeset `delegate.localNightMode` dan memicu `recreate()`.
+  - Memperbarui label emoji tombol dan persistensi sinkron `commit()`.
+- **Penajaman Retry Policy `screen_not_changed`**:
+  - Memastikan aksi klik navigasi biasa (`isSubmitAction = false`) tetap memiliki `retryable = true` saat menghadapi lag sementara, sementara aksi submit (`isSubmitAction = true`) tetap diproteksi ketat dengan `retryable = false` guna mencegah *double post*.
+
 ## [1.2.6-dev.1] - 2026-10-23
 
 ### Added
@@ -25,20 +41,6 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - **Spatial Filtering**: seleksi elemen 2D geometris relatif (`below`, `above`, `leftOf`, `rightOf`) berbasis jarak Euclidean terdekat.
   - **Native `scrollUntilVisible`**: pengguliran terkalibrasi in-memory hingga elemen masuk area aman viewport (15% - 85% layar).
   - **Stale A11y Cache Refresh**: mekanisme penyegaran cache internal aksesibilitas OS (`refreshAccessibilityCache`).
-
-### Fixed — UI & Policy Hardening
-- **Perbaikan Switcher Bahasa (i18n ID ↔ EN)**:
-  - Menambahkan resource qualifier eksplisit `res/values-in/strings.xml` (dan `locales_config.xml`) agar sistem Android 13+ pada perangkat dengan default bahasa sistem Inggris (`en-US`) tidak lagi memaksa fallback ke `values-en/` ketika pengguna memilih Bahasa Indonesia.
-  - Memperbaiki `MainActivity.attachBaseContext` dan sinkronisasi preference `commit()` sebelum `recreate()`.
-- **Perbaikan Switcher Tema (Ember 2048 Dark ↔ Glacier Glass Light)**:
-  - Mengatasi penolakan recreate pada activity yang memiliki `uiMode` di `android:configChanges` dengan secara eksplisit mengeset `delegate.localNightMode` dan memicu `recreate()`.
-  - Memperbarui label emoji tombol dan persistensi sinkron `commit()`.
-- **Penajaman Retry Policy `screen_not_changed`**:
-  - Memastikan aksi klik navigasi biasa (`isSubmitAction = false`) tetap memiliki `retryable = true` saat menghadapi lag sementara, sementara aksi submit (`isSubmitAction = true`) tetap diproteksi ketat dengan `retryable = false` guna mencegah *double post*.
-- **Anti-ANR & Eliminasi Freeze Main Looper (P0)**:
-  - Menghapus pemanggilan `mainHandler.post` pada eksekusi command inbound di `AgentWsClient.kt`. Semua eksekusi command (termasuk `annotatedScreenshot`, `tap`, `clickAndWait`) dialihkan ke `scope.launch(Dispatchers.IO)` berpelindung `commandExecutionMutex`.
-  - Mencegah deadlock dan pemblokiran Main Looper saat UI dashboard menguji/mengetuk tombol node secara beruntun (`[⚡ Test]`), sehingga popup sistem Android "Agent GoSosmed isn't responding (Wait / Close app)" tidak akan pernah terpicu.
-  - Memperketat batas tunggu screenshot latch dari 8 detik ke 4 detik.
 
 ## [1.2.5] - 2026-10-23
 
