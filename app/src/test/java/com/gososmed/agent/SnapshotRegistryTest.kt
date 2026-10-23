@@ -76,21 +76,83 @@ class SnapshotRegistryTest {
 
     @Test
     fun testLruCapacityEviction() {
-        // Capacity is 5; register 6 snapshots
-        for (i in 1..6) {
+        // Capacity is 8; register 9 snapshots
+        for (i in 1..9) {
             val snap = createDummySnapshot("snap-$i")
             SnapshotRegistry.register(snap, registeredAtMs = 1000L + i * 10L)
         }
 
-        // snap-1 should have been evicted because capacity is 5
+        // snap-1 should have been evicted because capacity is 8
         assertNull(SnapshotRegistry.get("snap-1", currentTimeMs = 2000L))
 
-        // snap-2 to snap-6 should be present
-        for (i in 2..6) {
+        // snap-2 to snap-9 should be present
+        for (i in 2..9) {
             assertNotNull(SnapshotRegistry.get("snap-$i", currentTimeMs = 2000L))
         }
 
-        assertEquals("snap-6", SnapshotRegistry.getLatest(currentTimeMs = 2000L)?.snapshotId)
+        assertEquals("snap-9", SnapshotRegistry.getLatest(currentTimeMs = 2000L)?.snapshotId)
+    }
+
+    @Test
+    fun testPinProtectsFromLruEviction() {
+        val snap1 = createDummySnapshot("snap-1")
+        SnapshotRegistry.register(snap1, registeredAtMs = 1000L)
+        assertTrue(SnapshotRegistry.pin("snap-1"))
+        assertTrue(SnapshotRegistry.isPinned("snap-1"))
+
+        // Register 10 more snapshots (total 11)
+        for (i in 2..11) {
+            val snap = createDummySnapshot("snap-$i")
+            SnapshotRegistry.register(snap, registeredAtMs = 1000L + i * 10L)
+        }
+
+        // snap-2 was evicted from regular LRU
+        assertNull(SnapshotRegistry.get("snap-2", currentTimeMs = 2000L))
+
+        // snap-1 is still retrieved because it is pinned
+        val pinnedSnap = SnapshotRegistry.get("snap-1", currentTimeMs = 2000L)
+        assertNotNull(pinnedSnap)
+        assertEquals("snap-1", pinnedSnap?.snapshotId)
+    }
+
+    @Test
+    fun testPinCapacityMax2() {
+        for (i in 1..3) {
+            val snap = createDummySnapshot("snap-$i")
+            SnapshotRegistry.register(snap, registeredAtMs = 1000L + i * 10L)
+        }
+
+        assertTrue(SnapshotRegistry.pin("snap-1"))
+        assertTrue(SnapshotRegistry.pin("snap-2"))
+        assertTrue(SnapshotRegistry.pin("snap-3")) // 3rd pin evicts oldest pin (snap-1)
+
+        assertFalse(SnapshotRegistry.isPinned("snap-1"))
+        assertTrue(SnapshotRegistry.isPinned("snap-2"))
+        assertTrue(SnapshotRegistry.isPinned("snap-3"))
+    }
+
+    @Test
+    fun testUnpinRemovesFromPinnedStorage() {
+        val snap1 = createDummySnapshot("snap-1")
+        SnapshotRegistry.register(snap1, registeredAtMs = 1000L)
+        assertTrue(SnapshotRegistry.pin("snap-1"))
+        assertTrue(SnapshotRegistry.isPinned("snap-1"))
+
+        assertTrue(SnapshotRegistry.unpin("snap-1"))
+        assertFalse(SnapshotRegistry.isPinned("snap-1"))
+    }
+
+    @Test
+    fun testPinnedIndependentTtl() {
+        val snap1 = createDummySnapshot("snap-1")
+        SnapshotRegistry.register(snap1, registeredAtMs = 1000L)
+        SnapshotRegistry.pin("snap-1", pinTtlMs = 60_000L, currentTimeMs = 1000L)
+
+        // Beyond standard 30s TTL but within 60s pin TTL
+        assertNotNull(SnapshotRegistry.get("snap-1", currentTimeMs = 40_000L))
+
+        // Beyond pin TTL
+        assertNull(SnapshotRegistry.get("snap-1", currentTimeMs = 70_000L))
     }
 
     @Test
