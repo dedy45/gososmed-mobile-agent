@@ -1896,10 +1896,14 @@ class MainActivity : AppCompatActivity() {
             tvRemoteClients.text = "Port $httpsPort / $port"
         } else {
             val displayIp = if (localIp != "127.0.0.1") localIp else "Wi-Fi"
-            val url = if (localIp != "127.0.0.1") "http://$localIp:$port" else "Menghubungkan ke Wi-Fi..."
+            val url = if (localIp != "127.0.0.1") {
+                "https://$localIp:$httpsPort\nhttp://$localIp:$port (fallback MSE)"
+            } else {
+                "Menghubungkan ke Wi-Fi..."
+            }
             tvRemoteSubtitle.text = "Siap diaktifkan • $displayIp"
             tvRemoteLocalUrl.text = url
-            tvRemoteClients.text = "Port $port"
+            tvRemoteClients.text = "Port $httpsPort / $port"
         }
     }
 

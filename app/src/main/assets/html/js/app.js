@@ -225,16 +225,21 @@
               }
               if (window.GoStream) window.GoStream.reset();
             } else if (msg.type === 'codec') {
-              // The phone negotiated a codec at runtime (AV1/HEVC/AVC).
-              // Verify the browser can decode it; if not, ask for AVC fallback.
+              // Codec yang dinegosiasikan HP (AVC/HEVC/AV1). Dua jalur decode
+              // yang berbeda: MSE hanya untuk AVC (muxer fMP4 kita membangun
+              // avc1/avcC), sedangkan HEVC hanya lewat WebCodecs.
+              // Probe MSE untuk HEVC karena itu salah jalur dan bisa mematikan
+              // HEVC yang sebenarnya berfungsi.
               const viewerCodec = msg.viewer || 'avc1';
-              const probe = viewerCodec === 'hvc1'
-                ? 'video/mp4; codecs="hvc1.1.6.L93.B0"'
-                : viewerCodec === 'av01'
-                  ? 'video/mp4; codecs="av01.0.05M.08"'
-                  : 'video/mp4; codecs="avc1.42E01E"';
-              const supported = (typeof MediaSource !== 'undefined')
-                && MediaSource.isTypeSupported(probe);
+              let supported;
+              if (viewerCodec === 'hvc1') {
+                supported = ('VideoDecoder' in window) && window.isSecureContext;
+              } else if (viewerCodec === 'av01') {
+                supported = ('VideoDecoder' in window) && window.isSecureContext;
+              } else {
+                supported = (typeof MediaSource !== 'undefined')
+                  && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"');
+              }
               log(`Codec HP: ${msg.mime} (${viewerCodec}) — ${supported ? 'didukung browser' : 'TIDAK didukung, minta AVC'}`,
                   supported ? 'success' : 'warn');
               if (!supported) {

@@ -367,7 +367,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="Buka URL di atas pada browser PC/laptop di Wi-Fi yang sama untuk kontrol langsung latensi rendah (H.264 MediaCodec hardware)."
+                            android:text="Buka URL HTTPS di atas (WebCodecs HEVC, hardware). HTTP :8765 tetap tersedia sebagai fallback MSE/H.264."
                             android:textColor="@color/text_secondary"
                             android:textSize="11sp" />
 

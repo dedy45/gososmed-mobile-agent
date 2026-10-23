@@ -42,13 +42,14 @@ object HevcCodecString {
             if (vps != null && sps != null) break
         }
         val v = vps
-        val s = sps
-        if (v == null || s == null) null else build(v, s)
+        // SPS diperiksa sebagai gerbang kelengkapan: parameter set HEVC yang
+        // sah selalu berisi VPS+SPS+PPS. String codec sendiri hanya butuh VPS.
+        if (v == null || sps == null) null else build(v)
     } catch (_: Exception) {
         null
     }
 
-    private fun build(vps: ByteArray, sps: ByteArray): String {
+    private fun build(vps: ByteArray): String {
         val p = ProfileTierLevel.parse(vps)
 
         val sb = StringBuilder(24)
