@@ -118,9 +118,9 @@ object AgentCommand {
     const val CMD_CLICK_AND_WAIT = "clickAndWait"
     const val CMD_START_LOCAL_SERVER = "startLocalServer"
     const val CMD_STOP_LOCAL_SERVER = "stopLocalServer"
+    const val CMD_GLOBAL_DIM = "globalDim"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
-     *
      * Dipakai dua hal:
      *  1. [execute] menjawabnya tanpa memeriksa `AgentAccessibilityService.instance`,
      *     sehingga tetap bekerja walau layanan aksesibilitas mati.
@@ -143,7 +143,7 @@ object AgentCommand {
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
         CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
-        CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER
+        CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER, CMD_GLOBAL_DIM
     )
     /**
      * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
@@ -968,6 +968,25 @@ object AgentCommand {
             CMD_STOP_LOCAL_SERVER -> {
                 com.gososmed.agent.capture.LocalWebServer.stop()
                 resp.put("ok", true)
+            }
+            CMD_GLOBAL_DIM -> {
+                val enabled = req.optBoolean("enabled", true)
+                val brightness = if (req.has("brightness")) req.optInt("brightness", 1).coerceIn(1, 255) else if (enabled) 1 else 128
+                val shell = PrivilegedShellHolder.get()
+                var applied = false
+                if (shell.status().available) {
+                    val r = shell.exec("settings put system screen_brightness $brightness")
+                    applied = r.ok
+                }
+                val ctx = appContext()
+                ctx?.getSharedPreferences("agent", android.content.Context.MODE_PRIVATE)
+                    ?.edit()?.putBoolean("global_dim_mode", enabled)?.apply()
+
+                resp.put("ok", true).put("result", JSONObject().apply {
+                    put("dimmed", enabled)
+                    put("brightness", brightness)
+                    put("applied_via_shell", applied)
+                })
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }

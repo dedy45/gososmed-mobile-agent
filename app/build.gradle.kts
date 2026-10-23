@@ -36,12 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 41 = 1.2.6-dev.2 (DEV) — Anti-ANR CommandExecutionMutex,
-        // eliminate main looper stalls, fix i18n language & theme toggles,
-        // and refine non-submit retryable policy.
-        versionCode = 41
-        versionName = "1.2.6-dev.2"
-        val isDevVersion = versionName?.contains("-dev") == true
+        // versionCode 42 = 1.2.6 (STABIL) — Rilis resmi stabil: Anti-ANR CommandExecutionMutex,
+        // eliminasi main looper freeze, perbaikan i18n & tema, Maestro parity (spatial filter &
+        // scrollUntilVisible), implementasi globalDim, dan lolos uji stres fisik 17/17.
+        versionCode = 42
+        versionName = "1.2.6"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

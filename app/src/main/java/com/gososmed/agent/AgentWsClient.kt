@@ -326,12 +326,12 @@ class AgentWsClient(
                                 true
                             }
                             if (executed == null) {
-                                Log.w(TAG, "Command execution timed out after 30s: $cmdName")
+                                Log.e(TAG, "Command $cmdName timed out after 30s in commandExecutionMutex")
                                 val timeoutResp = JSONObject().apply {
                                     put("ok", false)
-                                    put("error", "command_execution_timeout_after_30s")
+                                    put("error", "command_execution_timeout_30s")
+                                    put("id", obj.optLong("id", -1L))
                                     put("cmd", cmdName)
-                                    if (obj.has("id")) put("id", obj.opt("id"))
                                 }
                                 webSocket.send(timeoutResp.toString())
                             }
