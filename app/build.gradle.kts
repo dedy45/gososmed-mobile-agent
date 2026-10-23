@@ -36,11 +36,12 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 39 = 1.2.5 (STABIL) — perbaikan anotasi (maxWidth cap),
-        // regresi core aksesibilitas (event mask + unbind watchdog), dan
-        // pemisahan koordinat bitmap vs layar fisik.
-        versionCode = 39
-        versionName = "1.2.5"
+        // versionCode 40 = 1.2.6-dev.1 (DEV) — ORPV feedback layer fixes,
+        // after-snapshot registry fix, verified/action_performed emission,
+        // cadence unification & clamp [50, 200]ms, order-independent nodes_digest,
+        // typeNotificationStateChanged toast tracking, and Maestro parity.
+        versionCode = 40
+        versionName = "1.2.6-dev.1"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

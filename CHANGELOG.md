@@ -9,6 +9,23 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.6-dev.1] - 2026-10-23
+
+### Added
+- **ORPV Feedback Layer**:
+  - Registrasi otomatis snapshot `after` ke `SnapshotRegistry` setelah aksi settle (`actNode`/`actAndVerify`) agar rangkaian aksi (trajectory) berikutnya tidak ditolak `stale_snapshot` (Temuan #0).
+  - Pemancaran field kontrak `verified = true/false` dan `action_performed = true/false` pada respons aksi (Temuan #1 & #2).
+  - Penjagaan retry policy: `stale_snapshot` tanpa `snapshot_id` dikembalikan dengan `retryable = false` (Temuan #3); kegagalan `screen_not_changed` pada aksi submit (`is_submit = true`) dikembalikan dengan `retryable = false` (Temuan #4).
+  - Registrasi `typeNotificationStateChanged` di konfigurasi aksesibilitas (`accessibility_service_config.xml`) dan pelacak Toast terfilter per package & class (`ToastTracker`) dengan window TTL 3500ms (Temuan #5, #7, ADR-01).
+  - Penyeragaman kadens observasi: konstanta `DEFAULT_POLL_INTERVAL_MS = 100L`, pembatasan clamp `poll_interval_ms` ke rentang ketat `[50, 200]` ms, dan pemeriksaan pembatalan ganda sebelum delay (Temuan #12, ADR-06).
+  - `nodes_digest` deterministik: hashing SHA-256 berbasis tuple semantik `(resourceId, className, text, bounds)` independen terhadap urutan traversal dan `node_id` (Temuan #14, ADR-05, §2.8).
+  - Penghitungan `node_count` sebelum pemotongan (pre-cap) dan flag `truncated = node_count > MAX_NODES` (§2.10.j.3).
+  - Kapasitas `SnapshotRegistry` dinaikkan dari 5 ke 8 slot LRU, ditambah penyimpanan terpisah `pin-on-failure` (maksimal 2 snapshot global) (§2.9.c).
+- **Maestro Parity Primitives**:
+  - **Spatial Filtering**: seleksi elemen 2D geometris relatif (`below`, `above`, `leftOf`, `rightOf`) berbasis jarak Euclidean terdekat.
+  - **Native `scrollUntilVisible`**: pengguliran terkalibrasi in-memory hingga elemen masuk area aman viewport (15% - 85% layar).
+  - **Stale A11y Cache Refresh**: mekanisme penyegaran cache internal aksesibilitas OS (`refreshAccessibilityCache`).
+
 ## [1.2.5] - 2026-10-23
 
 > **Catatan penomoran: kenapa 1.2.2 langsung ke 1.2.4?**
