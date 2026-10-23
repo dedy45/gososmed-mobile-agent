@@ -49,6 +49,28 @@ object AnnotatedScreenshotHelper {
             )
         } else null
 
+        // ---- Jaga kesetaraan koordinat -----------------------------------
+        // Bounds node adalah koordinat LAYAR FISIK (mis. 1220x2712), sedangkan
+        // bitmap bisa lebih kecil (downscale / maxWidth / ROI). Tanpa penyesuaian,
+        // kotak dan nomor digambar di luar gambar — persis anotasi "kacau" yang
+        // dilaporkan setelah maxWidth=480 diperkenalkan.
+        // Rasio diturunkan dari elemen terjauh yang masih berada di layar, karena
+        // bitmap sendiri tidak menyimpan ukuran layar asalnya.
+        val screenRight = elements.maxOfOrNull { it.bounds.right } ?: 0
+        val screenBottom = elements.maxOfOrNull { it.bounds.bottom } ?: 0
+        val coordScaleX = if (screenRight > bitmap.width) bitmap.width.toFloat() / screenRight.toFloat() else 1f
+        val coordScaleY = if (screenBottom > bitmap.height) bitmap.height.toFloat() / screenBottom.toFloat() else 1f
+        val coordScale = minOf(coordScaleX, coordScaleY).takeIf { it in 0.05f..1f } ?: 1f
+        val mismatch = coordScale < 0.99f
+
+        fun scaleRect(r: Rect): Rect =
+            if (!mismatch) r else Rect(
+                (r.left * coordScale).toInt(),
+                (r.top * coordScale).toInt(),
+                (r.right * coordScale).toInt(),
+                (r.bottom * coordScale).toInt()
+            )
+
         val targetElements = if (validRoi != null) {
             elements.filter { validRoi.contains(it.centerX, it.centerY) || Rect.intersects(it.bounds, validRoi) }
         } else {
@@ -98,8 +120,12 @@ object AnnotatedScreenshotHelper {
             val elementsJson = JSONArray()
 
             for (elem in targetElements) {
+                // Kotak digambar pada koordinat bitmap (sudah disesuaikan bila
+                // bitmap lebih kecil dari layar fisik).
+                val drawBounds = scaleRect(elem.bounds)
+
                 // Gambar kotak sekeliling elemen
-                canvas.drawRect(elem.bounds, boxPaint)
+                canvas.drawRect(drawBounds, boxPaint)
 
                 // Gambar kotak nomor badge di pojok kiri atas elemen
                 val badgeText = elem.id.toString()
@@ -107,8 +133,8 @@ object AnnotatedScreenshotHelper {
                 val badgeWidth = (textWidth + 14f).coerceAtLeast(26f)
                 val badgeHeight = 26f
 
-                val badgeLeft = elem.bounds.left.toFloat().coerceAtLeast(0f)
-                val badgeTop = (elem.bounds.top.toFloat() - badgeHeight).coerceAtLeast(0f)
+                val badgeLeft = drawBounds.left.toFloat().coerceAtLeast(0f)
+                val badgeTop = (drawBounds.top.toFloat() - badgeHeight).coerceAtLeast(0f)
                 val badgeRect = RectF(badgeLeft, badgeTop, badgeLeft + badgeWidth, badgeTop + badgeHeight)
 
                 canvas.drawRoundRect(badgeRect, 4f, 4f, badgeBgPaint)

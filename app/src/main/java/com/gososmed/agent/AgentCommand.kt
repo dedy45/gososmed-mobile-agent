@@ -1202,8 +1202,17 @@ object AgentCommand {
                     val scale = req.optDouble("scale", 0.6).toFloat().coerceIn(0.2f, 1.0f)
                     val quality = req.optInt("quality", 75).coerceIn(30, 95)
                     val roi = parseRoi(req.optString("roi", ""), req.optJSONArray("roi"))
-                    // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik
-                    val (bytes, width, height, err) = svc.takeScreenshotRawBytes(scale = 1.0f, format = "jpeg", quality = 85)
+                    // Ambil bitmap layar pada skala 1.0f agar koordinat bounds 1:1 dengan layar fisik.
+                    //
+                    // PENTING: maxWidth HARUS 0 (tanpa batas). Default parameter ini
+                    // 480 px, dan sejak parameter itu ditambahkan, bitmap hasil
+                    // tangkapan menyusut ke 480x1067 sementara AnnotatedScreenshotHelper
+                    // tetap menggambar kotak memakai koordinat layar fisik
+                    // (1220x2712). Akibatnya semua kotak dan nomor jatuh di luar
+                    // gambar — itulah anotasi yang tampak kacau.
+                    val (bytes, width, height, err) = svc.takeScreenshotRawBytes(
+                        scale = 1.0f, format = "jpeg", quality = 85, maxWidth = 0
+                    )
                     if (bytes == null || bytes.isEmpty()) {
                         val errMsg = err ?: "gagal mengambil screenshot"
                         Log.e(TAG, "annotatedScreenshot failed: $errMsg")
