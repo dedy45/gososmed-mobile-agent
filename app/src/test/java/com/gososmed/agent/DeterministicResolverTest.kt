@@ -248,4 +248,78 @@ class DeterministicResolverTest {
         assertNull("Ambiguous candidates must not select a node", result.selectedNode)
         assertEquals(ProtocolV2.ReasonCodes.AMBIGUOUS, result.reasonCode)
     }
+
+    @Test
+    fun testSpatialRightOfDisambiguation() {
+        val anchorAlice = SnapshotNode(
+            nodeId = "txt-alice",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.TextView",
+            text = "Alice",
+            bounds = SnapshotBounds(10, 100, 90, 150)
+        )
+        val btnAliceFollow = SnapshotNode(
+            nodeId = "btn-follow-alice",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Follow",
+            bounds = SnapshotBounds(100, 100, 200, 150),
+            clickable = true
+        )
+        val btnBobFollow = SnapshotNode(
+            nodeId = "btn-follow-bob",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Follow",
+            bounds = SnapshotBounds(100, 300, 200, 350),
+            clickable = true
+        )
+
+        val query = SelectorQuery(text = "Follow", rightOf = "Alice")
+        val result = DeterministicResolver.resolve(query, listOf(anchorAlice, btnAliceFollow, btnBobFollow))
+
+        assertFalse("Spatial rightOf must disambiguate cleanly", result.isAmbiguous)
+        assertNotNull(result.selectedNode)
+        assertEquals("btn-follow-alice", result.selectedNode?.nodeId)
+    }
+
+    @Test
+    fun testSpatialBelowDisambiguation() {
+        val anchorHeader = SnapshotNode(
+            nodeId = "txt-header",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.TextView",
+            text = "Settings",
+            bounds = SnapshotBounds(10, 10, 500, 50)
+        )
+        val btnOption = SnapshotNode(
+            nodeId = "btn-privacy",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Privacy",
+            bounds = SnapshotBounds(10, 100, 500, 160),
+            clickable = true
+        )
+        val btnOther = SnapshotNode(
+            nodeId = "btn-other",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Privacy",
+            bounds = SnapshotBounds(10, 0, 500, 8), // Above header
+            clickable = true
+        )
+
+        val query = SelectorQuery(text = "Privacy", below = "Settings")
+        val result = DeterministicResolver.resolve(query, listOf(anchorHeader, btnOption, btnOther))
+
+        assertFalse(result.isAmbiguous)
+        assertNotNull(result.selectedNode)
+        assertEquals("btn-privacy", result.selectedNode?.nodeId)
+    }
 }

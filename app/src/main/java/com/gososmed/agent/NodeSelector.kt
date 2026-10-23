@@ -15,7 +15,12 @@ data class SelectorQuery(
     val point: Pair<Int, Int>? = null, // Raw coordinate fallback: Pair(x, y)
     val relativeZone: String? = null, // e.g. "top_half", "bottom_half", "center"
     val ocrHint: String? = null,
-    val packageName: String? = null
+    val packageName: String? = null,
+    // Maestro Parity: Spatial 2D Filters (below, above, leftOf, rightOf)
+    val below: String? = null,
+    val above: String? = null,
+    val leftOf: String? = null,
+    val rightOf: String? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         if (resourceId != null) put("resource_id", resourceId)
@@ -33,6 +38,10 @@ data class SelectorQuery(
         if (relativeZone != null) put("relative_zone", relativeZone)
         if (ocrHint != null) put("ocr_hint", ocrHint)
         if (packageName != null) put("package_name", packageName)
+        if (below != null) put("below", below)
+        if (above != null) put("above", above)
+        if (leftOf != null) put("left_of", leftOf)
+        if (rightOf != null) put("right_of", rightOf)
     }
 
     companion object {
@@ -54,7 +63,11 @@ data class SelectorQuery(
                 ocrHint = if (json.has("ocr_hint")) json.getString("ocr_hint") else null,
                 packageName = if (json.has("package_name")) json.getString("package_name")
                     else if (json.has("package")) json.getString("package")
-                    else null
+                    else null,
+                below = if (json.has("below")) json.getString("below") else null,
+                above = if (json.has("above")) json.getString("above") else null,
+                leftOf = if (json.has("left_of")) json.getString("left_of") else if (json.has("leftOf")) json.getString("leftOf") else null,
+                rightOf = if (json.has("right_of")) json.getString("right_of") else if (json.has("rightOf")) json.getString("rightOf") else null
             )
         }
     }

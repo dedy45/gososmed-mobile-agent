@@ -121,6 +121,12 @@ object DeterministicResolver {
 
         val evaluatedCandidates = mutableListOf<CandidateScore>()
 
+        // Pre-resolve spatial anchors (Maestro Parity)
+        val rightOfAnchor = query.rightOf?.let { findAnchorNode(it, nodes) }
+        val leftOfAnchor = query.leftOf?.let { findAnchorNode(it, nodes) }
+        val belowAnchor = query.below?.let { findAnchorNode(it, nodes) }
+        val aboveAnchor = query.above?.let { findAnchorNode(it, nodes) }
+
         for (node in nodes) {
             if (!query.packageName.isNullOrBlank() && !node.packageName.equals(query.packageName.trim(), ignoreCase = true)) {
                 continue
@@ -212,6 +218,68 @@ object DeterministicResolver {
                     matchedTiers.add("point_contains")
                 }
             }
+            // Tier 9: Spatial 2D Layout Filtering (Maestro Parity)
+            var spatialViolated = false
+
+            if (rightOfAnchor != null) {
+                if (node.nodeId == rightOfAnchor.nodeId) {
+                    spatialViolated = true
+                } else if (node.bounds.left >= rightOfAnchor.bounds.centerX &&
+                    Math.abs(node.bounds.centerY - rightOfAnchor.bounds.centerY) <= Math.max(rightOfAnchor.bounds.height, node.bounds.height) * 3) {
+                    val dist = Math.max(0, node.bounds.left - rightOfAnchor.bounds.right)
+                    val bonus = 75 - (dist / 10).coerceAtMost(30)
+                    score += bonus
+                    matchedTiers.add("spatial_right_of")
+                } else {
+                    spatialViolated = true
+                }
+            }
+
+            if (leftOfAnchor != null) {
+                if (node.nodeId == leftOfAnchor.nodeId) {
+                    spatialViolated = true
+                } else if (node.bounds.right <= leftOfAnchor.bounds.centerX &&
+                    Math.abs(node.bounds.centerY - leftOfAnchor.bounds.centerY) <= Math.max(leftOfAnchor.bounds.height, node.bounds.height) * 3) {
+                    val dist = Math.max(0, leftOfAnchor.bounds.left - node.bounds.right)
+                    val bonus = 75 - (dist / 10).coerceAtMost(30)
+                    score += bonus
+                    matchedTiers.add("spatial_left_of")
+                } else {
+                    spatialViolated = true
+                }
+            }
+
+            if (belowAnchor != null) {
+                if (node.nodeId == belowAnchor.nodeId) {
+                    spatialViolated = true
+                } else if (node.bounds.top >= belowAnchor.bounds.centerY &&
+                    Math.abs(node.bounds.centerX - belowAnchor.bounds.centerX) <= Math.max(belowAnchor.bounds.width, node.bounds.width) * 3) {
+                    val dist = Math.max(0, node.bounds.top - belowAnchor.bounds.bottom)
+                    val bonus = 75 - (dist / 10).coerceAtMost(30)
+                    score += bonus
+                    matchedTiers.add("spatial_below")
+                } else {
+                    spatialViolated = true
+                }
+            }
+
+            if (aboveAnchor != null) {
+                if (node.nodeId == aboveAnchor.nodeId) {
+                    spatialViolated = true
+                } else if (node.bounds.bottom <= aboveAnchor.bounds.centerY &&
+                    Math.abs(node.bounds.centerX - aboveAnchor.bounds.centerX) <= Math.max(aboveAnchor.bounds.width, node.bounds.width) * 3) {
+                    val dist = Math.max(0, aboveAnchor.bounds.top - node.bounds.bottom)
+                    val bonus = 75 - (dist / 10).coerceAtMost(30)
+                    score += bonus
+                    matchedTiers.add("spatial_above")
+                } else {
+                    spatialViolated = true
+                }
+            }
+
+            if (spatialViolated) {
+                score = 0
+            }
 
             if (score > 0) {
                 evaluatedCandidates.add(CandidateScore(node, score, matchedTiers))
@@ -262,5 +330,16 @@ object DeterministicResolver {
             reasonCode = null,
             clickableAncestorId = top.node.clickableAncestorId
         )
+    }
+
+    private fun findAnchorNode(anchorKey: String, nodes: List<SnapshotNode>): SnapshotNode? {
+        val trimmed = anchorKey.trim()
+        return nodes.firstOrNull { node ->
+            node.text?.equals(trimmed, ignoreCase = true) == true ||
+            node.contentDescription?.equals(trimmed, ignoreCase = true) == true ||
+            node.resourceId?.equals(trimmed, ignoreCase = true) == true ||
+            node.resourceId?.endsWith("/$trimmed", ignoreCase = true) == true ||
+            node.text?.contains(trimmed, ignoreCase = true) == true
+        }
     }
 }
