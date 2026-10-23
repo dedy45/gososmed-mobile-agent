@@ -28,6 +28,8 @@ object ProtocolV2 {
         const val CANCEL_ACTION = "cancelAction"
         const val START_DEBUG_FRAMES = "startDebugFrames"
         const val STOP_DEBUG_FRAMES = "stopDebugFrames"
+        // Maestro Parity: Native scroll until element is visible in safe viewport
+        const val SCROLL_UNTIL_VISIBLE = "scrollUntilVisible"
 
         val ALL: Set<String> = setOf(
             OBSERVE,
@@ -38,7 +40,8 @@ object ProtocolV2 {
             WAIT_FOR_SCREEN,
             CANCEL_ACTION,
             START_DEBUG_FRAMES,
-            STOP_DEBUG_FRAMES
+            STOP_DEBUG_FRAMES,
+            SCROLL_UNTIL_VISIBLE
         )
     }
 

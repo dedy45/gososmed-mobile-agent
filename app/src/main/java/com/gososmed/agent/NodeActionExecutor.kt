@@ -15,6 +15,8 @@ object NodeActionExecutor {
     const val ACTION_FOCUS = 0x00000001
     const val ACTION_SCROLL_FORWARD = 0x00001000
     const val ACTION_SCROLL_BACKWARD = 0x00002000
+    // Maestro Parity: Native scroll until element is visible in safe viewport
+    const val ACTION_SCROLL_UNTIL_VISIBLE = 0x00000080
 
     /**
      * Interface for dispatching node actions or gesture fallback taps.
@@ -22,6 +24,7 @@ object NodeActionExecutor {
     interface ActionDispatcher {
         fun performNodeAction(nodeId: String, action: Int, args: Map<String, Any>? = null): Boolean
         fun dispatchGestureTap(x: Int, y: Int): Boolean
+        fun dispatchGestureSwipe(direction: String = "down", amount: String = "medium"): Boolean = false
     }
 
     /**
@@ -52,10 +55,12 @@ object NodeActionExecutor {
             }
         }
 
+        override fun dispatchGestureSwipe(direction: String, amount: String): Boolean {
+            return service.swipeDirection(direction, amount)
+        }
         override fun dispatchGestureTap(x: Int, y: Int): Boolean {
             return service.tap(x, y)
         }
-
         private fun findNodeById(
             root: android.view.accessibility.AccessibilityNodeInfo,
             targetNodeId: String
@@ -168,6 +173,11 @@ object NodeActionExecutor {
                 reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
                 timing = ProtocolV2.Timing.create(startTime, timeSource())
             )
+        }
+
+        // Fast-path: Native scrollUntilVisible (Maestro Parity)
+        if (request.action == ACTION_SCROLL_UNTIL_VISIBLE) {
+            return executeScrollUntilVisible(request, dispatcher, currentSnapshotProvider, timeSource, sleeper)
         }
 
         // 2. Observe initial state (before snapshot)
@@ -399,9 +409,13 @@ object NodeActionExecutor {
             )
         }
 
+        // Fast-path: Native scrollUntilVisible (Maestro Parity)
+        if (request.action == ACTION_SCROLL_UNTIL_VISIBLE) {
+            return executeScrollUntilVisibleAsync(request, dispatcher, currentSnapshotProvider, timeSource)
+        }
+
         // 2. Observe initial state (before snapshot)
         val beforeSnapshot = currentSnapshotProvider()
-
 
         // 2b. Validate screen tree hash has not diverged from snapshot
         if (request.expectedTreeHash != null && beforeSnapshot.treeHash != request.expectedTreeHash) {
@@ -595,6 +609,141 @@ object NodeActionExecutor {
         return ProtocolV2.Response.success(
             requestId = request.requestId,
             result = successResult,
+            timing = ProtocolV2.Timing.create(startTime, timeSource())
+        )
+    }
+
+    private fun executeScrollUntilVisible(
+        request: ActionRequest,
+        dispatcher: ActionDispatcher,
+        currentSnapshotProvider: () -> SnapshotResult,
+        timeSource: () -> Long,
+        sleeper: (Long) -> Unit
+    ): ProtocolV2.Response {
+        val startTime = timeSource()
+        val maxScrolls = (request.actionArgs?.get("max_scrolls") as? Number)?.toInt() ?: 8
+        val direction = (request.actionArgs?.get("direction") as? String) ?: "down"
+
+        for (scrollIndex in 0 until maxScrolls) {
+            if (CommandCancellationRegistry.isCancelled(request.requestId)) {
+                return ProtocolV2.Response.error(
+                    requestId = request.requestId,
+                    reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                    timing = ProtocolV2.Timing.create(startTime, timeSource())
+                )
+            }
+
+            val snap = currentSnapshotProvider()
+            val resolveRes = DeterministicResolver.resolve(
+                query = request.selector,
+                nodes = snap.nodes,
+                displayWidth = snap.display.width,
+                displayHeight = snap.display.height
+            )
+
+            val node = resolveRes.selectedNode
+            if (node != null && !resolveRes.isAmbiguous) {
+                val displayH = snap.display.height
+                val safeTop = displayH * 0.15
+                val safeBottom = displayH * 0.85
+                if (node.bounds.top >= safeTop && node.bounds.bottom <= safeBottom) {
+                    SnapshotRegistry.register(snap)
+                    val res = JSONObject().apply {
+                        put("found", true)
+                        put("target_node_id", node.nodeId)
+                        put("scrolls_performed", scrollIndex)
+                        put("after_snapshot_id", snap.snapshotId)
+                        put("screen_fingerprint", snap.screenFingerprint)
+                        put("verified", true)
+                        put("action_performed", true)
+                    }
+                    return ProtocolV2.Response.success(
+                        requestId = request.requestId,
+                        result = res,
+                        timing = ProtocolV2.Timing.create(startTime, timeSource())
+                    )
+                }
+            }
+
+            dispatcher.dispatchGestureSwipe(direction, "medium")
+            sleeper(300L)
+        }
+
+        return ProtocolV2.Response.error(
+            requestId = request.requestId,
+            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+            retryable = false,
+            result = JSONObject().apply {
+                put("found", false)
+                put("scrolls_performed", maxScrolls)
+            },
+            timing = ProtocolV2.Timing.create(startTime, timeSource())
+        )
+    }
+
+    private suspend fun executeScrollUntilVisibleAsync(
+        request: ActionRequest,
+        dispatcher: ActionDispatcher,
+        currentSnapshotProvider: suspend () -> SnapshotResult,
+        timeSource: () -> Long
+    ): ProtocolV2.Response {
+        val startTime = timeSource()
+        val maxScrolls = (request.actionArgs?.get("max_scrolls") as? Number)?.toInt() ?: 8
+        val direction = (request.actionArgs?.get("direction") as? String) ?: "down"
+
+        for (scrollIndex in 0 until maxScrolls) {
+            if (CommandCancellationRegistry.isCancelled(request.requestId)) {
+                return ProtocolV2.Response.error(
+                    requestId = request.requestId,
+                    reasonCode = ProtocolV2.ReasonCodes.CANCELLED,
+                    timing = ProtocolV2.Timing.create(startTime, timeSource())
+                )
+            }
+
+            val snap = currentSnapshotProvider()
+            val resolveRes = DeterministicResolver.resolve(
+                query = request.selector,
+                nodes = snap.nodes,
+                displayWidth = snap.display.width,
+                displayHeight = snap.display.height
+            )
+
+            val node = resolveRes.selectedNode
+            if (node != null && !resolveRes.isAmbiguous) {
+                val displayH = snap.display.height
+                val safeTop = displayH * 0.15
+                val safeBottom = displayH * 0.85
+                if (node.bounds.top >= safeTop && node.bounds.bottom <= safeBottom) {
+                    SnapshotRegistry.register(snap)
+                    val res = JSONObject().apply {
+                        put("found", true)
+                        put("target_node_id", node.nodeId)
+                        put("scrolls_performed", scrollIndex)
+                        put("after_snapshot_id", snap.snapshotId)
+                        put("screen_fingerprint", snap.screenFingerprint)
+                        put("verified", true)
+                        put("action_performed", true)
+                    }
+                    return ProtocolV2.Response.success(
+                        requestId = request.requestId,
+                        result = res,
+                        timing = ProtocolV2.Timing.create(startTime, timeSource())
+                    )
+                }
+            }
+
+            dispatcher.dispatchGestureSwipe(direction, "medium")
+            kotlinx.coroutines.delay(300L)
+        }
+
+        return ProtocolV2.Response.error(
+            requestId = request.requestId,
+            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+            retryable = false,
+            result = JSONObject().apply {
+                put("found", false)
+                put("scrolls_performed", maxScrolls)
+            },
             timing = ProtocolV2.Timing.create(startTime, timeSource())
         )
     }

@@ -997,6 +997,41 @@ class AgentAccessibilityService : AccessibilityService() {
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         return dispatchGesture(gesture, null, null)
     }
+
+    /**
+     * Maestro Parity: Refreshes OS AccessibilityInteractionClient cache to prevent stale hierarchy.
+     */
+    fun refreshAccessibilityCache() {
+        try {
+            val info = serviceInfo
+            serviceInfo = info
+        } catch (_: Throwable) {}
+    }
+
+    /**
+     * Swipes based on semantic direction and amount (down, up, left, right).
+     */
+    fun swipeDirection(direction: String = "down", amount: String = "medium"): Boolean {
+        val dm = resources.displayMetrics
+        val width = dm.widthPixels
+        val height = dm.heightPixels
+        val midX = width / 2
+        val midY = height / 2
+
+        val distance = when (amount.lowercase()) {
+            "small" -> (height * 0.20f).toInt()
+            "large" -> (height * 0.60f).toInt()
+            else -> (height * 0.40f).toInt() // medium default
+        }
+
+        return when (direction.lowercase()) {
+            "down" -> swipe(midX, midY + distance / 2, midX, midY - distance / 2, 250L)
+            "up" -> swipe(midX, midY - distance / 2, midX, midY + distance / 2, 250L)
+            "left" -> swipe(midX + distance / 2, midY, midX - distance / 2, midY, 250L)
+            "right" -> swipe(midX - distance / 2, midY, midX + distance / 2, midY, 250L)
+            else -> swipe(midX, midY + distance / 2, midX, midY - distance / 2, 250L)
+        }
+    }
     // ---- Act: text ----
 
     /**

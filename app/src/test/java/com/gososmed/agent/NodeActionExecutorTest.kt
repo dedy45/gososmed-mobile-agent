@@ -19,9 +19,16 @@ class NodeActionExecutorTest {
             return performActionSuccess
         }
 
+        var swipeCount = 0
+
         override fun dispatchGestureTap(x: Int, y: Int): Boolean {
             lastGestureTap = Pair(x, y)
             return gestureSuccess
+        }
+
+        override fun dispatchGestureSwipe(direction: String, amount: String): Boolean {
+            swipeCount++
+            return true
         }
     }
 
@@ -396,5 +403,70 @@ class NodeActionExecutorTest {
         assertEquals(ProtocolV2.ReasonCodes.STALE_SNAPSHOT, response.reasonCode)
         assertEquals("sha256:different-snapshot-hash", response.result.getString("expected_tree_hash"))
         assertEquals("sha256:current-screen-hash", response.result.getString("actual_tree_hash"))
+    }
+
+    @Test
+    fun testScrollUntilVisibleFindsTargetAfterSwipes() {
+        val reqId = "req-scroll-find"
+        val snapWithoutTarget = createSnapshot("s-empty", "h-empty", emptyList())
+        val targetNode = SnapshotNode(
+            nodeId = "node-target",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Terms & Conditions",
+            bounds = SnapshotBounds(100, 800, 400, 900), // Within safe viewport (15%-85% of 2400h)
+            clickable = true
+        )
+        val snapWithTarget = createSnapshot("s-found", "h-found", listOf(targetNode))
+
+        val request = NodeActionExecutor.ActionRequest(
+            requestId = reqId,
+            selector = SelectorQuery(text = "Terms & Conditions"),
+            action = NodeActionExecutor.ACTION_SCROLL_UNTIL_VISIBLE,
+            actionArgs = mapOf("max_scrolls" to 5, "direction" to "down")
+        )
+
+        val dispatcher = MockActionDispatcher()
+        var callCount = 0
+        val response = NodeActionExecutor.execute(
+            request = request,
+            dispatcher = dispatcher,
+            currentSnapshotProvider = {
+                callCount++
+                if (callCount >= 3) snapWithTarget else snapWithoutTarget
+            },
+            sleeper = {}
+        )
+
+        assertTrue(response.ok)
+        assertTrue(response.result.getBoolean("found"))
+        assertEquals("node-target", response.result.getString("target_node_id"))
+        assertEquals(2, dispatcher.swipeCount) // Swiped twice before finding on 3rd call
+    }
+
+    @Test
+    fun testScrollUntilVisibleTimeoutWhenTargetNeverAppears() {
+        val reqId = "req-scroll-timeout"
+        val emptySnap = createSnapshot("s-empty", "h-empty", emptyList())
+
+        val request = NodeActionExecutor.ActionRequest(
+            requestId = reqId,
+            selector = SelectorQuery(text = "Non Existent Button"),
+            action = NodeActionExecutor.ACTION_SCROLL_UNTIL_VISIBLE,
+            actionArgs = mapOf("max_scrolls" to 3, "direction" to "down")
+        )
+
+        val dispatcher = MockActionDispatcher()
+        val response = NodeActionExecutor.execute(
+            request = request,
+            dispatcher = dispatcher,
+            currentSnapshotProvider = { emptySnap },
+            sleeper = {}
+        )
+
+        assertFalse(response.ok)
+        assertEquals(ProtocolV2.ReasonCodes.TIMEOUT, response.reasonCode)
+        assertEquals(3, dispatcher.swipeCount)
     }
 }

@@ -585,6 +585,47 @@ object AgentCommand {
                     }
                 }
 
+                ProtocolV2.Commands.SCROLL_UNTIL_VISIBLE -> {
+                    val svc = AgentAccessibilityService.instance
+                    if (svc == null) {
+                        val timing = ProtocolV2.Timing.create(startTime)
+                        return ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = ProtocolV2.ReasonCodes.DEVICE_BUSY,
+                            result = JSONObject().apply { put("error", "accessibility_not_ready") },
+                            timing = timing
+                        ).toJson()
+                    }
+
+                    val selector = if (args.has("selector")) SelectorQuery.fromJson(args.getJSONObject("selector")) else SelectorQuery.fromJson(args)
+                    val actionArgs = mutableMapOf<String, Any>()
+                    if (args.has("max_scrolls")) actionArgs["max_scrolls"] = args.getInt("max_scrolls")
+                    if (args.has("direction")) actionArgs["direction"] = args.getString("direction")
+
+                    val actionReq = NodeActionExecutor.ActionRequest(
+                        requestId = requestId,
+                        selector = selector,
+                        action = NodeActionExecutor.ACTION_SCROLL_UNTIL_VISIBLE,
+                        actionArgs = actionArgs,
+                        deadlineMs = v2Req.deadlineMs
+                    )
+
+                    val dispatcher = NodeActionExecutor.AndroidActionDispatcher(svc)
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+
+                    val snapshotProvider: suspend () -> SnapshotResult = {
+                        SnapshotCollector.capture(displayProvider, treeSource)
+                    }
+
+                    val response = NodeActionExecutor.executeAsync(
+                        request = actionReq,
+                        dispatcher = dispatcher,
+                        currentSnapshotProvider = snapshotProvider
+                    )
+                    response.toJson()
+                }
+
                 ProtocolV2.Commands.WAIT_FOR_NODE -> {
                     val svc = AgentAccessibilityService.instance
                     if (svc == null) {
