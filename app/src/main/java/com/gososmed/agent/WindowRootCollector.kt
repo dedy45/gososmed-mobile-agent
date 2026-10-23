@@ -9,7 +9,7 @@ object WindowRootCollector {
 
     const val MAX_DEPTH = 16
     const val MAX_NODES = 2000
-
+    const val MAX_DISCOVERED = 5000 // Circuit breaker for infinite DOM trees
     /**
      * Budget tracker to prevent unbounded recursion or OOM on complex layouts.
      */
@@ -320,11 +320,12 @@ object WindowRootCollector {
         return count
     }
 
-    private fun countDiscoveredNodes(node: SimulatedNode, depth: Int): Int {
-        if (depth > MAX_DEPTH || node.packageName == ActionableNodeRegistry.AGENT_PACKAGE) return 0
+    private fun countDiscoveredNodes(node: SimulatedNode, depth: Int, currentCount: Int = 0): Int {
+        if (depth > MAX_DEPTH || node.packageName == ActionableNodeRegistry.AGENT_PACKAGE || currentCount >= MAX_DISCOVERED) return 0
         var c = 1
         for (child in node.children) {
-            c += countDiscoveredNodes(child, depth + 1)
+            if (currentCount + c >= MAX_DISCOVERED) break
+            c += countDiscoveredNodes(child, depth + 1, currentCount + c)
         }
         return c
     }

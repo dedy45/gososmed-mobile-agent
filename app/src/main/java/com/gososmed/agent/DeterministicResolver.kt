@@ -225,7 +225,7 @@ object DeterministicResolver {
                 if (node.nodeId == rightOfAnchor.nodeId) {
                     spatialViolated = true
                 } else if (node.bounds.left >= rightOfAnchor.bounds.centerX &&
-                    Math.abs(node.bounds.centerY - rightOfAnchor.bounds.centerY) <= Math.max(rightOfAnchor.bounds.height, node.bounds.height) * 3) {
+                    Math.abs(node.bounds.centerY - rightOfAnchor.bounds.centerY) <= Math.max(40, Math.max(rightOfAnchor.bounds.height, node.bounds.height) * 3)) {
                     val dist = Math.max(0, node.bounds.left - rightOfAnchor.bounds.right)
                     val bonus = 75 - (dist / 10).coerceAtMost(30)
                     score += bonus
@@ -239,7 +239,7 @@ object DeterministicResolver {
                 if (node.nodeId == leftOfAnchor.nodeId) {
                     spatialViolated = true
                 } else if (node.bounds.right <= leftOfAnchor.bounds.centerX &&
-                    Math.abs(node.bounds.centerY - leftOfAnchor.bounds.centerY) <= Math.max(leftOfAnchor.bounds.height, node.bounds.height) * 3) {
+                    Math.abs(node.bounds.centerY - leftOfAnchor.bounds.centerY) <= Math.max(40, Math.max(leftOfAnchor.bounds.height, node.bounds.height) * 3)) {
                     val dist = Math.max(0, leftOfAnchor.bounds.left - node.bounds.right)
                     val bonus = 75 - (dist / 10).coerceAtMost(30)
                     score += bonus
@@ -253,7 +253,7 @@ object DeterministicResolver {
                 if (node.nodeId == belowAnchor.nodeId) {
                     spatialViolated = true
                 } else if (node.bounds.top >= belowAnchor.bounds.centerY &&
-                    Math.abs(node.bounds.centerX - belowAnchor.bounds.centerX) <= Math.max(belowAnchor.bounds.width, node.bounds.width) * 3) {
+                    Math.abs(node.bounds.centerX - belowAnchor.bounds.centerX) <= Math.max(40, Math.max(belowAnchor.bounds.width, node.bounds.width) * 3)) {
                     val dist = Math.max(0, node.bounds.top - belowAnchor.bounds.bottom)
                     val bonus = 75 - (dist / 10).coerceAtMost(30)
                     score += bonus
@@ -267,7 +267,7 @@ object DeterministicResolver {
                 if (node.nodeId == aboveAnchor.nodeId) {
                     spatialViolated = true
                 } else if (node.bounds.bottom <= aboveAnchor.bounds.centerY &&
-                    Math.abs(node.bounds.centerX - aboveAnchor.bounds.centerX) <= Math.max(aboveAnchor.bounds.width, node.bounds.width) * 3) {
+                    Math.abs(node.bounds.centerX - aboveAnchor.bounds.centerX) <= Math.max(40, Math.max(aboveAnchor.bounds.width, node.bounds.width) * 3)) {
                     val dist = Math.max(0, aboveAnchor.bounds.top - node.bounds.bottom)
                     val bonus = 75 - (dist / 10).coerceAtMost(30)
                     score += bonus

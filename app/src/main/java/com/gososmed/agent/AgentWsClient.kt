@@ -307,20 +307,33 @@ class AgentWsClient(
                     if (obj.has("cmd")) {
                         val cmdName = obj.optString("cmd", "")
                         scope.launch(Dispatchers.IO) {
-                            commandExecutionMutex.withLock {
-                                var tries = 0
-                                if (cmdName !in AgentCommand.SERVICE_FREE_COMMANDS) {
-                                    while (AgentAccessibilityService.instance == null && tries < 10) {
-                                        delay(200)
-                                        tries++
+                            val executed = kotlinx.coroutines.withTimeoutOrNull(30_000L) {
+                                commandExecutionMutex.withLock {
+                                    var tries = 0
+                                    if (cmdName !in AgentCommand.SERVICE_FREE_COMMANDS) {
+                                        while (AgentAccessibilityService.instance == null && tries < 10) {
+                                            delay(200)
+                                            tries++
+                                        }
+                                    }
+                                    try {
+                                        val resp = AgentCommand.execute(obj)
+                                        webSocket.send(resp.toString())
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "cmd exec error", e)
                                     }
                                 }
-                                try {
-                                    val resp = AgentCommand.execute(obj)
-                                    webSocket.send(resp.toString())
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "cmd exec error", e)
+                                true
+                            }
+                            if (executed == null) {
+                                Log.w(TAG, "Command execution timed out after 30s: $cmdName")
+                                val timeoutResp = JSONObject().apply {
+                                    put("ok", false)
+                                    put("error", "command_execution_timeout_after_30s")
+                                    put("cmd", cmdName)
+                                    if (obj.has("id")) put("id", obj.opt("id"))
                                 }
+                                webSocket.send(timeoutResp.toString())
                             }
                         }
                         return
