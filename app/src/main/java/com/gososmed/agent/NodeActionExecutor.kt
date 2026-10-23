@@ -138,7 +138,8 @@ object NodeActionExecutor {
         val requireScreenChange: Boolean = true,
         val timeoutMs: Long = 3000L,
         val deadlineMs: Long = 10000L,
-        val expectedTreeHash: String? = null
+        val expectedTreeHash: String? = null,
+        val isSubmitAction: Boolean = false
     )
 
     /**
@@ -276,6 +277,10 @@ object NodeActionExecutor {
                 put("execution_node_id", executionNodeId)
                 put("action", request.action)
                 put("used_gesture_fallback", usedGestureFallback)
+                put("before_snapshot_id", beforeSnapshot.snapshotId)
+                put("before_state_ref", beforeSnapshot.snapshotId)
+                put("verified", false)
+                put("action_performed", false)
             }
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
@@ -308,31 +313,55 @@ object NodeActionExecutor {
         )
 
         if (!transition.isSettled) {
+            // Temuan #0 & §2.9.c: pin failure snapshot in separate storage
+            if (transition.afterSnapshot != null) {
+                SnapshotRegistry.register(transition.afterSnapshot)
+                SnapshotRegistry.pin(transition.afterSnapshot.snapshotId)
+            }
             val res = JSONObject().apply {
                 put("target_node_id", targetNode.nodeId)
                 put("execution_node_id", executionNodeId)
                 put("used_gesture_fallback", usedGestureFallback)
                 put("before_snapshot_id", beforeSnapshot.snapshotId)
+                put("before_state_ref", beforeSnapshot.snapshotId)
                 if (transition.afterSnapshot != null) {
                     put("after_snapshot_id", transition.afterSnapshot.snapshotId)
                 }
+                put("verified", false)
+                put("action_performed", true)
+            }
+            val reason = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
+            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit
+            val isRetryable = if (request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED) {
+                false
+            } else {
+                false
             }
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
-                reasonCode = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED,
+                reasonCode = reason,
+                retryable = isRetryable,
                 result = res,
                 timing = ProtocolV2.Timing.create(startTime, timeSource())
             )
         }
 
         // 11. Final Success
+        // Temuan #0: Register settled after-snapshot so subsequent actions in trajectory can use after_snapshot_id
+        if (transition.afterSnapshot != null) {
+            SnapshotRegistry.register(transition.afterSnapshot)
+        }
+
         val successResult = JSONObject().apply {
             put("target_node_id", targetNode.nodeId)
             put("execution_node_id", executionNodeId)
             put("used_gesture_fallback", usedGestureFallback)
             put("before_snapshot_id", beforeSnapshot.snapshotId)
+            put("before_state_ref", beforeSnapshot.snapshotId)
             put("after_snapshot_id", transition.afterSnapshot?.snapshotId)
             put("screen_fingerprint", transition.afterSnapshot?.screenFingerprint)
+            put("verified", true)
+            put("action_performed", true)
         }
 
         return ProtocolV2.Response.success(
@@ -477,6 +506,10 @@ object NodeActionExecutor {
                 put("execution_node_id", executionNodeId)
                 put("action", request.action)
                 put("used_gesture_fallback", usedGestureFallback)
+                put("before_snapshot_id", beforeSnapshot.snapshotId)
+                put("before_state_ref", beforeSnapshot.snapshotId)
+                put("verified", false)
+                put("action_performed", false)
             }
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
@@ -508,31 +541,55 @@ object NodeActionExecutor {
         )
 
         if (!transition.isSettled) {
+            // Temuan #0 & §2.9.c: pin failure snapshot in separate storage
+            if (transition.afterSnapshot != null) {
+                SnapshotRegistry.register(transition.afterSnapshot)
+                SnapshotRegistry.pin(transition.afterSnapshot.snapshotId)
+            }
             val res = JSONObject().apply {
                 put("target_node_id", targetNode.nodeId)
                 put("execution_node_id", executionNodeId)
                 put("used_gesture_fallback", usedGestureFallback)
                 put("before_snapshot_id", beforeSnapshot.snapshotId)
+                put("before_state_ref", beforeSnapshot.snapshotId)
                 if (transition.afterSnapshot != null) {
                     put("after_snapshot_id", transition.afterSnapshot.snapshotId)
                 }
+                put("verified", false)
+                put("action_performed", true)
+            }
+            val reason = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED
+            // Temuan #4: submit action on screen_not_changed MUST NOT be retryable to prevent double-submit
+            val isRetryable = if (request.isSubmitAction && reason == ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED) {
+                false
+            } else {
+                false
             }
             return ProtocolV2.Response.error(
                 requestId = request.requestId,
-                reasonCode = transition.reasonCode ?: ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED,
+                reasonCode = reason,
+                retryable = isRetryable,
                 result = res,
                 timing = ProtocolV2.Timing.create(startTime, timeSource())
             )
         }
 
         // 11. Final Success
+        // Temuan #0: Register settled after-snapshot so subsequent actions in trajectory can use after_snapshot_id
+        if (transition.afterSnapshot != null) {
+            SnapshotRegistry.register(transition.afterSnapshot)
+        }
+
         val successResult = JSONObject().apply {
             put("target_node_id", targetNode.nodeId)
             put("execution_node_id", executionNodeId)
             put("used_gesture_fallback", usedGestureFallback)
             put("before_snapshot_id", beforeSnapshot.snapshotId)
+            put("before_state_ref", beforeSnapshot.snapshotId)
             put("after_snapshot_id", transition.afterSnapshot?.snapshotId)
             put("screen_fingerprint", transition.afterSnapshot?.screenFingerprint)
+            put("verified", true)
+            put("action_performed", true)
         }
 
         return ProtocolV2.Response.success(

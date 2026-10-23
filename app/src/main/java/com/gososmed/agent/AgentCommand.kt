@@ -478,7 +478,11 @@ object AgentCommand {
                         return ProtocolV2.Response.error(
                             requestId = requestId,
                             reasonCode = ProtocolV2.ReasonCodes.STALE_SNAPSHOT,
-                            result = JSONObject().apply { put("error", "missing_mandatory_snapshot_id") },
+                            retryable = false,
+                            result = JSONObject().apply {
+                                put("error", "missing_mandatory_snapshot_id")
+                                put("retryable", false)
+                            },
                             timing = timing
                         ).toJson()
                     }
@@ -555,7 +559,8 @@ object AgentCommand {
                             requireScreenChange = requireScreenChange,
                             timeoutMs = args.optLong("timeout_ms", 3000L),
                             deadlineMs = v2Req.deadlineMs,
-                            expectedTreeHash = refSnapshot.treeHash
+                            expectedTreeHash = refSnapshot.treeHash,
+                            isSubmitAction = isSubmit
                         )
 
                         val dispatcher = NodeActionExecutor.AndroidActionDispatcher(svc)

@@ -305,7 +305,59 @@ class NodeActionExecutorTest {
         assertTrue(response.ok)
         assertNull(response.reasonCode)
         assertEquals("s-before", response.result.getString("before_snapshot_id"))
+        assertEquals("s-before", response.result.getString("before_state_ref"))
         assertEquals("s-after", response.result.getString("after_snapshot_id"))
+        assertTrue(response.result.getBoolean("verified"))
+        assertTrue(response.result.getBoolean("action_performed"))
+        // Temuan #0: after-snapshot MUST be registered in SnapshotRegistry!
+        assertNotNull(SnapshotRegistry.get("s-after"))
+    }
+
+    @Test
+    fun testSubmitActionScreenNotChangedIsNotRetryable() {
+        val reqId = "req-submit-screen-not-changed"
+        val snap = createSnapshot(
+            snapshotId = "s-submit",
+            treeHash = "sha256:same-hash",
+            nodes = listOf(
+                SnapshotNode(
+                    nodeId = "node-submit",
+                    windowId = 1,
+                    packageName = "com.example.app",
+                    className = "android.widget.Button",
+                    resourceId = "com.example.app:id/submit",
+                    bounds = SnapshotBounds(100, 100, 300, 200),
+                    clickable = true
+                )
+            )
+        )
+
+        val request = NodeActionExecutor.ActionRequest(
+            requestId = reqId,
+            selector = SelectorQuery(resourceId = "submit"),
+            requireScreenChange = true,
+            timeoutMs = 100L,
+            isSubmitAction = true
+        )
+
+        val dispatcher = MockActionDispatcher()
+        var virtualTime = 0L
+        val response = NodeActionExecutor.execute(
+            request = request,
+            dispatcher = dispatcher,
+            currentSnapshotProvider = { snap }, // Screen never changes
+            timeSource = {
+                virtualTime += 100L
+                virtualTime
+            },
+            sleeper = {}
+        )
+
+        assertFalse(response.ok)
+        assertEquals(ProtocolV2.ReasonCodes.SCREEN_NOT_CHANGED, response.reasonCode)
+        assertFalse("Submit action screen_not_changed MUST NOT be retryable to prevent double-submit", response.retryable)
+        assertFalse(response.result.getBoolean("verified"))
+        assertTrue(response.result.getBoolean("action_performed"))
     }
 
     @Test

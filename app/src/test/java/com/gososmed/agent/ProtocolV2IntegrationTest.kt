@@ -162,8 +162,60 @@ class ProtocolV2IntegrationTest {
         val resp = AgentCommand.execute(actReq)
         assertFalse(resp.getBoolean("ok"))
         assertEquals(ProtocolV2.ReasonCodes.STALE_SNAPSHOT, resp.getString("reason_code"))
+        assertFalse("Missing snapshotId must NOT be retryable", resp.getBoolean("retryable"))
     }
 
+    @Test
+    fun testActionChainingUsesAfterSnapshotIdSuccessfully() {
+        // Setup initial snapshot
+        val node1 = SnapshotNode(
+            nodeId = "node-btn1",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Next",
+            bounds = SnapshotBounds(100, 100, 300, 200),
+            clickable = true
+        )
+        registerSnapshot("snap-init", "sha256:init", listOf(node1))
+
+        // Simulate that after action 1, an after snapshot is registered (what actNode/actAndVerify now guarantees)
+        val node2 = SnapshotNode(
+            nodeId = "node-btn2",
+            windowId = 1,
+            packageName = "com.example.app",
+            className = "android.widget.Button",
+            text = "Finish",
+            bounds = SnapshotBounds(100, 100, 300, 200),
+            clickable = true
+        )
+        val afterSnap = SnapshotResult(
+            snapshotId = "snap-after-1",
+            frameSeq = 2L,
+            capturedAtMs = System.currentTimeMillis(),
+            display = SnapshotDisplay(0, 1080, 2400, 0, 420),
+            foreground = SnapshotForeground("com.example.app", 1),
+            treeHash = "sha256:after1",
+            screenFingerprint = "fp-after1",
+            quality = SnapshotQuality(valid = true, invalidBoundsRatio = 0.0, windowChanged = false),
+            nodes = listOf(node2)
+        )
+        SnapshotRegistry.register(afterSnap)
+
+        // Step 2 in trajectory: resolve and act using snap-after-1
+        val resolveReq = JSONObject().apply {
+            put("protocol_version", 2)
+            put("request_id", "req-step2-resolve")
+            put("cmd", "resolve")
+            put("args", JSONObject().apply {
+                put("snapshot_id", "snap-after-1")
+                put("text", "Finish")
+            })
+        }
+        val resolveResp = AgentCommand.execute(resolveReq)
+        assertTrue(resolveResp.getBoolean("ok"))
+        assertEquals("node-btn2", resolveResp.getJSONObject("result").getJSONObject("resolve_result").getJSONObject("selected_node").getString("node_id"))
+    }
     @Test
     fun testV2ActNodeWithUnknownSnapshotIdReturnsStaleSnapshot() {
         val actReq = JSONObject().apply {
