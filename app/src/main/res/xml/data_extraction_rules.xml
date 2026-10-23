@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup dan device-transfer DIMATIKAN untuk data aplikasi ini.
+
+  Alasannya konkret: `AdbKeyStore` menyimpan kunci privat ADB (PKCS#8) di
+  filesDir. Kunci itu memberi hak `shell` (uid 2000) atas perangkat lewat
+  ADB lokal — setara akses `adb shell` penuh. Membiarkannya ikut Android
+  Auto Backup berarti kunci tersebut tersalin ke Google Drive pengguna dan
+  dapat dipulihkan di perangkat lain.
+
+  `allowBackup="false"` sudah menutup jalur utama; berkas ini menutup jalur
+  device-to-device transfer di Android 12+ (atribut itu diabaikan oleh
+  transfer D2D tanpa aturan eksplisit).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

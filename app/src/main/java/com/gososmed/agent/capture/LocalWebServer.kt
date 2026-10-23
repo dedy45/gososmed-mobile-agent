@@ -114,7 +114,9 @@ object LocalWebServer {
         sessionPin = pin
         sessions.clear()
         pinAttempts.clear()
-        Log.i(TAG, "PIN sesi baru dibuat: $pin")
+        // PIN TIDAK boleh masuk logcat: `adb logcat` dapat dibaca siapa pun
+        // yang punya akses ADB, dan PIN itu satu-satunya penjaga stream layar.
+        Log.i(TAG, "PIN sesi baru dibuat (6 digit)")
         return pin
     }
 

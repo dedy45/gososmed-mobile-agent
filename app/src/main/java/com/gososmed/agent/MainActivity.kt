@@ -2067,6 +2067,19 @@ class MainActivity : AppCompatActivity() {
     // ---- Kanal validasi adb (dipakai QA; tidak terlihat di UI produksi) ----
 
     private fun handleValidationIntent(intent: Intent?) {
+        // P0-2 (Plan 07): kanal validasi ini setara AgentReceiver — ia bisa
+        // dump UI, tap, dan setText atas nama pengguna. MainActivity
+        // exported=true (LAUNCHER + deep link), jadi tanpa guard ini aplikasi
+        // lain di HP dapat memicunya lewat:
+        //   am start -n com.gososmed.agent/.MainActivity --es cmd dump
+        // Release WAJIB menolak, sama seperti AgentReceiver.
+        if (!BuildConfig.DEBUG) {
+            if (intent?.hasExtra("cmd") == true) {
+                Log.w("GoAgent", "cmd extra ditolak pada build release (P0-2)")
+                intent.removeExtra("cmd")
+            }
+            return
+        }
         val cmd = intent?.getStringExtra("cmd") ?: return
         var attempts = 0
         val runner = object : Runnable {

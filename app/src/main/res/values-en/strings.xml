@@ -71,7 +71,6 @@
     <string name="telemetry_temp_format">🌡️ Device Temp : %1$s°C (%2$s)</string>
     <string name="telemetry_network_waiting">Waiting for ping…</string>
     <string name="telemetry_network_format">📶 Network     : %1$s\n⏱️ RTT Latency : %2$s</string>
-    <string name="telemetry_target_prefix">📱 Installed Platforms:\n</string>
     <string name="server_overlay_info_format">Battery: %1$d%% • Temp: %2$s°C • Latency: %3$s</string>
 
     <!-- 3-Step Setup -->

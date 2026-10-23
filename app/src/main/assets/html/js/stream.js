@@ -394,8 +394,12 @@
     // and the picture freezes — which is exactly what happened on rotation.
     if (P.ms) {
       try { P.sb = null; } catch (_) {}
+      // Simpan URL SEBELUM removeAttribute: setelah atribut dihapus, `vid.src`
+      // mengembalikan string kosong sehingga revokeObjectURL tidak me-revoke
+      // apa pun dan blob lama bocor setiap kali MSE dibangun ulang.
+      const oldUrl = vid && vid.src ? vid.src : '';
       try { if (vid && vid.src) { vid.pause(); vid.removeAttribute('src'); vid.load(); } } catch (_) {}
-      try { URL.revokeObjectURL(vid.src); } catch (_) {}
+      if (oldUrl) { try { URL.revokeObjectURL(oldUrl); } catch (_) {} }
       P.ms = null;
       P.ready = false;
       P.queue = [];
@@ -760,6 +764,7 @@
       }
       if (P.ms) {
         try { if (vid && vid.src) URL.revokeObjectURL(vid.src); } catch (_) {}
+        try { if (vid && vid.src) vid.removeAttribute('src'); } catch (_) {}
         P.ms = null;
         P.sb = null;
         P.queue = [];

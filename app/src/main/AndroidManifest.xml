@@ -91,6 +91,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.GosomedAgent"
         android:supportsRtl="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config">
 
         <!-- P0-3 (Plan 07): cleartext TIDAK lagi dibuka global. Config utama
@@ -105,11 +108,14 @@
              perlu diterima. -->
 
         <!-- Validation/control channel (DEBUG saja — kode menolak di release,
-             lihat AgentReceiver). Exported agar adb shell am broadcast bisa
-             mengirim untuk validasi P0. -->
+             lihat AgentReceiver).
+             android:exported diisi lewat manifestPlaceholder:
+               debug   -> "true"  (adb shell am broadcast butuh ini untuk QA)
+               release -> "false" (tidak ada pemanggil eksternal yang sah)
+             Guard BuildConfig.DEBUG di onReceive tetap lapisan pertama. -->
         <receiver
             android:name=".AgentReceiver"
-            android:exported="true">
+            android:exported="${agentReceiverExported}">
             <intent-filter>
                 <action android:name="com.gososmed.agent.CMD" />
             </intent-filter>
@@ -130,10 +136,17 @@
         <!-- Foreground service keeps the agent process foreground so that
              BroadcastReceiver commands work on Android 12+ (they are blocked
              when the app is in the background). This is also the production
-             shape: the agent is a persistent service, not an Activity. -->
+             shape: the agent is a persistent service, not an Activity.
+
+             exported="false" — PENTING. Service ini menerima ACTION_SET_PAIRING
+             (ws_url + pairing_code) dan ACTION_STOP_WS tanpa memeriksa pemanggil.
+             Selama exported="true", aplikasi lain di HP dapat memanggil
+             `am startservice` untuk memindahkan agen ke endpoint WebSocket milik
+             penyerang, atau memutus sambungan sah kapan saja. Hanya MainActivity
+             dan BootReceiver (sama-sama di app ini) yang memulainya. -->
         <service
             android:name=".AgentForegroundService"
-            android:exported="true"
+            android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

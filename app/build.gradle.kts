@@ -55,6 +55,9 @@ android {
         debug {
             buildConfigField("String", "DEFAULT_WS_URL", "\"wss://dev-api.bamsbung.id/v1/agent/ws\"")
             buildConfigField("String", "FALLBACK_WS_URL", "\"wss://api.bamsbung.id/v1/agent/ws\"")
+            // AgentReceiver exported hanya di debug: `adb shell am broadcast`
+            // dipakai untuk QA. Release tidak punya pemanggil eksternal sah.
+            manifestPlaceholders["agentReceiverExported"] = "true"
         }
         release {
             isMinifyEnabled = false
@@ -63,6 +66,7 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.findByName("gososmed")
+            manifestPlaceholders["agentReceiverExported"] = "false"
         }
     }
 
