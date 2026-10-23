@@ -9,59 +9,116 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [Unreleased]
+## [1.2.4] - 2026-10-23
 
-### Added — HEVC/H.265 di WebCodecs, HTTPS :8766 sebagai default, fallback MSE otomatis
+### Fixed & Hardened — Pre-release Security Audit, HEVC/H.265 via WebCodecs, HTTPS :8766 Default
 
-Viewer sekarang memakai **HEVC lewat WebCodecs** di port 8766 (HTTPS/secure
-context), dengan AVC/MSE sebagai fallback otomatis. Ini menyusul audit
-`docs/plans/2026-10-23-CODEC-AUDIT.md` yang menunjukkan jalur WebCodecs
-Annex-B adalah pola yang sama dipakai Tango/ya-webadb.
+Audit menyeluruh sebelum promosi ke production menemukan tiga jalur di mana
+aplikasi lain di HP dapat bertindak atas nama pengguna, satu kebocoran memori
+tak terbatas, dan satu build release yang tidak bisa lolos lint. Semuanya
+diperbaiki di rilis ini.
 
-1. **Negosiasi codec default ke HEVC.** `CaptureService.preferredCodec` kini
-   `HEVC` (sebelumnya dipatok `AVC`). `CodecCapability.preferenceOrder` tetap
-   `[AV1, HEVC, AVC]`, dan AVC selalu jadi fallback terakhir.
-2. **String codec HEVC dibangun di server** (`HevcCodecString`), bukan di
-   viewer. Parser membaca `profile_tier_level()` dari VPS dan menghasilkan
-   `hev1.<profile>.<compat>.<tier><level>[.<constraint>]` — format RFC 6381.
-   Dipakai `hev1` (bukan `hvc1`) karena parameter set dikirim in-band di
-   Annex-B, tanpa box `hvcC`.
-3. **Protokol config bertambah 1 byte.** `MSG_CONFIG` sekarang
-   `[3][w:2][h:2][codecId:1][parameter set Annex-B]`. `codecId`: 1=AVC,
-   2=HEVC, 3=AV1. Paket lama tanpa id tetap dibaca sebagai AVC.
-4. **Viewer memilih decoder dari `codecId`.** HEVC → `VideoDecoder` dengan
-   `hev1.…`; AVC → jalur lama (WebCodecs AVC atau MSE fMP4). Auto-configure
-   dari keyframe dan jalur MSE dikunci ke AVC, karena header NALU HEVC
-   memakai 6 bit (`(b>>1)&0x3F`) sehingga `n[0]&31` salah mengenali tipe.
-5. **Fallback berjenjang tanpa intervensi.** Tanpa WebCodecs (HTTP :8765) atau
-   bila `configure()`/decode HEVC gagal, viewer mengirim `setCodec` → AVC
-   sekali saja, server melakukan reconfigure, dan viewer pindah ke MSE.
-6. **`onOutputFormatChanged` mengumpulkan semua `csd-N`.** AVC mengirim
-   `csd-0`/`csd-1`; sebagian encoder HEVC memakai `csd-0..csd-2`. Sebelumnya
-   hanya dua yang dibaca, sehingga VPS atau PPS bisa hilang.
-7. **`SpsFix` tidak lagi merusak HEVC.** Rewrite "no frame reordering" hanya
-   untuk H.264; pada HEVC `nal[0] and 0x1f` bukan tipe NALU dan bisa merusak
-   AUD (35).
-8. **UI default ke HTTPS :8766.** Tombol "Buka di Browser" membuka
-   `https://<ip>:8766`; banner menampilkan HTTPS sebagai URL utama dan HTTP
-   :8765 sebagai fallback MSE.
+**Blocker keamanan:**
+
+1. **MainActivity — kanal validasi tanpa guard release.** `MainActivity`
+   exported (LAUNCHER + deep link `gososmed://`), dan
+   `handleValidationIntent()` menjalankan `cmd=dump/tap/setText` untuk
+   pemanggil mana pun:
+   `adb shell am start -n com.gososmed.agent/.MainActivity --es cmd dump`.
+   `AgentReceiver` sudah menolak ini di release; `MainActivity` tidak. Kini
+   dijaga `BuildConfig.DEBUG`.
+2. **AgentForegroundService — exported + tanpa autentikasi.** Menerima
+   `ACTION_SET_PAIRING` (`ws_url` + `pairing_code`) dan `ACTION_STOP_WS` tanpa
+   memeriksa pemanggil, sehingga aplikasi lain bisa mengalihkan agen ke
+   WebSocket milik penyerang atau memutus sambungan sah. Kini
+   `exported="false"`.
+3. **AgentReceiver — exported di release.** `BuildConfig.DEBUG` memblokir saat
+   runtime, tetapi komponennya tetap dapat dialamatkan. Kini manifest
+   placeholder: `true` di debug (QA `adb shell am broadcast`), `false` di
+   release.
+
+**Kebocoran & kebersihan:**
+
+4. **`allowBackup` tidak diset** sehingga Android memakai default `true`.
+   `AdbKeyStore` menulis kunci privat ADB (PKCS#8) ke `filesDir`; kunci itu
+   memberi hak `shell` (uid 2000). Kini `allowBackup=false` +
+   `data_extraction_rules` yang mengecualikan semua domain untuk cloud backup
+   dan device transfer.
+5. **PIN sesi ditulis plaintext ke logcat** — dapat dibaca siapa pun dengan
+   akses ADB. Kini hanya mencatat bahwa PIN dibuat.
+6. **Kebocoran blob URL pada MSE.** `revokeObjectURL(vid.src)` dipanggil
+   SETELAH `removeAttribute('src')`, sehingga menerima string kosong dan tidak
+   me-revoke apa pun — satu blob bocor setiap MSE dibangun ulang (rotasi,
+   ganti codec). URL kini diambil sebelum atribut dihapus. Urutan yang sama
+   diperbaiki di `reset()`.
+7. **Release build gagal `lintVitalRelease`**: `values-en` mendeklarasikan
+   `telemetry_target_prefix` yang tidak ada di locale default dan tidak dipakai
+   kode. Dihapus.
+
+**HEVC/H.265 lewat WebCodecs (jalur :8766):**
+
+8. **Negosiasi codec default ke HEVC.** `CaptureService.preferredCodec` kini
+   `HEVC`; `CodecCapability.preferenceOrder` tetap `[AV1, HEVC, AVC]` dan AVC
+   selalu fallback terakhir.
+9. **String codec HEVC dibangun di server** (`HevcCodecString`) dari
+   `profile_tier_level()` di VPS, menghasilkan format RFC 6381
+   `hev1.<profile>.<compat>.<tier><level>`. Dipakai `hev1` (bukan `hvc1`)
+   karena parameter set dikirim in-band di Annex-B tanpa box `hvcC`.
+10. **Protokol config bertambah 1 byte**: `[3][w:2][h:2][codecId:1][param set]`.
+    `codecId`: 1=AVC, 2=HEVC, 3=AV1. Paket lama tanpa id tetap dibaca sebagai
+    AVC.
+11. **Fallback berjenjang tanpa intervensi.** Tanpa WebCodecs (HTTP :8765) atau
+    bila `configure()`/decode HEVC gagal, viewer mengirim `setCodec` → AVC
+    sekali saja, server reconfigure, viewer pindah ke MSE.
+12. **`onOutputFormatChanged` mengumpulkan semua `csd-N`** — sebagian encoder
+    HEVC memakai `csd-0..csd-2`; sebelumnya hanya dua dibaca sehingga VPS atau
+    PPS bisa hilang.
+13. **`SpsFix` tidak lagi merusak HEVC.** Rewrite "no frame reordering" hanya
+    untuk H.264; pada HEVC `nal[0] and 0x1f` bukan tipe NALU dan bisa merusak
+    AUD (35).
+14. **UI default ke HTTPS :8766.** Tombol "Buka di Browser" membuka
+    `https://<ip>:8766`; banner menampilkan HTTPS sebagai URL utama dan HTTP
+    :8765 sebagai fallback MSE.
+
+**Bug yang ditemukan saat validasi:**
+
+15. **`currentConfigKey` tanpa identitas codec** — permintaan HEVC→AVC hanya
+    mengubah bitrate pada encoder lama dan viewer tetap menerima HEVC. Kunci
+    kini menyertakan codec.
+16. **`d is not defined` di `onConfigAvc`** — sisa refactor membuat setiap
+    paket config AVC melempar `ReferenceError` sebagai unhandled promise,
+    sehingga jalur WebCodecs AVC selalu gagal diam-diam dan jatuh ke MSE.
+    `WC.csd` (dead state yang tidak boleh dipakai sebagai
+    `VideoDecoder.description`) dihapus.
+17. **Probe codec memakai MSE untuk HEVC** — HEVC tidak pernah lewat MSE di
+    viewer ini (muxer fMP4 hanya membangun `avc1`/`avcC`), sehingga probe
+    mengukur jalur yang salah dan bisa mematikan HEVC yang berfungsi. HEVC/AV1
+    kini diprobe lewat `VideoDecoder` + `isSecureContext`.
 
 **Diverifikasi di perangkat nyata** (Redmi Note 13 Pro 5G, Android 15,
 `c2.qti.hevc.encoder`):
 
 | Jalur | Engine | Codec string | Hasil |
 |---|---|---|---|
-| `https://192.168.1.125:8766` | WebCodecs HEVC | `hev1.1.00000060.L120.B0` | 720x1600, gambar bergerak, **88 fps** saat scroll |
+| `https://192.168.1.125:8766` | WebCodecs HEVC | `hev1.1.00000060.L120.B0` | 720x1600, 88 fps saat scroll |
 | `http://192.168.1.125:8765` | MSE fMP4 | turun ke AVC otomatis | `readyState=2`, video 720x1600 berjalan |
 
-**Yang belum diverifikasi:** perangkat non-Qualcomm (MediaTek/Exynos) dan
-browser selain Chromium. HEVC hanya tersedia di secure context, jadi Firefox
-via HTTP :8765 akan selalu memakai fallback AVC/MSE.
+**Diukur di perangkat** (CPU ticks `/proc/<pid>/stat`, 3 run per kondisi):
+HEVC 587–597 vs AVC 617–635 ticks/8s saat scroll (HEVC ~5% lebih ringan);
+idle setara (67–72). Encoder video 0.0% CPU (DSP hardware). Biaya CPU
+terbesar justru audio (`goso-audio` 3.5–7.1%); audio OFF menurunkan idle dari
+~70 menjadi ~25 ticks/8s.
 
-**Bug yang ditemukan dan diperbaiki saat validasi:** `currentConfigKey` tidak
-memuat identitas codec, sehingga permintaan HEVC→AVC hanya mengubah bitrate
-pada encoder lama dan viewer tetap menerima HEVC. Kunci kini menyertakan
-codec.
+**Verifikasi statis APK** (`aapt2 dump xmltree`): release —
+`AgentReceiver exported=false`, `AgentForegroundService exported=false`,
+`allowBackup=false`; debug — `AgentReceiver exported=true` (kanal QA tetap).
+`apksigner verify` lolos dengan keystore env; `lintVitalRelease` lolos;
+204 unit test lulus.
+
+**Yang belum diverifikasi:** perangkat non-Qualcomm (MediaTek/Exynos), browser
+selain Chromium, dan perilaku runtime build release di hardware (MIUI/HyperOS
+menolak instalasi APK saat audit berlangsung). HEVC hanya tersedia di secure
+context, jadi Firefox via HTTP :8765 selalu memakai fallback AVC/MSE.
 
 ## [1.2.3-dev.1] - 2026-10-21
 
@@ -172,6 +229,7 @@ Rilis **DEV** `v1.2.3-dev.1` (versionCode 37) mengimplementasikan arsitektur str
    - **Overlay Auto-Shown While Editing**: Opening the panel now force-enables the keymap overlay and enters edit mode, so the real key positions are visible while tuning them. The inline editor bar is suppressed while the panel is open (the panel supersedes it).
    - **Critical Mapping Bug Fixed**: Closing the panel previously left `keymapEditing = true`, so pressing a key selected it instead of dispatching it — mapping appeared broken. `closeGpc()` now calls `setEditing(false)`, clears selection, and re-renders, so keys fire immediately after saving.
    - **Validated in-browser**: `backdropFilter: none`, `backgroundColor: rgba(0,0,0,0)`, `pointerEvents: none`; panel `position: fixed` at `left 16 / top 72`, drag moved it `+700px` horizontally and persisted; collapse hides tabs but keeps the header; overlay shows 8 keys while editing; and after Save the log confirms `Keymap KEY: W (keycode 51)` — the mapping actually dispatches.
+
 ## [1.2.2] - 2026-10-16
 
 ### Fixed & Enhanced — Onboarding Permission Unblocking, Dual-Action Buttons, SettingsActivity, Bottom/Menu ⋮ Variant & OEM Guides

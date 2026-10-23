@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 37 = 1.2.3-dev.1 (DEV) — Pure JPEG binary frames,
-        // isolated OBSERVE execution, session-scoped live streaming, and ACK flow control.
-        versionCode = 37
-        versionName = "1.2.3-dev.1"
+        // versionCode 38 = 1.2.4 (STABIL) — pre-release security audit,
+        // HEVC/H.265 via WebCodecs, HTTPS :8766 default.
+        versionCode = 38
+        versionName = "1.2.4"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
