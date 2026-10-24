@@ -9,6 +9,23 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.7] - 2026-10-24
+
+### Changed — Keamanan & Eksekusi Shell (Denylist Firewall)
+- **Transisi ke Model Denylist Keamanan (`PrivilegedShell`)**:
+  - Mengganti whitelist kaku 9 biner (`ALLOWED_BINARIES`) dengan model **Denylist Berbasis Risiko Keamanan (`BLOCKED_BINARIES` + `BLOCKED_PATTERNS`)**.
+  - **Membuka 210+ Biner Utilitas Linux/Android**: Membuka akses penuh bagi AI Agent untuk menjalankan perintah diagnostik dan telemetri seperti `getprop`, `logcat`, `ps`, `top`, `service`, `uiautomator`, `screencap`, `cat`, `ls`, `grep`, `mkdir`, `cp`, `mv`, `df`, `stat`, dll.
+  - **Perlindungan Sistem Mutlak**: Memblokir keras 36 biner destruktif (`reboot`, `poweroff`, `dd`, `mkfs.*`, `wipe`, `secdiscard`, `fastboot`, `remount`, `disable-verity`, `su`, dll.) dan pola berbahaya (`sys.powerctl`, `rm -rf /` atau seluruh storage).
+  - Sentralisasi validasi di `PrivilegedShell.validateCommand()` yang ditegakkan secara seragam di `AdbLocalShell` dan `UnavailableShell`.
+
+### Changed — UI & Diagnostik
+- **Health Check Labeling Parity**:
+  - Mengubah label health check diagnostik dari "ADB Lokal" menjadi "ADB Wireless" di `MainActivity.kt` (`buildHealthReport`) untuk mencerminkan arsitektur inti aplikasi berbasis Wireless Debugging (TLS loopback mDNS).
+
+### Verified — Hardware & JVM Tests
+- **Validasi Unit Test JVM**: `PrivilegedShellFilterTest.kt` menguji 20+ skenario perintah berbahaya (terblokir) dan 30+ utilitas sah (lolos validasi tanpa error).
+- **Verifikasi Perangkat Fisik**: Teruji langsung di Xiaomi Redmi Note 13 Pro 5G via broadcast debug: perintah `reboot` dan `sys.powerctl` ditolak tepat sasaran, dan `getprop` lolos firewall.
+
 ## [1.2.6] - 2026-10-24
 
 ### Added

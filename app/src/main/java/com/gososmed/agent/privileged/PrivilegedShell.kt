@@ -41,17 +41,71 @@ interface PrivilegedShell {
         const val DEFAULT_TIMEOUT_MS = 15_000L
 
         /**
-         * Batas keamanan: biner yang boleh dijalankan server.
-         *
-         * Agent berjalan di HP pribadi pemilik akun, jadi server TIDAK BOLEH
-         * menjalankan shell sembarangan (mis. `rm`, `pm uninstall`, membaca
-         * berkas pribadi). Menambah entri di sini adalah keputusan sadar.
-         *
-         * Daftar ini TIDAK berubah dari v0.8.0 — kontrak §3.1.
+         * Batas keamanan: biner yang DILARANG keras karena berisiko merusak sistem/perangkat (destructive).
+         * Semua biner lain (am, pm, dumpsys, getprop, logcat, ps, ls, cat, service, uiautomator,
+         * screencap, cp, mv, grep, echo, sleep, dll.) dibuka untuk kebutuhan otomasi agent.
          */
+        val BLOCKED_BINARIES = setOf(
+            // 1. Reboot & Shutdown (Mencegah HP restart tiba-tiba saat tugas berjalan)
+            "reboot", "poweroff", "halt",
+
+            // 2. Format / Raw Disk / Partition Wiper (Mencegah kerusakan storage fisik)
+            "dd", "fdisk", "gdisk", "sgdisk", "parted",
+            "mkfs", "mke2fs", "mkfs.ext2", "mkfs.ext3", "mkfs.ext4", "mkfs.f2fs", "mkfs.erofs", "mkfs.exfat", "newfs_msdos", "mkswap",
+            "wipe", "secdiscard", "tune2fs", "resize2fs",
+
+            // 3. Firmware Flashing & Tampering Sistem
+            "fastboot", "remount", "disable-verity", "enable-verity", "set-verity-state",
+            "update_engine", "update_engine_client",
+
+            // 4. Modifikasi Kernel
+            "insmod", "rmmod", "modprobe",
+
+            // 5. Root Exploit / Hak Akses Liar
+            "su", "magisk", "daemonsu", "run-as",
+        )
+
+        /** Pola perintah berbahaya yang dapat merusak sistem atau menghapus seluruh partisi/data. */
+        val BLOCKED_PATTERNS = listOf(
+            Regex("""\bsys\.powerctl\b"""),
+            Regex("""\brm\s+-[a-zA-Z]*r[a-zA-Z]*\s+(/\s*$|/data|/system|/vendor|/product|/sdcard\s*$)""")
+        )
+
+        @Deprecated("Gunakan BLOCKED_BINARIES dengan model denylist/blacklist")
         val ALLOWED_BINARIES = setOf(
             "am", "input", "monkey", "pm", "dumpsys", "wm", "settings", "cmd", "rm"
         )
+
+        /**
+         * Memvalidasi apakah perintah aman dijalankan.
+         * Mengembalikan ShellResult dengan failure="blocked: ..." jika dilarang,
+         * atau `null` jika perintah diizinkan untuk dieksekusi.
+         */
+        fun validateCommand(command: String): ShellResult? {
+            val trimmed = command.trim()
+            if (trimmed.isEmpty()) {
+                return ShellResult(
+                    ok = false, exitCode = -1, stdout = "", stderr = "",
+                    failure = "command_empty",
+                )
+            }
+            val binary = trimmed.substringBefore(' ').substringAfterLast('/')
+            if (binary in BLOCKED_BINARIES) {
+                return ShellResult(
+                    ok = false, exitCode = -1, stdout = "", stderr = "",
+                    failure = "blocked: perintah '$binary' dilarang karena berisiko merusak sistem",
+                )
+            }
+            for (pattern in BLOCKED_PATTERNS) {
+                if (pattern.containsMatchIn(trimmed)) {
+                    return ShellResult(
+                        ok = false, exitCode = -1, stdout = "", stderr = "",
+                        failure = "blocked: pola perintah berbahaya terdeteksi",
+                    )
+                }
+            }
+            return null
+        }
     }
 }
 
@@ -109,15 +163,8 @@ object UnavailableShell : PrivilegedShell {
     )
 
     override fun exec(command: String, timeoutMs: Long): ShellResult {
-        // Whitelist tetap ditegakkan walau transport tidak ada, supaya pesan
-        // "blocked" tidak berubah menjadi "adb_not_paired" saat F3 dipasang.
-        val binary = command.trim().substringBefore(' ').substringAfterLast('/')
-        if (binary !in PrivilegedShell.ALLOWED_BINARIES) {
-            return ShellResult(
-                ok = false, exitCode = -1, stdout = "", stderr = "",
-                failure = "blocked: perintah '$binary' tidak ada di daftar izin agent",
-            )
-        }
+        val blocked = PrivilegedShell.validateCommand(command)
+        if (blocked != null) return blocked
         return ShellResult(
             ok = false, exitCode = -1, stdout = "", stderr = "",
             failure = "adb_not_paired: otomasi lanjutan belum dihubungkan di HP ini",

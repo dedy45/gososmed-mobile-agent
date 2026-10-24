@@ -1486,10 +1486,10 @@ class MainActivity : AppCompatActivity() {
             if (wsConnected) "tersambung" else "terputus"
         )
 
-        // 3. ADB lokal (opsional, bukan prasyarat)
+        // 3. ADB Wireless (opsional, bukan prasyarat)
         val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
         items += HealthItem(
-            "ADB Lokal",
+            "ADB Wireless",
             shell.available,
             if (shell.available) "uid ${shell.uid}" else "belum dipasangkan (opsional)"
         )

@@ -248,15 +248,10 @@ internal class AdbLocalShell(
     }
 
     override fun exec(command: String, timeoutMs: Long): ShellResult {
-        // Batas keamanan ditegakkan SEBELUM apa pun dijalankan — sama seperti
-        // v0.8.0, daftar putihnya tidak berubah (kontrak §3.1).
-        val binary = command.trim().substringBefore(' ').substringAfterLast('/')
-        if (binary !in PrivilegedShell.ALLOWED_BINARIES) {
-            return ShellResult(
-                ok = false, exitCode = -1, stdout = "", stderr = "",
-                failure = "blocked: perintah '$binary' tidak ada di daftar izin agent",
-            )
-        }
+        // Batas keamanan ditegakkan SEBELUM apa pun dijalankan — model denylist
+        // memblokir biner destruktif dan mengizinkan biner otomasi agent.
+        val blocked = PrivilegedShell.validateCommand(command)
+        if (blocked != null) return blocked
         // Cek cepat TANPA kunci library (lihat [linkUp]). Bila nilainya keliru
         // positif, openStream di thread IO akan gagal dan dilaporkan jujur.
         if (!linkUp) {

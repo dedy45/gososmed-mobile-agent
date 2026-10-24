@@ -36,11 +36,11 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 42 = 1.2.6 (STABIL) — Rilis resmi stabil: Anti-ANR CommandExecutionMutex,
-        // eliminasi main looper freeze, perbaikan i18n & tema, Maestro parity (spatial filter &
-        // scrollUntilVisible), implementasi globalDim, dan lolos uji stres fisik 17/17.
-        versionCode = 42
-        versionName = "1.2.6"
+        // versionCode 43 = 1.2.7 (STABIL) — Rilis resmi produksi: Pembaruan Firewall Denylist
+        // PrivilegedShell (membuka 210+ biner sistem Android & memblokir 36 biner destruktif),
+        // pelabelan UI health check ADB Wireless, dan validasi fisik hardware.
+        versionCode = 43
+        versionName = "1.2.7"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
