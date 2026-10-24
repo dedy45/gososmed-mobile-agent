@@ -78,12 +78,25 @@ class AgentWsClient(
         fun sendBinary(bytes: ByteArray): Boolean {
             return instance?.sendBinary(bytes) ?: false
         }
+
+        fun sendEvent(json: JSONObject): Boolean {
+            return instance?.sendEvent(json) ?: false
+        }
     }
 
     fun sendBinary(bytes: ByteArray): Boolean {
         val socket = ws ?: return false
         return try {
             socket.send(bytes.toByteString())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun sendEvent(json: JSONObject): Boolean {
+        val socket = ws ?: return false
+        return try {
+            socket.send(json.toString())
         } catch (_: Exception) {
             false
         }

@@ -191,7 +191,8 @@ class ProtocolV2Test {
             "device_busy",
             "submit_barrier",
             "screenshot_failed",
-            "protocol_mismatch"
+            "protocol_mismatch",
+            "batch_step_failed"
         )
 
         for (code in expectedCodes) {
@@ -212,7 +213,8 @@ class ProtocolV2Test {
             "cancelAction",
             "startDebugFrames",
             "stopDebugFrames",
-            "scrollUntilVisible"
+            "scrollUntilVisible",
+            "executeBatch"
         )
 
         for (cmd in expectedCommands) {

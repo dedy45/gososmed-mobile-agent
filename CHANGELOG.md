@@ -9,6 +9,23 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.8-dev.1] - 2026-10-25
+
+### Added — Batch Flow Execution & Trajectory Telemetry (Protocol V2)
+- **Command Kanonik `executeBatch`**:
+  - Menambahkan dukungan eksekusi batch multi-langkah deterministik pada `ProtocolV2.Commands.EXECUTE_BATCH` dan Legacy `AgentCommand.CMD_EXECUTE_BATCH`.
+  - Mengeksekusi sekuens tindakan UI secara lokal tanpa jeda latensi round-trip jaringan (target latensi terpangkas dari ~4200ms ke <1100ms).
+- **Engine `BatchFlowExecutor.kt`**:
+  - Mengorkestrasi aksi batch sekuensial dengan garansi *fail-fast* (berhenti segera pada anomali pertama tanpa menjalankan langkah berikutnya).
+  - Pagar keamanan *whitelisted actions only* (`startApp`, `waitForScreen`, `waitForNode`, `actNode`, `actAndVerify`, `scrollUntilVisible`, `inputText`, `setText`, `replaceText`, `pressKey`, `back`, `home`, `recents`, `sleep`). Menolak aksi asing secara otomatis.
+  - Mendukung pembatalan deterministik melalui `CommandCancellationRegistry.isCancelled(requestId)` dan batas waktu global `timeout_total_ms`.
+- **Aliran Telemetri Jejak `stepTrajectory`**:
+  - Memancarkan event terstruktur `ProtocolV2.Events.STEP_TRAJECTORY` untuk setiap langkah yang selesai dieksekusi (`step_id`, `step_index`, `status`, `duration_ms`, `device_telemetry`, `failure_detail`).
+  - Mengirim telemetri langsung ke server via `AgentWsClient.sendEvent(json)` untuk mendukung *self-healing* pengawas AI di server.
+
+### Verified — Hardware & JVM Tests
+- **Validasi Unit Test JVM**: `BatchModelsTest` dan `BatchFlowExecutorTest` lulus 100% (sukses sekuensial 3 langkah, fail-fast pada kegagalan langkah tengah, pembatalan aksi, dan penolakan aksi tidak berizin).
+
 ## [1.2.7] - 2026-10-24
 
 ### Changed — Keamanan & Eksekusi Shell (Denylist Firewall)

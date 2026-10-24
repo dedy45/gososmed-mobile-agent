@@ -36,11 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 43 = 1.2.7 (STABIL) — Rilis resmi produksi: Pembaruan Firewall Denylist
-        // PrivilegedShell (membuka 210+ biner sistem Android & memblokir 36 biner destruktif),
-        // pelabelan UI health check ADB Wireless, dan validasi fisik hardware.
-        versionCode = 43
-        versionName = "1.2.7"
+        // versionCode 44 = 1.2.8-dev.1 (DEV) — Fitur Batch Flow Executor & Trajectory Telemetry
+        // (Protocol v2 executeBatch, stepTrajectory event stream, fail-fast sequential orchestrator).
+        versionCode = 44
+        versionName = "1.2.8-dev.1"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

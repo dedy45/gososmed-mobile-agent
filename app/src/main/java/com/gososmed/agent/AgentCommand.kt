@@ -119,6 +119,7 @@ object AgentCommand {
     const val CMD_START_LOCAL_SERVER = "startLocalServer"
     const val CMD_STOP_LOCAL_SERVER = "stopLocalServer"
     const val CMD_GLOBAL_DIM = "globalDim"
+    const val CMD_EXECUTE_BATCH = "executeBatch"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      * Dipakai dua hal:
@@ -152,7 +153,8 @@ object AgentCommand {
      */
     val ASYNC_BACKGROUND_COMMANDS = setOf(
         CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
-        CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT, CMD_CLICK_AND_WAIT
+        CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT, CMD_CLICK_AND_WAIT,
+        CMD_EXECUTE_BATCH
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -770,6 +772,34 @@ object AgentCommand {
                         ).toJson()
                     }
                 }
+                ProtocolV2.Commands.EXECUTE_BATCH -> {
+                    val batchReq = com.gososmed.agent.batch.BatchRequest.fromJson(args, req)
+                    val executor = com.gososmed.agent.batch.BatchFlowExecutor(
+                        telemetryEmitter = { report ->
+                            AgentWsClient.sendEvent(report.toJson())
+                        }
+                    )
+                    val batchResult = executor.execute(
+                        request = batchReq,
+                        requestId = requestId,
+                        deadlineMs = v2Req.deadlineMs
+                    )
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    if (batchResult.status == "COMPLETED") {
+                        ProtocolV2.Response.success(
+                            requestId = requestId,
+                            result = batchResult.toJson(),
+                            timing = timing
+                        ).toJson()
+                    } else {
+                        ProtocolV2.Response.error(
+                            requestId = requestId,
+                            reasonCode = batchResult.reasonCode ?: ProtocolV2.ReasonCodes.BATCH_STEP_FAILED,
+                            result = batchResult.toJson(),
+                            timing = timing
+                        ).toJson()
+                    }
+                }
 
                 else -> {
                     val timing = ProtocolV2.Timing.create(startTime)
@@ -1371,6 +1401,26 @@ object AgentCommand {
                     resp.put("error", "gagal mengetuk elemen target")
                 } else if (!settled && (waitText != null || waitDesc != null || waitResId != null)) {
                     resp.put("error", "elemen berhasil diklik, namun transisi target belum muncul setelah ${elapsed}ms")
+                }
+            }
+            CMD_EXECUTE_BATCH -> {
+                val batchReq = com.gososmed.agent.batch.BatchRequest.fromJson(req)
+                val executor = com.gososmed.agent.batch.BatchFlowExecutor(
+                    telemetryEmitter = { report ->
+                        AgentWsClient.sendEvent(report.toJson())
+                    }
+                )
+                val batchResult = kotlinx.coroutines.runBlocking {
+                    executor.execute(
+                        request = batchReq,
+                        requestId = "batch_${System.currentTimeMillis()}",
+                        deadlineMs = batchReq.timeoutTotalMs
+                    )
+                }
+                resp.put("ok", batchResult.status == "COMPLETED")
+                resp.put("result", batchResult.toJson())
+                if (batchResult.status != "COMPLETED") {
+                    resp.put("error", batchResult.reasonCode ?: "batch_execution_failed")
                 }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")

@@ -30,6 +30,8 @@ object ProtocolV2 {
         const val STOP_DEBUG_FRAMES = "stopDebugFrames"
         // Maestro Parity: Native scroll until element is visible in safe viewport
         const val SCROLL_UNTIL_VISIBLE = "scrollUntilVisible"
+        // Batch Flow Execution: Native deterministic sequential flow
+        const val EXECUTE_BATCH = "executeBatch"
 
         val ALL: Set<String> = setOf(
             OBSERVE,
@@ -41,7 +43,16 @@ object ProtocolV2 {
             CANCEL_ACTION,
             START_DEBUG_FRAMES,
             STOP_DEBUG_FRAMES,
-            SCROLL_UNTIL_VISIBLE
+            SCROLL_UNTIL_VISIBLE,
+            EXECUTE_BATCH
+        )
+    }
+
+    object Events {
+        const val STEP_TRAJECTORY = "stepTrajectory"
+
+        val ALL: Set<String> = setOf(
+            STEP_TRAJECTORY
         )
     }
 
@@ -64,7 +75,7 @@ object ProtocolV2 {
         const val SUBMIT_BARRIER = "submit_barrier"
         const val SCREENSHOT_FAILED = "screenshot_failed"
         const val PROTOCOL_MISMATCH = "protocol_mismatch"
-
+        const val BATCH_STEP_FAILED = "batch_step_failed"
         val ALL: Set<String> = setOf(
             NO_NODE,
             AMBIGUOUS,
@@ -83,7 +94,8 @@ object ProtocolV2 {
             DEVICE_BUSY,
             SUBMIT_BARRIER,
             SCREENSHOT_FAILED,
-            PROTOCOL_MISMATCH
+            PROTOCOL_MISMATCH,
+            BATCH_STEP_FAILED
         )
     }
 
