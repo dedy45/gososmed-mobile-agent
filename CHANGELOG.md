@@ -23,8 +23,21 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - Memancarkan event terstruktur `ProtocolV2.Events.STEP_TRAJECTORY` untuk setiap langkah yang selesai dieksekusi (`step_id`, `step_index`, `status`, `duration_ms`, `device_telemetry`, `failure_detail`).
   - Mengirim telemetri langsung ke server via `AgentWsClient.sendEvent(json)` untuk mendukung *self-healing* pengawas AI di server.
 
+### Added — Dynamic Anti-Detection Hiding & Hardware Telemetry
+- **Dynamic Hiding Engine (`DynamicHidingManager.kt`)**:
+  - Memantau transisi aplikasi foreground secara reaktif berbasis event `TYPE_WINDOW_STATE_CHANGED` di `AgentAccessibilityService`.
+  - Otomatis menyembunyikan sinyal pengembang (`development_settings_enabled = 0`, `adb_enabled = 0`, `adb_wifi_enabled = 0`) saat mendeteksi aplikasi perbankan terlindungi (Jenius `com.btpn.dc`, BCA `com.bca`, Bank Jago `com.jago.digitalBanking`, DANA `id.dana`, dll.).
+  - **Mekanisme `restartForLaunch` (Anti-In-Memory-Flag Cache)**: Mengeksekusi cold-start (`am force-stop` + `am start`) dalam ~150ms agar proses baru bank membaca memori bersih tanpa perlu pengguna merestart Wi-Fi atau mengaktifkan Mode Terbang.
+  - Memulihkan seluruh pengaturan sistem secara otomatis ke nilai asli saat pengguna keluar dari aplikasi bank ke Home atau aplikasi lain.
+  - Mengirim log event deteksi dan pemulihan langsung ke tab Log aplikasi (`AgentLog.event`).
+- **Telemetri RAM & CPU Realtime**:
+  - Menampilkan kapasitas RAM aktif dan persentase terpakai (`ActivityManager.MemoryInfo`) di kartu Telemetri Diagnostik.
+  - Menampilkan jumlah core prosesor CPU yang aktif (`Runtime.getRuntime().availableProcessors()`).
+  - Menambahkan item evaluasi `Anti-Deteksi` dan `Phantom Guard` pada menu Health Check.
+
 ### Verified — Hardware & JVM Tests
-- **Validasi Unit Test JVM**: `BatchModelsTest` dan `BatchFlowExecutorTest` lulus 100% (sukses sekuensial 3 langkah, fail-fast pada kegagalan langkah tengah, pembatalan aksi, dan penolakan aksi tidak berizin).
+- **Validasi Unit Test JVM**: `BatchModelsTest`, `BatchFlowExecutorTest`, dan `DynamicHidingManagerTest` lulus 100%.
+- **Uji Perangkat Fisik (Redmi Note 13 Pro 5G - Android 15)**: Terverifikasi bebas dari dialog peringatan Developer Options saat Jenius diluncurkan dengan setting disembunyikan.
 
 ## [1.2.7] - 2026-10-24
 
