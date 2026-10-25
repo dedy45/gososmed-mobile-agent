@@ -9,8 +9,18 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.8] - 2026-10-25
+## [1.2.9] - 2026-10-25
 
+### Fixed — Critical Accessibility Stability & Shizuku-Parity Settings Navigation
+- **Eliminasi Bug Aksesibilitas Flapping Loop (`DynamicHidingManager.kt`)**:
+  - Menghapus total `Signal.ACCESSIBILITY` dari daftar sinyal penyembunyian agar `enabled_accessibility_services` tidak pernah disentuh atau dihapus oleh logika hiding.
+  - Memperbaiki `restoreSignal()` agar hanya memulihkan kunci yang **benar-benar ada di `store`** (hanya yang pernah disembunyikan sebelumnya), mencegah eksekusi `settings delete` liar terhadap service aksesibilitas aktif.
+  - Aksesibilitas kini 100% stabil, tidak pernah mati mendadak atau looping mati-hidup.
+- **Navigasi Setelan Universal Ala Shizuku (`MainActivity.kt`)**:
+  - Mengadopsi 1:1 pola navigasi Shizuku (`TileService.ACTION_QS_TILE_PREFERENCES` + component `DevelopmentTiles$WirelessDebugging`).
+  - Mendukung highlight langsung baris `toggle_adb_wireless` di Setelan Developer Options pada semua vendor (Xiaomi HyperOS, Vivo FuntouchOS, Samsung One UI, Oppo/Realme, Transsion).
+
+## [1.2.8] - 2026-10-25
 ### Added — Shizuku-Parity Auto-Pairing & Pairing UX
 - **Zero-Click Auto-Pairing (`AdbPairingService.kt` & `PairingDialogParser.kt`)**:
   - Deteksi fleksibel terhadap dialog Setelan OEM modern (`com.android.settings`, Xiaomi HyperOS, Samsung One UI, Transsion, Pixel).

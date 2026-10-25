@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 45 = 1.2.8 (PROD) — Shizuku-Parity Auto-Pairing, Anti-Detection Hiding,
-        // Batch Flow Executor, Live Hardware Telemetry & True UID Verification.
-        versionCode = 45
-        versionName = "1.2.8"
+        // versionCode 46 = 1.2.9 (PROD) — Fix Accessibility Flapping, Zero-Click Auto-Pairing,
+        // Shizuku-Parity Settings Navigation & Universal OEM Support.
+        versionCode = 46
+        versionName = "1.2.9"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
