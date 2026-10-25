@@ -121,6 +121,9 @@ object AgentCommand {
     const val CMD_GLOBAL_DIM = "globalDim"
     const val CMD_EXECUTE_BATCH = "executeBatch"
     const val CMD_SET_DISPLAY_POWER = "setDisplayPower"
+    const val CMD_RESTART_SYSTEM_UI = "restartSystemUi"
+    const val CMD_DISPLAY_SIZE = "displaySize"
+    const val CMD_DISPLAY_DENSITY = "displayDensity"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      * Dipakai dua hal:
@@ -146,7 +149,7 @@ object AgentCommand {
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
         CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
         CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER, CMD_GLOBAL_DIM,
-        CMD_SET_DISPLAY_POWER
+        CMD_SET_DISPLAY_POWER, CMD_RESTART_SYSTEM_UI, CMD_DISPLAY_SIZE, CMD_DISPLAY_DENSITY
     )
     /**
      * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
@@ -1032,11 +1035,57 @@ object AgentCommand {
             }
             CMD_SET_DISPLAY_POWER -> {
                 val on = req.optBoolean("on", false)
+                val shell = PrivilegedShellHolder.get()
+                val st = shell.status()
                 com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(on)
                 resp.put("ok", true).put("result", JSONObject().apply {
                     put("display_power", on)
                     put("status", if (on) "powered_on" else "powered_off")
+                    put("shell_available", st.available)
+                    put("shell_connected", st.connected)
+                    put("shell_paired", st.paired)
+                    put("shell_uid", st.uid)
+                    put("shell_error", st.error)
                 })
+            }
+            CMD_RESTART_SYSTEM_UI -> {
+                val ok = com.gososmed.agent.privileged.SystemDisplayController.restartSystemUi()
+                resp.put("ok", ok).put("result", JSONObject().put("restarted", ok))
+            }
+            CMD_DISPLAY_SIZE -> {
+                if (req.has("reset") && req.getBoolean("reset")) {
+                    val ok = com.gososmed.agent.privileged.SystemDisplayController.resetDisplaySize()
+                    resp.put("ok", ok).put("result", JSONObject().put("reset", ok))
+                } else if (req.has("width") && req.has("height")) {
+                    val w = req.getInt("width")
+                    val h = req.getInt("height")
+                    val ok = com.gososmed.agent.privileged.SystemDisplayController.setDisplaySize(w, h)
+                    resp.put("ok", ok).put("result", JSONObject().put("width", w).put("height", h))
+                } else {
+                    val cur = com.gososmed.agent.privileged.SystemDisplayController.getDisplaySize()
+                    resp.put("ok", true).put("result", JSONObject().apply {
+                        put("current", cur.current)
+                        put("physical", cur.physical)
+                        put("is_overridden", cur.isOverridden)
+                    })
+                }
+            }
+            CMD_DISPLAY_DENSITY -> {
+                if (req.has("reset") && req.getBoolean("reset")) {
+                    val ok = com.gososmed.agent.privileged.SystemDisplayController.resetDensity()
+                    resp.put("ok", ok).put("result", JSONObject().put("reset", ok))
+                } else if (req.has("density") || req.has("dpi")) {
+                    val dpi = req.optInt("density", req.optInt("dpi", 400))
+                    val ok = com.gososmed.agent.privileged.SystemDisplayController.setDensity(dpi)
+                    resp.put("ok", ok).put("result", JSONObject().put("density", dpi))
+                } else {
+                    val cur = com.gososmed.agent.privileged.SystemDisplayController.getDensity()
+                    resp.put("ok", true).put("result", JSONObject().apply {
+                        put("current", cur.current)
+                        put("physical", cur.physical)
+                        put("is_overridden", cur.isOverridden)
+                    })
+                }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }
