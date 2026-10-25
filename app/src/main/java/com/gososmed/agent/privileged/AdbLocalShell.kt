@@ -393,6 +393,7 @@ internal class AdbLocalShell(
             cachedUid = -1
             lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
         }
+        notifyStateChanged()
         ok
     } catch (t: Throwable) {
         linkUp = false
