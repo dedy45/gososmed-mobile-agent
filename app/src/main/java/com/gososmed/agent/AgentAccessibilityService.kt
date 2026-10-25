@@ -565,7 +565,7 @@ class AgentAccessibilityService : AccessibilityService() {
             val windowPkg = event.packageName?.toString().orEmpty()
             if (windowPkg.isNotEmpty()) {
                 com.gososmed.agent.hiding.DynamicHidingManager.getInstance(applicationContext)
-                    .reconcileAsync(windowPkg)
+                    .reconcileAsync(windowPkg, applicationContext)
             }
         }
 

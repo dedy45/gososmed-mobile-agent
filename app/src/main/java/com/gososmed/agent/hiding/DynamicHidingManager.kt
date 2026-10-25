@@ -141,23 +141,53 @@ class DynamicHidingManager(
         log("Anti-Deteksi: Pengaturan sistem dipulihkan kembali")
         return allOk
     }
+    @Volatile
+    private var restartedFor: String? = null
+
+    fun restartForLaunch(packageName: String, shell: PrivilegedShell, context: Context): Boolean {
+        return try {
+            val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
+            val component = intent.component?.flattenToShortString() ?: return false
+            log("Anti-Deteksi: Memulai ulang $packageName agar membaca setting yang baru disembunyikan...")
+
+            shell.exec("am force-stop $packageName")
+            Thread.sleep(200L)
+            val res = shell.exec("am start -n $component")
+            val success = res.ok && !res.stdout.contains("Error")
+            if (success) {
+                log("Anti-Deteksi: $packageName berhasil di-restart dengan memori bersih ✓")
+            }
+            success
+        } catch (t: Throwable) {
+            logWarn("restartForLaunch error: ${t.message}")
+            false
+        }
+    }
 
     /**
      * Logika rekonsiliasi otomatis berdasarkan package aplikasi di foreground:
-     * - Jika [currentPackage] terdaftar dalam [protectedPackages]: sembunyikan sinyal yang diminta.
+     * - Jika [currentPackage] terdaftar dalam [protectedPackages]: sembunyikan sinyal yang diminta
+     *   dan lakukan restart-on-launch sekali agar proses aplikasi membaca memori bersih.
      * - Jika tidak: pulihkan seluruh sinyal yang sempat disembunyikan.
      */
     fun reconcile(
         currentPackage: String?,
         protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES,
         signalsToHide: Set<Signal> = setOf(Signal.DEVELOPER_OPTIONS, Signal.USB_DEBUGGING, Signal.WIRELESS_DEBUGGING),
-        shell: PrivilegedShell = shellProvider()
+        shell: PrivilegedShell = shellProvider(),
+        context: Context? = null
     ) {
         if (currentPackage != null && currentPackage in protectedPackages) {
             for (sig in signalsToHide) {
                 hideSignal(sig, shell, targetPackage = currentPackage)
             }
+
+            if (restartedFor != currentPackage && shell.status().available && context != null) {
+                restartedFor = currentPackage
+                restartForLaunch(currentPackage, shell, context)
+            }
         } else {
+            restartedFor = null
             if (store.getAllSavedKeys().isNotEmpty()) {
                 restoreAll(shell)
             }
@@ -169,10 +199,11 @@ class DynamicHidingManager(
      */
     fun reconcileAsync(
         currentPackage: String?,
+        context: Context? = null,
         protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES
     ) {
         scope.launch {
-            reconcile(currentPackage, protectedPackages)
+            reconcile(currentPackage, protectedPackages, context = context)
         }
     }
 
