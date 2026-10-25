@@ -1464,68 +1464,93 @@ class MainActivity : AppCompatActivity() {
     private fun buildHealthReport(): HealthReport {
         val items = mutableListOf<HealthItem>()
 
-        // 1. Accessibility service
+        // 1. Accessibility service (Core)
         val a11yAlive = AgentAccessibilityService.isServiceAlive()
         val a11yReady = AgentAccessibilityService.isReady()
         items += HealthItem(
-            "Aksesibilitas",
-            a11yAlive,
-            when {
+            name = "Aksesibilitas",
+            ok = a11yAlive && a11yReady,
+            detail = when {
                 !a11yAlive -> "belum aktif"
                 a11yReady -> "aktif & siap"
                 else -> "aktif, layar belum terbaca"
-            }
+            },
+            isOptional = false,
+            category = HealthCategory.CORE
         )
 
-        // 2. WebSocket ke backend
+        // 2. WebSocket ke backend (Core)
         val ws = AgentForegroundService.instance?.getWsClient()
         val wsConnected = ws?.isConnected() == true
         items += HealthItem(
-            "WebSocket Server",
-            wsConnected,
-            if (wsConnected) "tersambung" else "terputus"
+            name = "WebSocket Server",
+            ok = wsConnected,
+            detail = if (wsConnected) "tersambung" else "terputus",
+            isOptional = false,
+            category = HealthCategory.CORE
         )
 
-        // 3. ADB Wireless (opsional, bukan prasyarat)
+        // 3. Izin overlay (Core - dibutuhkan untuk background launch)
+        val overlayOk = AgentOverlay.canDraw(this)
+        items += HealthItem(
+            name = "Izin Overlay",
+            ok = overlayOk,
+            detail = if (overlayOk) "diberikan" else "belum diberikan",
+            isOptional = false,
+            category = HealthCategory.CORE
+        )
+
+        // 4. Optimasi Baterai (Core - penting agar proses tidak dibunuh OS saat background)
+        val pm = getSystemService(PowerManager::class.java)
+        val batteryFree = pm?.isIgnoringBatteryOptimizations(packageName) == true
+        items += HealthItem(
+            name = "Optimasi Baterai",
+            ok = batteryFree,
+            detail = if (batteryFree) "tanpa batasan ✓" else "dibatasi sistem",
+            isOptional = false,
+            category = HealthCategory.CORE
+        )
+
+        // 5. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
         val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
         items += HealthItem(
-            "ADB Wireless",
-            shell.available,
-            if (shell.available) "uid ${shell.uid}" else "belum dipasangkan (opsional)"
+            name = "ADB Wireless",
+            ok = shell.available,
+            detail = if (shell.available) "uid ${shell.uid}" else "belum dipasangkan (opsional)",
+            isOptional = true,
+            category = HealthCategory.CORE
         )
 
-        // 4. Local web server + PIN
+        // 6. Log error (Core)
+        val errLines = AgentLog.recentErrors(limit = 8)
+        items += HealthItem(
+            name = "Log Error",
+            ok = errLines.isEmpty(),
+            detail = if (errLines.isEmpty()) "bersih" else "${errLines.size} entri terakhir",
+            isOptional = false,
+            category = HealthCategory.CORE
+        )
+
+        // 7. Server Lokal (Remote Control - Berdiri Sendiri)
         val serverRunning = com.gososmed.agent.capture.LocalWebServer.isRunning
         val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
         items += HealthItem(
-            "Server Lokal",
-            serverRunning,
-            if (serverRunning) "port 8765 aktif, PIN ${if (pin.isEmpty()) "nonaktif" else "aktif"}"
-            else "mati (switch Remote Controller off)"
+            name = "Server Lokal",
+            ok = serverRunning,
+            detail = if (serverRunning) "port 8765 aktif, PIN ${if (pin.isEmpty()) "nonaktif" else "aktif"}"
+            else "nonaktif (switch off)",
+            isOptional = true,
+            category = HealthCategory.REMOTE_CONTROL
         )
 
-        // 5. Capture pipeline
+        // 8. Capture Layar (Remote Control - Berdiri Sendiri)
         val captureAlive = com.gososmed.agent.capture.CaptureService.instance != null
         items += HealthItem(
-            "Capture Layar",
-            captureAlive,
-            if (captureAlive) "berjalan" else "belum dimulai"
-        )
-
-        // 6. Izin overlay (dibutuhkan untuk background launch)
-        val overlayOk = AgentOverlay.canDraw(this)
-        items += HealthItem(
-            "Izin Overlay",
-            overlayOk,
-            if (overlayOk) "diberikan" else "belum diberikan"
-        )
-
-        // 7. Penyimpanan log error
-        val errLines = AgentLog.recentErrors(limit = 8)
-        items += HealthItem(
-            "Log Error",
-            errLines.isEmpty(),
-            if (errLines.isEmpty()) "bersih" else "${errLines.size} entri terakhir"
+            name = "Capture Layar",
+            ok = captureAlive,
+            detail = if (captureAlive) "streaming aktif" else "nonaktif (switch off)",
+            isOptional = true,
+            category = HealthCategory.REMOTE_CONTROL
         )
 
         return HealthReport(items, errLines)

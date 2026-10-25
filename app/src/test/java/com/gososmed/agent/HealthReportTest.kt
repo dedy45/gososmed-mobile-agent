@@ -71,4 +71,40 @@ class HealthReportTest {
         assertTrue(txt.contains("LOG ERROR TERAKHIR"))
         assertTrue(txt.contains("boom"))
     }
+
+    @Test
+    fun `optional items are excluded from core error count and summary`() {
+        val r = HealthReport(
+            items = listOf(
+                item("Aksesibilitas", true, "aktif"),
+                item("WebSocket", true, "tersambung"),
+                HealthItem("ADB Wireless", false, "belum dipasang", isOptional = true, category = HealthCategory.CORE),
+                HealthItem("Server Lokal", false, "mati", isOptional = true, category = HealthCategory.REMOTE_CONTROL),
+                HealthItem("Capture Layar", false, "mati", isOptional = true, category = HealthCategory.REMOTE_CONTROL)
+            ),
+            errorLines = emptyList()
+        )
+
+        // Core mandatory hanya 2 (Aksesibilitas, WebSocket). Karena keduanya true, errorCount harus 0
+        assertEquals(0, r.errorCount)
+        assertTrue("Summary harus 2/2 OK", r.summary().contains("2/2 OK"))
+        assertTrue("Summary tidak boleh menyebut perlu perhatian", r.summary().contains("semua subsistem inti sehat"))
+    }
+
+    @Test
+    fun `rowsText formats remote control section with separator and neutral mark`() {
+        val r = HealthReport(
+            items = listOf(
+                item("Aksesibilitas", true, "aktif & siap"),
+                HealthItem("Server Lokal", false, "nonaktif (switch off)", isOptional = true, category = HealthCategory.REMOTE_CONTROL),
+                HealthItem("Capture Layar", true, "streaming aktif", isOptional = true, category = HealthCategory.REMOTE_CONTROL)
+            ),
+            errorLines = emptyList()
+        )
+
+        val rows = r.rowsText()
+        assertTrue(rows.contains("─── FITUR OPSIONAL (REMOTE CONTROL) ───"))
+        assertTrue(rows.contains("⚪ Server Lokal"))
+        assertTrue(rows.contains("✅ Capture Layar"))
+    }
 }
