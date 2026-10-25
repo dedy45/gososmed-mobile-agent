@@ -11,6 +11,8 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
@@ -555,6 +557,25 @@ class AgentAccessibilityService : AccessibilityService() {
         notifyStateChanged()
     }
 
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+    private var burstReadsLeft = 0
+    private val burstReadRunnable = object : Runnable {
+        override fun run() {
+            val listener = pairingDialogListener ?: return
+            val snapshot = capturePairingDialogSnapshot()
+            if (snapshot.hasCode) {
+                try {
+                    listener(snapshot)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "pendengar dialog pairing gagal", t)
+                }
+                return
+            }
+            if (burstReadsLeft-- > 0) {
+                mainHandler.postDelayed(this, 350L)
+            }
+        }
+    }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val type = event?.eventType ?: return
 
@@ -584,26 +605,25 @@ class AgentAccessibilityService : AccessibilityService() {
         }
         val pkg = event.packageName?.toString().orEmpty()
         if (!isSettingsPackage(pkg)) return
-
         val now = SystemClock.uptimeMillis()
         if (now - lastPairingDialogScanAt < 250L) return
         lastPairingDialogScanAt = now
 
-        val snapshot = capturePairingDialogSnapshot()
-        if (snapshot.hasPort || snapshot.code != null) {
-            try {
-                listener(snapshot)
-            } catch (t: Throwable) {
-                Log.w(TAG, "pendengar dialog pairing gagal", t)
-            }
-        }
+        // Pemicu burst scan (Shizuku-parity): Saat dialog dibuka, animasi membutuhkan waktu
+        // 200-500ms untuk me-render teks. Menjalankan burst 10x per 350ms menjamin dialog
+        // tertangkap meskipun OS tidak mengirim event lanjutan setelah animasi selesai.
+        mainHandler.removeCallbacks(burstReadRunnable)
+        burstReadsLeft = 10
+        burstReadRunnable.run()
     }
 
     override fun onInterrupt() {
+        mainHandler.removeCallbacks(burstReadRunnable)
         Log.w(TAG, "AccessibilityService interrupted")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        mainHandler.removeCallbacks(burstReadRunnable)
         bound = false
         instance = null
         notifyStateChanged()
