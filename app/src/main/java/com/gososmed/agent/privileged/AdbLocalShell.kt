@@ -237,12 +237,13 @@ internal class AdbLocalShell(
     override fun status(): ShellStatus {
         // HANYA field volatil — tidak menyentuh kunci/IO library.
         // Lihat komentar [linkUp] untuk alasan (mencegah ANR main thread).
-        val connected = linkUp && cachedUid >= 0
+        val connected = linkUp
+        val effectiveUid = if (connected && cachedUid >= 0) cachedUid else if (connected) 2000 else -1
         return ShellStatus(
             available = connected,
             paired = paired,
             connected = connected,
-            uid = if (connected) cachedUid else -1,
+            uid = effectiveUid,
             error = if (connected) "" else notConnectedReason(),
         )
     }
@@ -560,7 +561,7 @@ internal class AdbLocalShell(
                     if (read <= 0) break
                     sb.append(String(buffer, 0, read, Charsets.UTF_8))
                 }
-                sb.toString().trim().toIntOrNull() ?: -1
+                sb.toString().trim().toIntOrNull() ?: 2000
             } finally {
                 activeStream = null
                 try {
@@ -569,8 +570,8 @@ internal class AdbLocalShell(
                 }
             }
         } catch (t: Throwable) {
-            Log.w(TAG, "probe uid gagal (dibiarkan -1 = belum diketahui)", t)
-            -1
+            Log.w(TAG, "probe uid gagal, fallback ke 2000 (ADB shell default)", t)
+            2000
         }
     }
 
