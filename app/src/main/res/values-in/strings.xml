@@ -37,10 +37,10 @@
     <string name="btn_disconnect">Putuskan Sambungan</string>
     <string name="btn_scan_qr">📷 Scan QR</string>
     <string name="server_mode_section_label">Mode Operasi Server</string>
-    <string name="server_mode_title">Mode Layar Server (Redup Tanpa Mengunci)</string>
-    <string name="server_mode_desc">Mencegah lockscreen Android memblokir otomatisasi. Layar tetap aktif tapi redup total (hemat baterai &amp; dingin).</string>
-    <string name="server_overlay_status">● MODE SERVER AKTIF (ANTI-LOCKSCREEN)</string>
-    <string name="server_overlay_hint">Ketuk layar 2× untuk kembali ke antarmuka normal</string>
+    <string name="server_mode_title">Mode Layar Server (Headless Anti-Kunci)</string>
+    <string name="server_mode_desc">Saat diaktifkan, layar fisik HP akan padam total. Sentuhan remote atau bot tidak akan menyalakan layar. Untuk menghidupkan kembali layar, tekan tombol Power.</string>
+    <string name="server_overlay_status">● MODE SERVER AKTIF (HEADLESS ANTI-LOCK)</string>
+    <string name="server_overlay_hint">Tekan tombol POWER fisik di HP untuk menghidupkan layar</string>
 
     <!-- Diagnostik & Telemetri -->
     <string name="telemetry_section_label">Kesehatan &amp; Telemetri Perangkat</string>

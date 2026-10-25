@@ -1749,6 +1749,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val powerWakeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            if (intent?.action == android.content.Intent.ACTION_SCREEN_ON) {
+                val isServerMode = prefs().getBoolean("server_mode", false)
+                if (isServerMode) {
+                    runOnUiThread {
+                        applyServerMode(false)
+                        switchServerMode.isChecked = false
+                        toast("Layar dihidupkan via tombol Power")
+                    }
+                }
+            }
+        }
+    }
+
     private fun setupServerMode() {
         val isServerMode = prefs().getBoolean("server_mode", false)
         switchServerMode.isChecked = isServerMode
@@ -1758,16 +1773,15 @@ class MainActivity : AppCompatActivity() {
             applyServerMode(isChecked)
         }
 
-        var lastTapTime = 0L
+        // Sentuhan pada kanvas headless hanya menampilkan petunjuk tombol Power (tidak merusak automasi)
         serverModeOverlay.setOnClickListener {
-            val now = System.currentTimeMillis()
-            if (now - lastTapTime < 400L) {
-                applyServerMode(false)
-                switchServerMode.isChecked = false
-            } else {
-                lastTapTime = now
-            }
+            toast(getString(R.string.server_overlay_hint))
         }
+
+        try {
+            val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON)
+            registerReceiver(powerWakeReceiver, filter)
+        } catch (_: Throwable) {}
     }
 
     private fun applyServerMode(enabled: Boolean) {
@@ -1779,11 +1793,32 @@ class MainActivity : AppCompatActivity() {
             window.attributes = lp
             serverModeOverlay.visibility = View.VISIBLE
             refreshTelemetry()
+            // Kunci kecerahan OS ke level minimum via shell UID 2000 (headless sejati seperti scrcpy)
+            Thread {
+                try {
+                    val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                    if (shell.status().available) {
+                        shell.exec("settings put system screen_brightness_mode 0")
+                        shell.exec("settings put system screen_brightness 1")
+                        shell.exec("settings put system screen_off_timeout 2147483647")
+                    }
+                } catch (_: Throwable) {}
+            }.start()
         } else {
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             window.attributes = lp
             serverModeOverlay.visibility = View.GONE
+            // Pulihkan kecerahan OS ke normal via shell UID 2000
+            Thread {
+                try {
+                    val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                    if (shell.status().available) {
+                        shell.exec("settings put system screen_brightness 120")
+                        shell.exec("settings put system screen_off_timeout 600000")
+                    }
+                } catch (_: Throwable) {}
+            }.start()
         }
     }
 
@@ -2092,6 +2127,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(powerWakeReceiver)
+        } catch (_: Throwable) {}
         window.decorView.removeCallbacks(liveStatusTicker)
         AgentAccessibilityService.removeStateListener(a11yUiListener)
         AdbPairingController.removeStateListener(adbUiListener)

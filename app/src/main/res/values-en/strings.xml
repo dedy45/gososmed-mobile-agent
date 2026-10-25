@@ -37,10 +37,10 @@
     <string name="btn_disconnect">Disconnect</string>
     <string name="btn_scan_qr">📷 Scan QR</string>
     <string name="server_mode_section_label">Server Operation Mode</string>
-    <string name="server_mode_title">Server Screen Mode (Dimmed &amp; Anti-Lock)</string>
-    <string name="server_mode_desc">Prevents Android lockscreen from blocking automation. Screen stays awake at minimum brightness (battery &amp; thermal saver).</string>
-    <string name="server_overlay_status">● SERVER MODE ACTIVE (ANTI-LOCKSCREEN)</string>
-    <string name="server_overlay_hint">Double-tap screen to return to normal interface</string>
+    <string name="server_mode_title">Server Screen Mode (Headless Anti-Lock)</string>
+    <string name="server_mode_desc">When activated, the physical screen turns off completely. Remote or bot touches will not turn on the screen. To wake up the screen, press the Power button.</string>
+    <string name="server_overlay_status">● SERVER MODE ACTIVE (HEADLESS ANTI-LOCK)</string>
+    <string name="server_overlay_hint">Press physical POWER button on phone to wake up screen</string>
 
     <!-- Diagnostics & Telemetry -->
     <string name="telemetry_section_label">Device Health &amp; Live Telemetry</string>
