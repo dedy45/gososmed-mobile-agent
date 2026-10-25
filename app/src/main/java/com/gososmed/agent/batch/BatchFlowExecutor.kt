@@ -313,6 +313,61 @@ class DefaultBatchStepExecutor(
                     }
                 }
 
+                "tap", "click" -> {
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val display = displayProvider.getDisplayMetrics()
+                    val displayWidth = display.width.coerceAtLeast(1)
+                    val displayHeight = display.height.coerceAtLeast(1)
+
+                    var targetX = when {
+                        step.params.has("x_ratio") -> (displayWidth * step.params.optDouble("x_ratio", 0.5)).toInt()
+                        step.params.has("x_percent") -> (displayWidth * (step.params.optDouble("x_percent", 50.0) / 100.0)).toInt()
+                        step.params.has("x") -> step.params.optInt("x", displayWidth / 2)
+                        else -> -1
+                    }
+                    var targetY = when {
+                        step.params.has("y_ratio") -> (displayHeight * step.params.optDouble("y_ratio", 0.5)).toInt()
+                        step.params.has("y_percent") -> (displayHeight * (step.params.optDouble("y_percent", 50.0) / 100.0)).toInt()
+                        step.params.has("y") -> step.params.optInt("y", displayHeight / 2)
+                        else -> -1
+                    }
+
+                    if (targetX < 0 || targetY < 0) {
+                        val selectorJson = step.params.optJSONObject("selector")
+                        if (selectorJson != null) {
+                            try {
+                                val selector = SelectorQuery.fromJson(selectorJson)
+                                val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+                                val snap = SnapshotCollector.capture(displayProvider, treeSource)
+                                val res = DeterministicResolver.resolve(selector, snap.nodes, displayWidth, displayHeight)
+                                res.selectedNode?.let { node ->
+                                    targetX = node.bounds.centerX
+                                    targetY = node.bounds.centerY
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    if (targetX < 0) targetX = displayWidth / 2
+                    if (targetY < 0) targetY = displayHeight / 2
+
+                    targetX = targetX.coerceIn(0, displayWidth - 1)
+                    targetY = targetY.coerceIn(0, displayHeight - 1)
+
+                    val tapOk = svc.tap(targetX, targetY)
+                    if (tapOk) {
+                        delay(300L)
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.GESTURE_CANCELLED,
+                            failureMessage = "tap failed at ($targetX, $targetY) on screen ${displayWidth}x${displayHeight}",
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
                 "inputText", "setText" -> {
                     val text = step.params.optString("text", "")
                     val ok = svc.setText(text)

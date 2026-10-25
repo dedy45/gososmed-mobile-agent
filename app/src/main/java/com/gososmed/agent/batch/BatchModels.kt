@@ -17,6 +17,8 @@ object BatchSecurityGuard {
         "actNode",
         "actAndVerify",
         "scrollUntilVisible",
+        "tap",
+        "click",
         "inputText",
         "setText",
         "replaceText",
@@ -151,7 +153,9 @@ data class StepTrajectoryReport(
     val failureDetail: JSONObject? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
+        put("type", "step_trajectory")
         put("event", event)
+        put("protocol_version", ProtocolV2.CURRENT_VERSION)
         put("flow_id", flowId)
         put("step_id", stepId)
         put("step_index", stepIndex)

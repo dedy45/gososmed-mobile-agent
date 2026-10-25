@@ -199,4 +199,33 @@ class BatchFlowExecutorTest {
 
         CommandCancellationRegistry.unregister(reqId)
     }
+
+    @Test
+    fun `tap action with ratio parameters executes successfully`() = runBlocking {
+        val emittedReports = mutableListOf<StepTrajectoryReport>()
+        val mock = MockStepExecutor { step ->
+            assertEquals("tap", step.action)
+            assertTrue(step.params.has("x_ratio"))
+            assertTrue(step.params.has("y_ratio"))
+            StepExecutionResult(ok = true)
+        }
+
+        val executor = BatchFlowExecutor(
+            stepExecutor = mock,
+            telemetryEmitter = { emittedReports.add(it) }
+        )
+
+        val steps = listOf(
+            BatchStep("s1_tap", "tap", JSONObject().put("x_ratio", 0.9).put("y_ratio", 0.95))
+        )
+        val req = BatchRequest(flowId = "flow_tap_ratio", steps = steps)
+        val result = executor.execute(req, "req_tap_ratio")
+
+        assertEquals("COMPLETED", result.status)
+        assertEquals(1, result.stepsCompleted)
+        assertEquals(listOf("s1_tap"), mock.executedSteps)
+        assertEquals(1, emittedReports.size)
+        assertEquals("step_trajectory", emittedReports[0].toJson().getString("type"))
+        assertEquals(2, emittedReports[0].toJson().getInt("protocol_version"))
+    }
 }

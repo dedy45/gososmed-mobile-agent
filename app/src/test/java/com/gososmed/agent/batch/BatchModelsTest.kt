@@ -16,7 +16,7 @@ class BatchModelsTest {
     fun `BatchSecurityGuard enforces whitelisted actions only`() {
         val safeActions = listOf(
             "startApp", "waitForScreen", "waitForNode", "actNode",
-            "actAndVerify", "scrollUntilVisible", "inputText", "setText",
+            "actAndVerify", "scrollUntilVisible", "tap", "click", "inputText", "setText",
             "replaceText", "pressKey", "back", "home", "recents", "sleep"
         )
         for (action in safeActions) {
@@ -120,6 +120,8 @@ class BatchModelsTest {
         )
 
         val json = report.toJson()
+        assertEquals("step_trajectory", json.getString("type"))
+        assertEquals(2, json.getInt("protocol_version"))
         assertEquals(ProtocolV2.Events.STEP_TRAJECTORY, json.getString("event"))
         assertEquals("flow_1", json.getString("flow_id"))
         assertEquals("s1", json.getString("step_id"))
