@@ -120,6 +120,7 @@ object AgentCommand {
     const val CMD_STOP_LOCAL_SERVER = "stopLocalServer"
     const val CMD_GLOBAL_DIM = "globalDim"
     const val CMD_EXECUTE_BATCH = "executeBatch"
+    const val CMD_SET_DISPLAY_POWER = "setDisplayPower"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      * Dipakai dua hal:
@@ -144,7 +145,8 @@ object AgentCommand {
     val SERVICE_FREE_COMMANDS = setOf(
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
         CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
-        CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER, CMD_GLOBAL_DIM
+        CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER, CMD_GLOBAL_DIM,
+        CMD_SET_DISPLAY_POWER
     )
     /**
      * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
@@ -800,6 +802,16 @@ object AgentCommand {
                         ).toJson()
                     }
                 }
+                "setDisplayPower" -> {
+                    val on = args.optBoolean("on", false)
+                    com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(on)
+                    val timing = ProtocolV2.Timing.create(startTime)
+                    ProtocolV2.Response.success(
+                        requestId = requestId,
+                        result = JSONObject().put("display_power", on),
+                        timing = timing
+                    ).toJson()
+                }
 
                 else -> {
                     val timing = ProtocolV2.Timing.create(startTime)
@@ -1016,6 +1028,14 @@ object AgentCommand {
                     put("dimmed", enabled)
                     put("brightness", brightness)
                     put("applied_via_shell", applied)
+                })
+            }
+            CMD_SET_DISPLAY_POWER -> {
+                val on = req.optBoolean("on", false)
+                com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(on)
+                resp.put("ok", true).put("result", JSONObject().apply {
+                    put("display_power", on)
+                    put("status", if (on) "powered_on" else "powered_off")
                 })
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")

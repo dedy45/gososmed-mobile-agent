@@ -402,6 +402,8 @@ class MainActivity : AppCompatActivity() {
 
         btnEchoTest.setOnClickListener { performEchoTest() }
         btnScanQr.setOnClickListener { startQrScan() }
+        AdbPairingController.bootstrap(applicationContext)
+        com.gososmed.agent.headless.DisplayPowerManager.ensureJarDeployed(applicationContext)
         setupServerMode()
         setupGlobalDim()
         setupRemoteControllerSwitch()
@@ -1753,7 +1755,10 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action == android.content.Intent.ACTION_SCREEN_ON) {
                 val isServerMode = prefs().getBoolean("server_mode", false)
-                if (isServerMode) {
+                val activatedAt = prefs().getLong("server_mode_activated_at", 0L)
+                val elapsed = System.currentTimeMillis() - activatedAt
+                if (isServerMode && elapsed > 2500L) {
+                    com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
                     runOnUiThread {
                         applyServerMode(false)
                         switchServerMode.isChecked = false
@@ -1785,24 +1790,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyServerMode(enabled: Boolean) {
-        prefs().edit().putBoolean("server_mode", enabled).apply()
+        prefs().edit().putBoolean("server_mode", enabled).putLong("server_mode_activated_at", if (enabled) System.currentTimeMillis() else 0L).apply()
         val lp = window.attributes
         if (enabled) {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             lp.screenBrightness = 0.01f
             window.attributes = lp
-            // JANGAN tutupi layar dengan serverModeOverlay karena MediaProjection akan merekam layar hitam!
-            // Layar fisik HP padam via hardware brightness 0.0, sedangkan remote viewer tetap jernih.
+            // JANGAN tutupi layar dengan serverModeOverlay agar MediaProjection merekam UI asli secara jernih
             serverModeOverlay.visibility = View.GONE
             refreshTelemetry()
-            // Kunci kecerahan fisik panel ke nol via shell UID 2000 (headless sejati seperti scrcpy)
+            // 1. Matikan panel fisik display di tingkat driver hardware (isPoweredOn = 0 - identik scrcpy -S)
+            com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(false)
+            // 2. Kunci kecerahan & timeout OS via shell UID 2000
             Thread {
                 try {
                     val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
                     if (shell.status().available) {
                         shell.exec("settings put system screen_brightness_mode 0")
                         shell.exec("settings put system screen_brightness 0")
-                        shell.exec("cmd display set-brightness 0.0")
                         shell.exec("settings put system screen_off_timeout 2147483647")
                     }
                 } catch (_: Throwable) {}
@@ -1812,13 +1817,14 @@ class MainActivity : AppCompatActivity() {
             lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             window.attributes = lp
             serverModeOverlay.visibility = View.GONE
-            // Pulihkan kecerahan OS ke normal via shell UID 2000
+            // 1. Hidupkan kembali panel fisik display di tingkat driver hardware (isPoweredOn = 1)
+            com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
+            // 2. Pulihkan kecerahan OS ke normal via shell UID 2000
             Thread {
                 try {
                     val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
                     if (shell.status().available) {
                         shell.exec("settings put system screen_brightness 120")
-                        shell.exec("cmd display set-brightness 0.5")
                         shell.exec("settings put system screen_off_timeout 600000")
                     }
                 } catch (_: Throwable) {}
@@ -2134,6 +2140,7 @@ class MainActivity : AppCompatActivity() {
         try {
             unregisterReceiver(powerWakeReceiver)
         } catch (_: Throwable) {}
+        com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
         window.decorView.removeCallbacks(liveStatusTicker)
         AgentAccessibilityService.removeStateListener(a11yUiListener)
         AdbPairingController.removeStateListener(adbUiListener)
