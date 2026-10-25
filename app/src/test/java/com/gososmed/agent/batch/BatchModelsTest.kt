@@ -149,11 +149,47 @@ class BatchModelsTest {
         )
 
         val json = result.toJson()
+        assertFalse("ok harus false bila status FAILED", json.getBoolean("ok"))
         assertEquals("flow_err", json.getString("flow_id"))
         assertEquals("FAILED", json.getString("status"))
         assertEquals(1, json.getInt("steps_completed"))
         assertEquals(3, json.getInt("total_steps"))
         assertEquals("s2_click", json.getString("failed_step_id"))
         assertEquals(ProtocolV2.ReasonCodes.NO_NODE, json.getString("reason_code"))
+    }
+
+    @Test
+    fun `BatchResult completed has boolean ok flag true`() {
+        val result = BatchResult(
+            flowId = "flow_ok",
+            status = "COMPLETED",
+            stepsCompleted = 2,
+            totalSteps = 2
+        )
+        val json = result.toJson()
+        assertTrue("ok harus true bila status COMPLETED", json.getBoolean("ok"))
+        assertEquals("COMPLETED", json.getString("status"))
+    }
+
+    @Test
+    fun `BatchRequest parses actions array fallback and flat step params`() {
+        val req = JSONObject().apply {
+            put("flow_id", "flow_actions_fallback")
+            put("actions", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("action", "tap")
+                    put("x_ratio", 0.5)
+                    put("y_ratio", 0.9)
+                })
+            })
+        }
+
+        val parsed = BatchRequest.fromJson(req, req)
+        assertEquals("flow_actions_fallback", parsed.flowId)
+        assertEquals(1, parsed.steps.size)
+        val step = parsed.steps[0]
+        assertEquals("tap", step.action)
+        assertEquals(0.5, step.params.getDouble("x_ratio"), 0.001)
+        assertEquals(0.9, step.params.getDouble("y_ratio"), 0.001)
     }
 }

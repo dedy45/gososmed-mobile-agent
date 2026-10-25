@@ -55,7 +55,7 @@ data class BatchStep(
             val params = when {
                 json.has("params") -> json.optJSONObject("params") ?: JSONObject()
                 json.has("args") -> json.optJSONObject("args") ?: JSONObject()
-                else -> JSONObject()
+                else -> json // Fallback jika aksi seperti { "action": "tap", "x_ratio": 0.5, "y_ratio": 0.9 }
             }
             val timeoutMs = json.optLong("timeout_ms", 10_000L).coerceIn(500L, 60_000L)
             return BatchStep(
@@ -98,7 +98,9 @@ data class BatchRequest(
 
             val rawSteps = when {
                 args.has("steps") -> args.optJSONArray("steps")
+                args.has("actions") -> args.optJSONArray("actions") // Fallback toleransi ganda
                 rootJson.has("steps") -> rootJson.optJSONArray("steps")
+                rootJson.has("actions") -> rootJson.optJSONArray("actions")
                 else -> null
             }
 
@@ -180,6 +182,7 @@ data class BatchResult(
     val trajectories: List<StepTrajectoryReport> = emptyList()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
+        put("ok", status == "COMPLETED")
         put("flow_id", flowId)
         put("status", status)
         put("steps_completed", stepsCompleted)
