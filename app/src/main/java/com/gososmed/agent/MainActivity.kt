@@ -1554,10 +1554,17 @@ class MainActivity : AppCompatActivity() {
 
         // 7. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
         val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
+        val isAdbTrulyConnected = shell.available && shell.connected && shell.uid >= 0
         items += HealthItem(
             name = "ADB Wireless",
-            ok = shell.available,
-            detail = if (shell.available) "uid ${shell.uid}" else "belum dipasangkan (opsional)",
+            ok = isAdbTrulyConnected,
+            detail = if (isAdbTrulyConnected) {
+                "aktif (uid ${shell.uid})"
+            } else if (shell.paired) {
+                "terputus (Opsi Pengembang mati)"
+            } else {
+                "belum dipasangkan (opsional)"
+            },
             isOptional = true,
             category = HealthCategory.CORE
         )

@@ -237,7 +237,7 @@ internal class AdbLocalShell(
     override fun status(): ShellStatus {
         // HANYA field volatil — tidak menyentuh kunci/IO library.
         // Lihat komentar [linkUp] untuk alasan (mencegah ANR main thread).
-        val connected = linkUp
+        val connected = linkUp && cachedUid >= 0
         return ShellStatus(
             available = connected,
             paired = paired,
@@ -364,9 +364,11 @@ internal class AdbLocalShell(
             paired = true
             lastError = ""
             linkUp = true
-            Log.i(TAG, "tersambung ke adbd")
+            probeUid()
+            Log.i(TAG, "tersambung ke adbd dengan uid $cachedUid")
         } else {
             linkUp = false
+            cachedUid = -1
             lastError = "adb_disconnected: koneksi ke adbd tidak terbentuk"
         }
         notifyStateChanged()
@@ -385,11 +387,12 @@ internal class AdbLocalShell(
             paired = true
             lastError = ""
             linkUp = true
+            probeUid()
         } else {
             linkUp = false
+            cachedUid = -1
             lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
         }
-        notifyStateChanged()
         ok
     } catch (t: Throwable) {
         linkUp = false
