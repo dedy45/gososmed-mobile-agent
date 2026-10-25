@@ -9,7 +9,15 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.8-dev.1] - 2026-10-25
+## [1.2.8] - 2026-10-25
+
+### Added — Shizuku-Parity Auto-Pairing & Pairing UX
+- **Zero-Click Auto-Pairing (`AdbPairingService.kt` & `PairingDialogParser.kt`)**:
+  - Deteksi fleksibel terhadap dialog Setelan OEM modern (`com.android.settings`, Xiaomi HyperOS, Samsung One UI, Transsion, Pixel).
+  - Ekstraksi kode 6 digit independen dari port dialog, dengan penjodohan otomatis ke port mDNS (`_adb-tls-pairing._tcp`).
+  - **10x 350ms Burst Scan**: Mengatasi jeda animasi jendela (*window animation latency*) dialog sistem agar kode selalu tertangkap tanpa intervensi pengguna.
+  - **Notifikasi Bersih & Ringkas**: Menghilangkan paragraf teks panjang pada notifikasi sistem, menyajikan antarmuka notifikasi modern minimalis sekelas Shizuku.
+  - **Verifikasi UID Transparan**: Menghilangkan status palsu `uid -1` dan menetapkan verifikasi ketat `uid 2000` pada Health Check.
 
 ### Added — Batch Flow Execution & Trajectory Telemetry (Protocol V2)
 - **Command Kanonik `executeBatch`**:
