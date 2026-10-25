@@ -39,8 +39,13 @@ class DynamicHidingManager(
         val DEFAULT_PROTECTED_PACKAGES: Set<String> = setOf(
             "com.btpn.dc",                         // Jenius (BTPN)
             "com.bca",                             // BCA mobile
+            "com.bca.mybca",                       // myBCA
             "com.jago.digitalBanking",              // Bank Jago
             "id.co.bankbkemobile.digitalbank",     // SeaBank
+            "id.bmri.livin",                       // Livin' by Mandiri
+            "id.co.bri.brimo",                     // BRImo (BRI)
+            "id.co.bni.newmobile",                 // BNI Mobile Banking
+            "id.co.cimbniaga.octomobile",          // OCTO Mobile (CIMB)
             "id.dana",                             // DANA
             "com.shopeepay.id",                    // ShopeePay
             "com.finaccel.android",                // Kredivo
