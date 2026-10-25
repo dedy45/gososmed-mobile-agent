@@ -3,15 +3,20 @@ package com.gososmed.agent.hiding
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.gososmed.agent.AgentLog
 import com.gososmed.agent.privileged.PrivilegedShell
 import com.gososmed.agent.privileged.PrivilegedShellHolder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Engine Penyamaran Dinamis (Dynamic Anti-Detection Hiding Engine).
  * Diadopsi 1:1 dari Shizuku-Next Hiding.kt.
  *
  * Mengapa ini penting:
- * Banyak aplikasi sosial, perbankan, dan pembayaran memeriksa setting sistem berikut:
+ * Banyak aplikasi perbankan (Jenius, BCA, Jago, DANA) memeriksa setting sistem berikut:
  *  1. `development_settings_enabled = 1`
  *  2. `adb_enabled = 1` (USB Debugging)
  *  3. `adb_wifi_enabled = 1` (Wireless Debugging)
@@ -27,21 +32,51 @@ class DynamicHidingManager(
     private val shellProvider: () -> PrivilegedShell = { PrivilegedShellHolder.get() }
 ) {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tag = "GoAgentHiding"
+
+    companion object {
+        val DEFAULT_PROTECTED_PACKAGES: Set<String> = setOf(
+            "com.btpn.dc",                         // Jenius (BTPN)
+            "com.bca",                             // BCA mobile
+            "com.jago.digitalBanking",              // Bank Jago
+            "id.co.bankbkemobile.digitalbank",     // SeaBank
+            "id.dana",                             // DANA
+            "com.shopeepay.id",                    // ShopeePay
+            "com.finaccel.android",                // Kredivo
+            "com.binance.dev",                     // Binance
+            "com.binance.cloud.tokocrypto",        // Tokocrypto
+            "com.paypal.android.p2pmobile",        // PayPal
+            "com.wallet.crypto.trustapp"           // Trust Wallet
+        )
+
+        @Volatile
+        private var instance: DynamicHidingManager? = null
+
+        fun getInstance(context: Context? = null): DynamicHidingManager {
+            return instance ?: synchronized(this) {
+                instance ?: DynamicHidingManager(
+                    store = if (context != null) PrefsHidingStore(context) else MemoryHidingStore()
+                ).also { instance = it }
+            }
+        }
+    }
 
     private fun log(msg: String) {
         try { Log.i(tag, msg) } catch (_: Throwable) {}
+        try { AgentLog.event(msg) } catch (_: Throwable) {}
     }
 
     private fun logWarn(msg: String) {
         try { Log.w(tag, msg) } catch (_: Throwable) {}
+        try { AgentLog.event("WARN: $msg") } catch (_: Throwable) {}
     }
 
     /**
      * Menyembunyikan satu sinyal (misalnya mematikan status developer options).
      * Nilai asli dicatat sebelum diubah.
      */
-    fun hideSignal(signal: Signal, shell: PrivilegedShell = shellProvider()): Boolean {
+    fun hideSignal(signal: Signal, shell: PrivilegedShell = shellProvider(), targetPackage: String = ""): Boolean {
         if (!shell.status().available) {
             logWarn("hideSignal: shell tidak tersedia untuk sinyal ${signal.name}")
             return false
@@ -63,7 +98,8 @@ class DynamicHidingManager(
                 allSuccess = false
             }
         }
-        log("hideSignal ${signal.name} => success=$allSuccess")
+        val targetDesc = if (targetPackage.isNotEmpty()) " untuk $targetPackage" else ""
+        log("Anti-Deteksi: Sinyal ${signal.name} disembunyikan$targetDesc")
         return allSuccess
     }
 
@@ -89,7 +125,6 @@ class DynamicHidingManager(
             }
             store.clearOriginal(key.id)
         }
-        log("restoreSignal ${signal.name} => success=$allSuccess")
         return allSuccess
     }
 
@@ -103,7 +138,7 @@ class DynamicHidingManager(
             if (!ok) allOk = false
         }
         store.clearAll()
-        log("restoreAll complete => allOk=$allOk")
+        log("Anti-Deteksi: Pengaturan sistem dipulihkan kembali")
         return allOk
     }
 
@@ -114,18 +149,30 @@ class DynamicHidingManager(
      */
     fun reconcile(
         currentPackage: String?,
-        protectedPackages: Set<String>,
+        protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES,
         signalsToHide: Set<Signal> = setOf(Signal.DEVELOPER_OPTIONS, Signal.USB_DEBUGGING, Signal.WIRELESS_DEBUGGING),
         shell: PrivilegedShell = shellProvider()
     ) {
         if (currentPackage != null && currentPackage in protectedPackages) {
             for (sig in signalsToHide) {
-                hideSignal(sig, shell)
+                hideSignal(sig, shell, targetPackage = currentPackage)
             }
         } else {
             if (store.getAllSavedKeys().isNotEmpty()) {
                 restoreAll(shell)
             }
+        }
+    }
+
+    /**
+     * Menjalankan rekonsiliasi secara asinkron di coroutine IO agar tidak memblokir event aksesibilitas.
+     */
+    fun reconcileAsync(
+        currentPackage: String?,
+        protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES
+    ) {
+        scope.launch {
+            reconcile(currentPackage, protectedPackages)
         }
     }
 

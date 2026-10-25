@@ -113,6 +113,7 @@ class DynamicHidingManagerTest {
         val protectedApps = setOf("com.bank.secure", "com.zhiliaoapp.musically")
 
         // 1. User membuka app perbankan -> sinyal disembunyikan
+        // 1. User membuka app perbankan -> sinyal disembunyikan (3 keys: dev, usb, wifi)
         manager.reconcile("com.bank.secure", protectedApps, shell = mockShell)
         assertEquals("0", mockShell.currentSettings["global/development_settings_enabled"])
         assertEquals("0", mockShell.currentSettings["global/adb_enabled"])

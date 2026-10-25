@@ -560,6 +560,15 @@ class AgentAccessibilityService : AccessibilityService() {
             ToastTracker.recordEvent(event)
             return
         }
+        // Dynamic Anti-Detection Hiding (Bypass deteksi developer/accessibility saat membuka Jenius/banking)
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val windowPkg = event.packageName?.toString().orEmpty()
+            if (windowPkg.isNotEmpty()) {
+                com.gososmed.agent.hiding.DynamicHidingManager.getInstance(applicationContext)
+                    .reconcileAsync(windowPkg)
+            }
+        }
+
 
         // Hierarki aplikasi target tetap dibaca on-demand. Satu-satunya reaksi
         // per-event adalah pemindai dialog pairing ADB, dan ia aktif hanya saat

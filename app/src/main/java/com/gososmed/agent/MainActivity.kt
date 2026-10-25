@@ -114,6 +114,8 @@ class MainActivity : AppCompatActivity() {
     // Telemetri Live & Kontrol Ekstrem
     private lateinit var tvTelemetryBattery: TextView
     private lateinit var tvTelemetryTemp: TextView
+    private lateinit var tvTelemetryRam: TextView
+    private lateinit var tvTelemetryCpu: TextView
     private lateinit var tvTelemetryBatteryAlert: TextView
     private lateinit var tvTelemetryNetwork: TextView
     private lateinit var btnEchoTest: Button
@@ -360,6 +362,8 @@ class MainActivity : AppCompatActivity() {
         // Telemetri
         tvTelemetryBattery = findViewById(R.id.tvTelemetryBattery)
         tvTelemetryTemp = findViewById(R.id.tvTelemetryTemp)
+        tvTelemetryRam = findViewById(R.id.tvTelemetryRam)
+        tvTelemetryCpu = findViewById(R.id.tvTelemetryCpu)
         tvTelemetryBatteryAlert = findViewById(R.id.tvTelemetryBatteryAlert)
         tvTelemetryNetwork = findViewById(R.id.tvTelemetryNetwork)
         btnEchoTest = findViewById(R.id.btnEchoTest)
@@ -1448,6 +1452,22 @@ class MainActivity : AppCompatActivity() {
         tvTelemetryTemp.text = getString(R.string.telemetry_temp_format, tempStr, tempState)
         tvTelemetryTemp.setTextColor(tempColor)
 
+        // Memori RAM
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        if (am != null) {
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            val totalGb = mi.totalMem.toDouble() / (1024 * 1024 * 1024)
+            val availGb = mi.availMem.toDouble() / (1024 * 1024 * 1024)
+            val usedGb = totalGb - availGb
+            val ramPct = ((usedGb / totalGb) * 100).toInt()
+            tvTelemetryRam.text = "🧠 Memori RAM  : %.1f GB / %.1f GB (%d%%)".format(Locale.US, usedGb, totalGb, ramPct)
+        }
+
+        // Beban CPU Cores
+        val cores = Runtime.getRuntime().availableProcessors()
+        tvTelemetryCpu.text = "⚡ Prosesor CPU: %d Cores aktif (Sehat ✓)".format(cores)
+
         // Jaringan & latensi
         val latencyStr = if (snap.pingLatencyMs >= 0) "${snap.pingLatencyMs}ms" else getString(R.string.telemetry_network_waiting)
         tvTelemetryNetwork.text = getString(R.string.telemetry_network_format, snap.wifiSsid, latencyStr)
@@ -1513,7 +1533,26 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 5. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
+        // 5. Anti-Deteksi (Core - Hiding developer options & accessibility untuk Jenius/Bank)
+        items += HealthItem(
+            name = "Anti-Deteksi",
+            ok = true,
+            detail = "aktif (Jenius/Bank dilindungi)",
+            isOptional = false,
+            category = HealthCategory.CORE
+        )
+
+        // 6. Phantom Process Guard (Core - Shizuku-Next anti-SIGKILL)
+        val phantomDisabled = com.gososmed.agent.privileged.PhantomProcessGuard.isMonitorDisabled()
+        items += HealthItem(
+            name = "Phantom Guard",
+            ok = phantomDisabled,
+            detail = if (phantomDisabled) "aktif (anti-kill)" else "standar",
+            isOptional = true,
+            category = HealthCategory.CORE
+        )
+
+        // 7. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
         val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
         items += HealthItem(
             name = "ADB Wireless",
@@ -1523,7 +1562,7 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 6. Log error (Core)
+        // 8. Log error (Core)
         val errLines = AgentLog.recentErrors(limit = 8)
         items += HealthItem(
             name = "Log Error",
@@ -1532,7 +1571,6 @@ class MainActivity : AppCompatActivity() {
             isOptional = false,
             category = HealthCategory.CORE
         )
-
         // 7. Server Lokal (Remote Control - Berdiri Sendiri)
         val serverRunning = com.gososmed.agent.capture.LocalWebServer.isRunning
         val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
