@@ -122,11 +122,15 @@
             </intent-filter>
         </receiver>
 
-        <!-- Auto-start saat HP reboot / startup (Extreme Reliability) -->
+        <!-- Auto-start saat HP reboot / startup (Direct Boot & Extreme Reliability) -->
         <receiver
             android:name=".BootReceiver"
+            android:directBootAware="true"
             android:exported="true"
             android:enabled="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
@@ -147,6 +151,7 @@
              dan BootReceiver (sama-sama di app ini) yang memulainya. -->
         <service
             android:name=".AgentForegroundService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
