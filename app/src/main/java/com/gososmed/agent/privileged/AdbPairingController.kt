@@ -64,7 +64,12 @@ object AdbPairingController {
         if (!stateListeners.contains(listener)) {
             stateListeners.add(listener)
         }
-        shell?.onStateChanged = { notifyStateChanged() }
+        shell?.onStateChanged = {
+            if (shell?.status()?.connected == true) {
+                appContext?.let { lockProcessPrivileged(it) }
+            }
+            notifyStateChanged()
+        }
     }
 
     fun removeStateListener(listener: () -> Unit) {
@@ -88,9 +93,13 @@ object AdbPairingController {
 
     fun registerStateListener(listener: (() -> Unit)?) {
         onStateChanged = listener
-        shell?.onStateChanged = { notifyStateChanged() }
+        shell?.onStateChanged = {
+            if (shell?.status()?.connected == true) {
+                appContext?.let { lockProcessPrivileged(it) }
+            }
+            notifyStateChanged()
+        }
     }
-
     // ------------------------------------------------------------------ bootstrap
 
     /**
@@ -204,6 +213,23 @@ object AdbPairingController {
         instance.connectAsync(discoveryTimeoutMs)
     }
 
+    fun lockProcessPrivileged(ctx: Context) {
+        val instance = shell ?: return
+        if (!instance.status().available) return
+        io.execute {
+            try {
+                val pkg = ctx.packageName
+                instance.exec("dumpsys deviceidle whitelist +$pkg")
+                instance.exec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
+                instance.exec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
+                instance.exec("settings put global settings_enable_monitor_phantom_procs false")
+                instance.exec("settings put secure accessibility_enabled 1")
+                Log.i(TAG, "lockProcessPrivileged sukses untuk $pkg")
+            } catch (t: Throwable) {
+                Log.w(TAG, "lockProcessPrivileged gagal: ${t.message}")
+            }
+        }
+    }
     /**
      * Otomatis sambung ulang di latar belakang bila perangkat sudah pernah dipasangkan
      * (server mode 100% tanpa kabel).

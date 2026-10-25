@@ -9,8 +9,22 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.9] - 2026-10-25
+## [1.2.10] - 2026-10-25
 
+### Fixed — OEM Service Locking & Universal Multi-Device Stability
+- **Kunci Layanan Aksesibilitas di Tingkat OS (`AgentAccessibilityService.kt`)**:
+  - `onServiceConnected()` kini secara otomatis menyalakan dan mengunci `AgentForegroundService` sebagai layanan latar depan berprioritas tinggi (`oom_score_adj <= 200`).
+  - Mencegah pembunuhan proses secara sepihak oleh task cleaner OEM (Vivo iManager/PEM, Xiaomi SecurityCenter, Samsung Device Care, Oppo Phone Manager).
+- **Otomasi Whitelist Baterai & Autostart via ADB (`AdbPairingController.kt`)**:
+  - Menambahkan `lockProcessPrivileged()` yang otomatis dieksekusi begitu koneksi ADB aktif:
+    1. Membebaskan baterai dari Doze Mode: `dumpsys deviceidle whitelist +$pkg`
+    2. Mengizinkan eksekusi latar belakang & autostart: `cmd appops set $pkg RUN_IN_BACKGROUND allow` & `RUN_ANY_IN_BACKGROUND allow`
+    3. Menonaktifkan Phantom Process Killer: `settings put global settings_enable_monitor_phantom_procs false`
+    4. Mempertahankan aksesibilitas: `settings put secure accessibility_enabled 1`
+- **Navigasi Setelan Baterai Khusus Vendor (`MainActivity.kt`)**:
+  - Menyediakan intent peluncuran langsung ke menu autostart spesifik pabrikan (Vivo Purview/iQOO, Xiaomi PermCenter, Samsung Battery, Oppo SafeCenter).
+
+## [1.2.9] - 2026-10-25
 ### Fixed — Critical Accessibility Stability & Shizuku-Parity Settings Navigation
 - **Eliminasi Bug Aksesibilitas Flapping Loop (`DynamicHidingManager.kt`)**:
   - Menghapus total `Signal.ACCESSIBILITY` dari daftar sinyal penyembunyian agar `enabled_accessibility_services` tidak pernah disentuh atau dihapus oleh logika hiding.

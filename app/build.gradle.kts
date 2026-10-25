@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 46 = 1.2.9 (PROD) — Fix Accessibility Flapping, Zero-Click Auto-Pairing,
-        // Shizuku-Parity Settings Navigation & Universal OEM Support.
-        versionCode = 46
-        versionName = "1.2.9"
+        // versionCode 47 = 1.2.10 (PROD) — OEM Service Locking, Persistent Foreground A11y Pinning,
+        // Privileged Battery/Autostart Whitelisting & Universal Device Stability.
+        versionCode = 47
+        versionName = "1.2.10"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

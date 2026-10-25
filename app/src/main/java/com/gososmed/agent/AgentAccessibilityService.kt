@@ -554,6 +554,16 @@ class AgentAccessibilityService : AccessibilityService() {
         instance = this
         bound = true
         Log.i(TAG, "AccessibilityService connected")
+        try {
+            val fgIntent = Intent(applicationContext, AgentForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(fgIntent)
+            } else {
+                applicationContext.startService(fgIntent)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to pin foreground service from a11y: ${t.message}")
+        }
         notifyStateChanged()
     }
 
