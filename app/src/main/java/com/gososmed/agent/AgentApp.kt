@@ -61,8 +61,10 @@ class AgentApp : Application() {
         super.onCreate()
         try {
             AgentAccessibilityService.attach(this)
+            com.gososmed.agent.privileged.AdbPairingController.bootstrap(this)
+            com.gososmed.agent.headless.DisplayPowerManager.ensureJarDeployed(this)
         } catch (t: Throwable) {
-            Log.w(TAG, "gagal menyerahkan context ke AgentAccessibilityService", t)
+            Log.w(TAG, "gagal inisialisasi di AgentApp", t)
         }
         installCrashRecorder()
     }

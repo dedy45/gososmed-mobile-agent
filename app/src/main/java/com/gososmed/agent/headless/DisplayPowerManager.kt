@@ -74,7 +74,7 @@ object DisplayPowerManager {
                         shell.exec("rm -f $LOCK_FILE")
                         shell.exec("pkill -f com.gososmed.agent.headless.DisplayPower")
                         Thread.sleep(100L)
-                        val res = shell.exec("setsid app_process -Djava.class.path=$TARGET_JAR / com.gososmed.agent.headless.DisplayPower off </dev/null >/data/local/tmp/dp.log 2>&1 &")
+                        val res = shell.exec("setsid sh -c \"app_process -Djava.class.path=$TARGET_JAR / com.gososmed.agent.headless.DisplayPower off </dev/null >/data/local/tmp/dp.log 2>&1 &\"")
                         Log.i(TAG, "DisplayPowerManager setDisplayPower(on=false) => daemon started via setsid, ok=${res.ok}")
                         onComplete?.invoke(res.ok)
                     }

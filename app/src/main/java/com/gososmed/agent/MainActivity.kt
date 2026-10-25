@@ -1772,7 +1772,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupServerMode() {
         val isServerMode = prefs().getBoolean("server_mode", false)
         switchServerMode.isChecked = isServerMode
-        applyServerMode(isServerMode)
+        if (isServerMode) {
+            applyServerMode(true)
+        }
 
         switchServerMode.setOnCheckedChangeListener { _, isChecked ->
             applyServerMode(isChecked)
@@ -2140,7 +2142,10 @@ class MainActivity : AppCompatActivity() {
         try {
             unregisterReceiver(powerWakeReceiver)
         } catch (_: Throwable) {}
-        com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
+        val isServerMode = prefs().getBoolean("server_mode", false)
+        if (isServerMode) {
+            com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
+        }
         window.decorView.removeCallbacks(liveStatusTicker)
         AgentAccessibilityService.removeStateListener(a11yUiListener)
         AdbPairingController.removeStateListener(adbUiListener)
