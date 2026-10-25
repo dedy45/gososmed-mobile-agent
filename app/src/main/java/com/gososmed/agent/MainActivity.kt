@@ -1791,15 +1791,18 @@ class MainActivity : AppCompatActivity() {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             lp.screenBrightness = 0.01f
             window.attributes = lp
-            serverModeOverlay.visibility = View.VISIBLE
+            // JANGAN tutupi layar dengan serverModeOverlay karena MediaProjection akan merekam layar hitam!
+            // Layar fisik HP padam via hardware brightness 0.0, sedangkan remote viewer tetap jernih.
+            serverModeOverlay.visibility = View.GONE
             refreshTelemetry()
-            // Kunci kecerahan OS ke level minimum via shell UID 2000 (headless sejati seperti scrcpy)
+            // Kunci kecerahan fisik panel ke nol via shell UID 2000 (headless sejati seperti scrcpy)
             Thread {
                 try {
                     val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
                     if (shell.status().available) {
                         shell.exec("settings put system screen_brightness_mode 0")
-                        shell.exec("settings put system screen_brightness 1")
+                        shell.exec("settings put system screen_brightness 0")
+                        shell.exec("cmd display set-brightness 0.0")
                         shell.exec("settings put system screen_off_timeout 2147483647")
                     }
                 } catch (_: Throwable) {}
@@ -1815,6 +1818,7 @@ class MainActivity : AppCompatActivity() {
                     val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
                     if (shell.status().available) {
                         shell.exec("settings put system screen_brightness 120")
+                        shell.exec("cmd display set-brightness 0.5")
                         shell.exec("settings put system screen_off_timeout 600000")
                     }
                 } catch (_: Throwable) {}
