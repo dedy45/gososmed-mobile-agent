@@ -28,13 +28,6 @@ enum class Signal(val keys: List<SettingKey>) {
 
     WIRELESS_DEBUGGING(
         listOf(SettingKey("global", "adb_wifi_enabled", "0", defaultVisibleValue = "1"))
-    ),
-
-    ACCESSIBILITY(
-        listOf(
-            SettingKey("secure", "accessibility_enabled", "0", defaultVisibleValue = "1"),
-            SettingKey("secure", "enabled_accessibility_services", "", defaultVisibleValue = null)
-        )
     )
 }
 

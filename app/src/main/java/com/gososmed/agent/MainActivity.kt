@@ -1185,17 +1185,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDeveloperSettingsForPairing() {
-        // v0.9.6 — Prioritaskan layar Debug nirkabel bila OEM menyediakannya
-        // (jalur paling sedikit ketukan), lalu Opsi Pengembang, terakhir
-        // Setelan umum.
+        // Shizuku-parity: Buka langsung sub-layar Wireless Debugging atau highlight barisnya
         val candidates = listOf(
-            "android.settings.WIRELESS_DEBUGGING_SETTINGS",
-            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
-            Settings.ACTION_SETTINGS
+            // 1. Shizuku TileService intent (membuka langsung dialog/halaman Wireless Debugging)
+            Intent("android.service.quicksettings.action.QS_TILE_PREFERENCES").apply {
+                putExtra(
+                    Intent.EXTRA_COMPONENT_NAME,
+                    android.content.ComponentName(
+                        "com.android.settings",
+                        "com.android.settings.development.qstile.DevelopmentTiles\$WirelessDebugging"
+                    )
+                )
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // 2. AOSP standard intent
+            Intent("android.settings.WIRELESS_DEBUGGING_SETTINGS").apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // 3. Highlight toggle_adb_wireless di Opsi Pengembang (Shizuku pattern)
+            Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
+                putExtra(":settings:show_fragment_args", android.os.Bundle().apply {
+                    putString(":settings:fragment_args_key", "toggle_adb_wireless")
+                })
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // 4. Opsi Pengembang biasa
+            Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            // 5. Setelan umum
+            Intent(Settings.ACTION_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
         )
-        for (action in candidates) {
+        for (intent in candidates) {
             try {
-                startActivity(Intent(action))
+                startActivity(intent)
                 return
             } catch (_: Exception) {
                 // lanjut ke kandidat berikutnya

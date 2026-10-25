@@ -59,12 +59,10 @@ class DynamicHidingManagerTest {
         assertEquals("global/adb_enabled", usbKeys[0].id)
         assertEquals("0", usbKeys[0].hiddenValue)
 
-        val a11yKeys = Signal.ACCESSIBILITY.keys
-        assertEquals(2, a11yKeys.size)
-        assertEquals("secure/accessibility_enabled", a11yKeys[0].id)
-        assertEquals("0", a11yKeys[0].hiddenValue)
-        assertEquals("secure/enabled_accessibility_services", a11yKeys[1].id)
-        assertEquals("", a11yKeys[1].hiddenValue)
+        val wifiKeys = Signal.WIRELESS_DEBUGGING.keys
+        assertEquals(1, wifiKeys.size)
+        assertEquals("global/adb_wifi_enabled", wifiKeys[0].id)
+        assertEquals("0", wifiKeys[0].hiddenValue)
     }
 
     @Test

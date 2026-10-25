@@ -119,14 +119,13 @@ class DynamicHidingManager(
 
         var allSuccess = true
         for (key in signal.keys) {
-            val original = store.getOriginal(key.id) ?: key.defaultVisibleValue
-            if (original != null) {
-                val putRes = shell.exec("settings put ${key.namespace} ${key.name} $original")
-                if (!putRes.ok || putRes.exitCode != 0) {
-                    allSuccess = false
-                }
-            } else {
-                shell.exec("settings delete ${key.namespace} ${key.name}")
+            // HANYA pulihkan jika key ini benar-benar ADA di store (pernah disembunyikan sebelumnya)!
+            // Jangan pernah menyentuh setting yang tidak pernah kita ubah!
+            val original = store.getOriginal(key.id) ?: continue
+
+            val putRes = shell.exec("settings put ${key.namespace} ${key.name} $original")
+            if (!putRes.ok || putRes.exitCode != 0) {
+                allSuccess = false
             }
             store.clearOriginal(key.id)
         }
