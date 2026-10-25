@@ -523,7 +523,7 @@ button:active{transform:translateY(1px)}
 
                 // Request keyframe or provide instant snapshot fallback if MediaProjection not active
                 if (CaptureService.instance != null) {
-                    CaptureService.instance?.requestKeyFrame()
+                    CaptureService.instance?.onClientConnected()
                 } else if (com.gososmed.agent.AgentAccessibilityService.isServiceAlive()) {
                     kotlin.concurrent.thread(name = "goso-initial-snapshot", isDaemon = true) {
                         try {

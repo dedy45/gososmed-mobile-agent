@@ -208,13 +208,17 @@
               }
             } else if (msg.type === 'capture_error') {
               log(`Capture error: ${msg.message || msg.reason}`, 'error');
-              const tip = document.getElementById('streamWaitingTip');
-              if (tip) {
-                tip.style.display = 'flex';
-                const s = tip.querySelector('strong');
-                if (s) s.textContent = 'Izin tangkapan layar kedaluwarsa';
+              if (msg.reason === 'projection_invalid') {
+                const tip = document.getElementById('streamWaitingTip');
+                if (tip) {
+                  tip.style.display = 'flex';
+                  const s = tip.querySelector('strong');
+                  if (s) s.textContent = 'Izin tangkapan layar kedaluwarsa';
+                }
+                if (window.GoStream) window.GoStream.reset();
+              } else {
+                log('Menunggu frame berikutnya dari HP...', 'warn');
               }
-              if (window.GoStream) window.GoStream.reset();
             } else if (msg.type === 'frame_meta') {
               if (valRes) valRes.textContent = `${msg.width}x${msg.height}`;
               if (msg.width && msg.height) {

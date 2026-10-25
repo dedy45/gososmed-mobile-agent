@@ -270,6 +270,12 @@ class CaptureService : Service() {
         } catch (_: Exception) {}
     }
 
+    fun onClientConnected() = handler.post {
+        val now = android.os.SystemClock.elapsedRealtime()
+        watchdog.reset(now)
+        requestKeyFrame()
+    }
+
     /**
      * Viewer meminta codec tertentu (biasanya AVC karena browsernya tidak bisa
      * decode HEVC/AV1). Hanya bereaksi bila codec benar-benar berbeda, supaya
