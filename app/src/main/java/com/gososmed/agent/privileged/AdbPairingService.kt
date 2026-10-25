@@ -112,6 +112,7 @@ class AdbPairingService : Service() {
 
     @Volatile private var currentHost: String = LOOPBACK_HOST
     @Volatile private var discoveredPort: Int = -1
+    @Volatile private var cachedPairingCode: String? = null
     @Volatile private var stage: Stage = Stage.SEARCHING
     @Volatile private var pairingInFlight = false
     @Volatile private var stopping = false
@@ -119,7 +120,6 @@ class AdbPairingService : Service() {
 
     private var notificationAllowsRetry = false
     private var lastAutoAttempt = ""
-
     private val timeoutRunnable = Runnable {
         AgentLog.event("pairing: batas waktu 10 menit tercapai, sesi ditutup")
         cleanupAndStop()
@@ -195,6 +195,7 @@ class AdbPairingService : Service() {
         stopPortDiscovery()
         AgentAccessibilityService.setPairingDialogListener(null)
         discoveredPort = -1
+        cachedPairingCode = null
         lastAutoAttempt = ""
         pairingInFlight = false
         stage = Stage.SEARCHING
@@ -289,10 +290,27 @@ class AdbPairingService : Service() {
         val changed = discoveredPort != port
         discoveredPort = port
 
+        // Auto-pairing jika kode dari dialog sudah terbaca sebelumnya dari layar
+        val pendingCode = cachedPairingCode
+        if (pendingCode != null && pendingCode.length == 6 && stage != Stage.WORKING && stage != Stage.RESULT) {
+            val signature = "$port:$pendingCode"
+            if (signature != lastAutoAttempt) {
+                lastAutoAttempt = signature
+                publish(
+                    "✓ Port ($port) & kode terbaca otomatis — memasangkan…",
+                    Color.parseColor("#4ADE80"),
+                    forceNotification = true
+                )
+                AgentLog.event("pairing: auto-pairing dipicu port ($port) via $source dengan kode dialog")
+                submitPairingCode(pendingCode, port, source = "auto-mDNS+dialog")
+                return
+            }
+        }
+
         if (stage != Stage.WORKING && stage != Stage.RESULT) {
             stage = Stage.INPUT
             publish(
-                "✓ Port $port terdeteksi — ketik 6 angka kode pairing",
+                "✓ Layanan pairing terdeteksi pada port $port",
                 Color.parseColor("#4ADE80"),
                 forceNotification = changed
             )
@@ -311,26 +329,32 @@ class AdbPairingService : Service() {
     }
 
     /**
-     * Kode dari layar Setelan TIDAK PERNAH dicatat. Parser hanya menerima
-     * kombinasi port+kode dalam SATU window Setelan, jadi port CONNECT di layar
-     * utama Debug nirkabel tidak disalahartikan sebagai port pairing.
+     * Kode dari layar Setelan otomatis dipasangkan dengan port dialog atau port mDNS.
      */
     private fun onPairingDialogSnapshot(snapshot: PairingDialogParser.Snapshot) {
-        if (stopping || stage == Stage.WORKING || !snapshot.isComplete) return
+        if (stopping || stage == Stage.WORKING || stage == Stage.RESULT) return
         val code = snapshot.code ?: return
+        if (code.length != 6) return
+        cachedPairingCode = code
 
-        onPortDiscovered(snapshot.port, "dialog Setelan")
-        val signature = "${snapshot.port}:$code"
+        // Gunakan port dari dialog jika ada, atau gunakan discoveredPort dari mDNS
+        val port = if (snapshot.hasPort) snapshot.port else discoveredPort
+        if (port <= 0) {
+            Log.i(TAG, "Kode pairing ($code) terbaca dari dialog, menunggu port mDNS...")
+            return
+        }
+
+        val signature = "$port:$code"
         if (signature == lastAutoAttempt) return
         lastAutoAttempt = signature
 
         publish(
-            "✓ Port & kode terbaca otomatis — memasangkan…",
+            "✓ Port ($port) & kode terbaca otomatis — memasangkan…",
             Color.parseColor("#4ADE80"),
             forceNotification = true
         )
-        AgentLog.event("pairing: port+kode terbaca otomatis dari dialog Setelan (nilai kode tidak dilog)")
-        submitPairingCode(code, snapshot.port, source = "dialog sistem")
+        AgentLog.event("pairing: port ($port) dan kode terbaca otomatis dari dialog Setelan")
+        submitPairingCode(code, port, source = "dialog sistem")
     }
 
     /** Tunggu port bila pengguna mengirim kode tepat sebelum discovery selesai. */
@@ -457,13 +481,19 @@ class AdbPairingService : Service() {
     // --------------------------------------------------------- notification
 
     private fun buildNotification(statusText: String): Notification {
+        val displayTitle = when (stage) {
+            Stage.RESULT -> if (notificationAllowsRetry) "✗ Gagal Memasangkan ADB" else "✓ ADB Berhasil Dipasangkan"
+            Stage.WORKING -> "⚡ Memasangkan ADB..."
+            Stage.INPUT -> "⚡ Layanan Pairing Ditemukan"
+            Stage.SEARCHING -> "⚡ Mencari Layanan Pairing ADB"
+        }
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("⚡ Pairing ADB GoSosmed")
+            .setContentTitle(displayTitle)
             .setContentText(statusText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(statusText + notificationGuidance()))
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOngoing(true)
-            .setAutoCancel(false)
+            .setOngoing(stage != Stage.RESULT)
+            .setAutoCancel(stage == Stage.RESULT)
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -494,6 +524,11 @@ class AdbPairingService : Service() {
                     NotificationCompat.Action.Builder(null, "Ketik Kode Pairing", pCode)
                         .addRemoteInput(remoteInput)
                         .build()
+                )
+                builder.addAction(
+                    NotificationCompat.Action.Builder(
+                        null, "Buka Setelan", settingsPendingIntent()
+                    ).build()
                 )
                 builder.addAction(stopAction())
             }

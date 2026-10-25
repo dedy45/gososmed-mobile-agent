@@ -311,7 +311,10 @@ class AgentAccessibilityService : AccessibilityService() {
         }
 
         /** Paket layar event ini memang milik Setelan yang berpeluang memuat dialog pairing. */
-        private fun isSettingsPackage(pkg: String): Boolean = pkg in SETTINGS_PACKAGES
+        private fun isSettingsPackage(pkg: String): Boolean =
+            pkg.contains("settings", ignoreCase = true) ||
+            pkg.contains("security", ignoreCase = true) ||
+            pkg in SETTINGS_PACKAGES
 
         /**
          * Status kesiapan untuk UI/KONTROL IZIN — memisahkan dua makna:

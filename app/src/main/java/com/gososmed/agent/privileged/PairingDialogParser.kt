@@ -24,7 +24,8 @@ object PairingDialogParser {
         val code: String? = null,
     ) {
         val hasPort: Boolean get() = port in 1..65535
-        val isComplete: Boolean get() = hasPort && code?.length == 6
+        val hasCode: Boolean get() = code != null && code.length == 6
+        val isComplete: Boolean get() = hasPort && hasCode
     }
 
     private val ipPortRegex = Regex(
@@ -43,11 +44,15 @@ object PairingDialogParser {
      * dari window pairing yang lain.
      */
     fun parseWindows(windowsTexts: List<List<String>>): Snapshot {
+        var partialWithCode: Snapshot? = null
         for (texts in windowsTexts) {
             val snapshot = parse(texts)
             if (snapshot.isComplete) return snapshot
+            if (snapshot.hasCode && partialWithCode == null) {
+                partialWithCode = snapshot
+            }
         }
-        return Snapshot()
+        return partialWithCode ?: Snapshot()
     }
 
     /** Gabungkan teks-teks dari satu hierarki dialog Setelan. */
@@ -64,29 +69,39 @@ object PairingDialogParser {
                 break
             }
         }
-        if (port <= 0) return Snapshot()
-
+        var foundCode: String? = null
         for (raw in texts) {
             val text = raw.trim()
             if (text.isEmpty()) continue
-            // Hapus bentuk IP:port lebih dulu supaya port enam digit (mis. 61234)
-            // tidak pernah salah terbaca sebagai kode pairing.
             val withoutEndpoint = ipPortRegex.replace(text, " ")
 
             sixDigitRegex.find(withoutEndpoint)?.let {
-                return Snapshot(port = port, code = it.value)
+                foundCode = it.value
             }
+            if (foundCode != null) break
+
             groupedCodeRegex.find(withoutEndpoint)?.let {
-                return Snapshot(port = port, code = it.groupValues[1] + it.groupValues[2])
+                foundCode = it.groupValues[1] + it.groupValues[2]
             }
+            if (foundCode != null) break
+
             spacedCodeRegex.find(withoutEndpoint)?.let {
-                return Snapshot(port = port, code = (1..6).joinToString("") { i -> it.groupValues[i] })
+                foundCode = (1..6).joinToString("") { i -> it.groupValues[i] }
+            }
+            if (foundCode != null) break
+        }
+
+        if (foundCode == null) {
+            val singleDigits = texts.map { it.trim() }.filter { it.length == 1 && it[0].isDigit() }
+            if (singleDigits.size == 6) {
+                foundCode = singleDigits.joinToString("")
             }
         }
 
-        // Layar utama Debug nirkabel juga menampilkan `IP:port` — tetapi itu
-        // PORT CONNECT, bukan port pairing. Tanpa kode enam angka pada layar
-        // yang sama, kandidat port tidak boleh dipakai untuk pairing.
-        return Snapshot()
+        return if (foundCode != null) {
+            Snapshot(port = port, code = foundCode)
+        } else {
+            Snapshot()
+        }
     }
 }
