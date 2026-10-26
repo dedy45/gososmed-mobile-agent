@@ -124,6 +124,14 @@ object AgentCommand {
     const val CMD_RESTART_SYSTEM_UI = "restartSystemUi"
     const val CMD_DISPLAY_SIZE = "displaySize"
     const val CMD_DISPLAY_DENSITY = "displayDensity"
+    // Maestro Parity & Functional Gaps: Clipboard, Erase, Media Scan, Screen Settle
+    const val CMD_SET_CLIPBOARD = "setClipboard"
+    const val CMD_COPY_TEXT = "copyText"
+    const val CMD_PASTE_TEXT = "pasteText"
+    const val CMD_ERASE_TEXT = "eraseText"
+    const val CMD_SCAN_MEDIA = "scanMedia"
+    const val CMD_ADD_MEDIA = "addMedia"
+    const val CMD_WAIT_FOR_SETTLE = "waitForSettle"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      * Dipakai dua hal:
@@ -149,7 +157,8 @@ object AgentCommand {
         CMD_ADB_PAIR, CMD_SHELL, CMD_HAS_PACKAGE, CMD_LIST_PACKAGES,
         CMD_PING, CMD_HEALTH, CMD_CAPABILITIES, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
         CMD_START_LOCAL_SERVER, CMD_STOP_LOCAL_SERVER, CMD_GLOBAL_DIM,
-        CMD_SET_DISPLAY_POWER, CMD_RESTART_SYSTEM_UI, CMD_DISPLAY_SIZE, CMD_DISPLAY_DENSITY
+        CMD_SET_DISPLAY_POWER, CMD_RESTART_SYSTEM_UI, CMD_DISPLAY_SIZE, CMD_DISPLAY_DENSITY,
+        CMD_SET_CLIPBOARD, CMD_SCAN_MEDIA, CMD_ADD_MEDIA
     )
     /**
      * Command yang berpotensi memakan waktu (menunggu launch/kill/wake)
@@ -159,7 +168,8 @@ object AgentCommand {
     val ASYNC_BACKGROUND_COMMANDS = setOf(
         CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
         CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT, CMD_CLICK_AND_WAIT,
-        CMD_EXECUTE_BATCH
+        CMD_EXECUTE_BATCH, CMD_WAIT_FOR_SETTLE, CMD_SCAN_MEDIA, CMD_ADD_MEDIA,
+        CMD_SET_CLIPBOARD, CMD_COPY_TEXT, CMD_PASTE_TEXT, CMD_ERASE_TEXT
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -1000,6 +1010,48 @@ object AgentCommand {
                     }
                 }
             }
+            CMD_SET_CLIPBOARD -> {
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val text = req.optString("text", "")
+                    val ok = NodeActionExecutor.setClipboard(ctx, text)
+                    resp.put("ok", ok)
+                    if (ok) {
+                        resp.put("result", JSONObject().apply {
+                            put("ok", true)
+                            put("length", text.length)
+                        })
+                    } else {
+                        resp.put("error", "gagal menyalin ke clipboard")
+                    }
+                }
+            }
+            CMD_SCAN_MEDIA, CMD_ADD_MEDIA -> {
+                val ctx = appContext()
+                if (ctx == null) {
+                    resp.put("ok", false).put("error", "application context not available")
+                } else {
+                    val path = req.optString("path", "")
+                    if (path.isBlank()) {
+                        resp.put("ok", false).put("error", "scanMedia requires path")
+                    } else {
+                        val timeout = req.optLong("timeout_ms", 5000L)
+                        val result = MediaStager.scanMedia(ctx, path, timeout)
+                        val ok = result.optBoolean("ok", false)
+                        resp.put("ok", ok)
+                        if (ok) {
+                            resp.put("result", result.optJSONObject("result"))
+                        } else {
+                            resp.put("error", result.optString("error", "scanMedia failed"))
+                            if (result.has("result")) {
+                                resp.put("result", result.optJSONObject("result"))
+                            }
+                        }
+                    }
+                }
+            }
             CMD_START_LOCAL_SERVER -> {
                 val ctx = appContext()
                 val detectedIp = resolveDeviceIp()
@@ -1491,6 +1543,86 @@ object AgentCommand {
                 if (batchResult.status != "COMPLETED") {
                     resp.put("error", batchResult.reasonCode ?: "batch_execution_failed")
                 }
+            }
+            CMD_SET_CLIPBOARD -> {
+                val text = req.optString("text", "")
+                val ok = NodeActionExecutor.setClipboard(svc.applicationContext, text)
+                resp.put("ok", ok)
+                if (ok) {
+                    resp.put("result", JSONObject().apply {
+                        put("ok", true)
+                        put("length", text.length)
+                    })
+                } else {
+                    resp.put("error", "gagal menyalin ke clipboard")
+                }
+            }
+            CMD_COPY_TEXT -> {
+                val targetNodeId = req.optJSONObject("target")?.optString("node_id")?.takeIf { it.isNotBlank() }
+                    ?: req.optString("target_node_id").takeIf { it.isNotBlank() }
+                    ?: req.optString("node_id").takeIf { it.isNotBlank() }
+                val (ok, text) = NodeActionExecutor.copyText(svc, targetNodeId)
+                resp.put("ok", true)
+                resp.put("result", JSONObject().apply {
+                    put("ok", ok)
+                    put("text", text)
+                })
+            }
+            CMD_PASTE_TEXT -> {
+                val targetNodeId = req.optJSONObject("target")?.optString("node_id")?.takeIf { it.isNotBlank() }
+                    ?: req.optString("target_node_id").takeIf { it.isNotBlank() }
+                    ?: req.optString("node_id").takeIf { it.isNotBlank() }
+                val ok = NodeActionExecutor.pasteText(svc, targetNodeId)
+                resp.put("ok", true)
+                resp.put("result", JSONObject().apply {
+                    put("ok", true)
+                    put("action_performed", ok)
+                })
+            }
+            CMD_ERASE_TEXT -> {
+                val characters = req.optInt("characters", 1).coerceAtLeast(1)
+                val ok = NodeActionExecutor.eraseText(svc, characters)
+                resp.put("ok", true)
+                resp.put("result", JSONObject().apply {
+                    put("ok", true)
+                    put("erased_count", characters)
+                })
+            }
+            CMD_SCAN_MEDIA, CMD_ADD_MEDIA -> {
+                val path = req.optString("path", "")
+                if (path.isBlank()) {
+                    resp.put("ok", false).put("error", "scanMedia requires path")
+                } else {
+                    val timeout = req.optLong("timeout_ms", 5000L)
+                    val result = MediaStager.scanMedia(svc.applicationContext, path, timeout)
+                    val ok = result.optBoolean("ok", false)
+                    resp.put("ok", ok)
+                    if (ok) {
+                        resp.put("result", result.optJSONObject("result"))
+                    } else {
+                        resp.put("error", result.optString("error", "scanMedia failed"))
+                        if (result.has("result")) {
+                            resp.put("result", result.optJSONObject("result"))
+                        }
+                    }
+                }
+            }
+            CMD_WAIT_FOR_SETTLE -> {
+                val timeoutMs = req.optLong("timeout_ms", 5000L).coerceIn(500L, 60_000L)
+                val settleMs = req.optLong("settle_ms", 500L).coerceIn(50L, 10_000L)
+                val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+                val settleResult = kotlinx.coroutines.runBlocking {
+                    ScreenTransitionVerifier.waitForSettle(
+                        timeoutMs = timeoutMs,
+                        settleMs = settleMs,
+                        snapshotProvider = {
+                            SnapshotCollector.capture(displayProvider, treeSource)
+                        }
+                    )
+                }
+                resp.put("ok", true)
+                resp.put("result", settleResult.toJson())
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }

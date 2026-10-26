@@ -335,4 +335,60 @@ object MediaStager {
             put("message", "Pembersihan selesai: $deletedVideos video MediaStore dan berkas fisik sementara berhasil dibersihkan.")
         }
     }
+
+    /**
+     * Memindai file media lokal agar terindeks ke MediaStore Android dan langsung muncul di galeri.
+     * Mengembalikan Content URI jika pemindaian berhasil.
+     */
+    fun scanMedia(context: Context, path: String, timeoutMs: Long = 5000L): JSONObject {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var scannedUri: Uri? = null
+        var finalPath: String = path
+
+        val mimeType = when (path.substringAfterLast('.', "").lowercase()) {
+            "mp4" -> "video/mp4"
+            "mov" -> "video/quicktime"
+            "mkv" -> "video/x-matroska"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> null
+        }
+        val mimeTypes = if (mimeType != null) arrayOf(mimeType) else arrayOf("video/mp4", "image/jpeg", "image/png")
+
+        try {
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(path),
+                mimeTypes
+            ) { p, uri ->
+                android.util.Log.i("GoAgent", "Media scanned: $p -> URI: $uri")
+                if (p != null) finalPath = p
+                scannedUri = uri
+                latch.countDown()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("GoAgent", "MediaScannerConnection.scanFile failed: ${t.message}", t)
+            latch.countDown()
+        }
+
+        val completed = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        val uriStr = scannedUri?.toString() ?: ""
+        val ok = completed && uriStr.isNotEmpty()
+
+        return JSONObject().apply {
+            put("ok", ok)
+            put("result", JSONObject().apply {
+                put("ok", ok)
+                put("path", finalPath)
+                put("uri", uriStr)
+                if (!ok) {
+                    put("reason", if (!completed) "scan_timeout" else "empty_uri")
+                }
+            })
+            if (!ok) {
+                put("error", if (!completed) "scanMedia timed out after ${timeoutMs}ms" else "scanMedia returned empty URI")
+            }
+        }
+    }
 }

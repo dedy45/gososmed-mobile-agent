@@ -12,6 +12,8 @@ import com.gososmed.agent.SelectorQuery
 import com.gososmed.agent.SnapshotCollector
 import com.gososmed.agent.SnapshotResult
 import com.gososmed.agent.WindowRootCollector
+import com.gososmed.agent.MediaStager
+import com.gososmed.agent.ScreenTransitionVerifier
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -452,6 +454,107 @@ class DefaultBatchStepExecutor(
                             reasonCode = ProtocolV2.ReasonCodes.ACTION_NOT_SUPPORTED,
                             failureMessage = "unsupported_key: $key / $keyCode",
                             telemetry = telemetry
+                        )
+                    }
+                }
+
+                "setClipboard" -> {
+                    val text = step.params.optString("text", "")
+                    val ok = NodeActionExecutor.setClipboard(svc.applicationContext, text)
+                    if (ok) {
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.ACTION_REJECTED,
+                            failureMessage = "setClipboard_failed",
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
+                "copyText" -> {
+                    val targetNodeId = step.params.optString("node_id", step.params.optJSONObject("target")?.optString("node_id", "") ?: "")
+                    val (ok, _) = NodeActionExecutor.copyText(svc, targetNodeId.ifBlank { null })
+                    if (ok) {
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.NO_NODE,
+                            failureMessage = "copyText_failed",
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
+                "pasteText" -> {
+                    val targetNodeId = step.params.optString("node_id", step.params.optJSONObject("target")?.optString("node_id", "") ?: "")
+                    val ok = NodeActionExecutor.pasteText(svc, targetNodeId.ifBlank { null })
+                    if (ok) {
+                        delay(200L)
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.ACTION_REJECTED,
+                            failureMessage = "pasteText_failed",
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
+                "eraseText" -> {
+                    val characters = step.params.optInt("characters", 1).coerceAtLeast(1)
+                    val ok = NodeActionExecutor.eraseText(svc, characters)
+                    if (ok) {
+                        delay(200L)
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.ACTION_REJECTED,
+                            failureMessage = "eraseText_failed",
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
+                "scanMedia", "addMedia" -> {
+                    val path = step.params.optString("path", "")
+                    val res = MediaStager.scanMedia(svc.applicationContext, path, step.timeoutMs)
+                    val ok = res.optBoolean("ok", false)
+                    if (ok) {
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+                            failureMessage = res.optString("error", "scanMedia_failed"),
+                            telemetry = telemetry
+                        )
+                    }
+                }
+
+                "waitForSettle" -> {
+                    val timeoutMs = step.timeoutMs
+                    val settleMs = step.params.optLong("settle_ms", 500L)
+                    val displayProvider = SnapshotCollector.AndroidDisplayInfoProvider(svc, svc)
+                    val treeSource = WindowRootCollector.AndroidWindowTreeSource(svc)
+                    val res = ScreenTransitionVerifier.waitForSettle(
+                        timeoutMs = timeoutMs,
+                        settleMs = settleMs,
+                        isCancelled = { CommandCancellationRegistry.isCancelled(overallRequestId) },
+                        snapshotProvider = { SnapshotCollector.capture(displayProvider, treeSource) }
+                    )
+                    if (res.settled) {
+                        StepExecutionResult(ok = true, telemetry = captureTelemetry() ?: telemetry)
+                    } else {
+                        StepExecutionResult(
+                            ok = false,
+                            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+                            failureMessage = res.reason ?: "timeout_unsettled",
+                            telemetry = captureTelemetry() ?: telemetry
                         )
                     }
                 }

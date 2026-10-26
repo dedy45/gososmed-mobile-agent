@@ -214,7 +214,14 @@ class ProtocolV2Test {
             "startDebugFrames",
             "stopDebugFrames",
             "scrollUntilVisible",
-            "executeBatch"
+            "executeBatch",
+            "setClipboard",
+            "copyText",
+            "pasteText",
+            "eraseText",
+            "scanMedia",
+            "addMedia",
+            "waitForSettle"
         )
 
         for (cmd in expectedCommands) {

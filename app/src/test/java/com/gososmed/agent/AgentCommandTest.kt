@@ -334,4 +334,39 @@ class AgentCommandTest {
         assertFalse(resp.optBoolean("ok"))
         assertEquals("accessibility service not connected/ready", resp.getString("error"))
     }
+
+    @Test
+    fun `new maestro commands are registered in commands sets`() {
+        assertTrue(AgentCommand.CMD_SET_CLIPBOARD in AgentCommand.SERVICE_FREE_COMMANDS)
+        assertTrue(AgentCommand.CMD_SCAN_MEDIA in AgentCommand.SERVICE_FREE_COMMANDS)
+        assertTrue(AgentCommand.CMD_ADD_MEDIA in AgentCommand.SERVICE_FREE_COMMANDS)
+
+        assertTrue(AgentCommand.CMD_WAIT_FOR_SETTLE in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue(AgentCommand.CMD_COPY_TEXT in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue(AgentCommand.CMD_PASTE_TEXT in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue(AgentCommand.CMD_ERASE_TEXT in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+    }
+
+    @Test
+    fun `pasteText, copyText, eraseText, waitForSettle require service and echo id when service absent`() {
+        val reqPaste = JSONObject("""{"id":102,"cmd":"pasteText"}""")
+        val respPaste = AgentCommand.execute(reqPaste)
+        assertEquals(102, respPaste.getInt("id"))
+        assertFalse(respPaste.optBoolean("ok"))
+
+        val reqCopy = JSONObject("""{"id":101,"cmd":"copyText"}""")
+        val respCopy = AgentCommand.execute(reqCopy)
+        assertEquals(101, respCopy.getInt("id"))
+        assertFalse(respCopy.optBoolean("ok"))
+
+        val reqErase = JSONObject("""{"id":103,"cmd":"eraseText","characters":10}""")
+        val respErase = AgentCommand.execute(reqErase)
+        assertEquals(103, respErase.getInt("id"))
+        assertFalse(respErase.optBoolean("ok"))
+
+        val reqSettle = JSONObject("""{"id":105,"cmd":"waitForSettle","timeout_ms":1000}""")
+        val respSettle = AgentCommand.execute(reqSettle)
+        assertEquals(105, respSettle.getInt("id"))
+        assertFalse(respSettle.optBoolean("ok"))
+    }
 }

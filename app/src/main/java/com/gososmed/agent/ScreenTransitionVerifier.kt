@@ -279,4 +279,78 @@ object ScreenTransitionVerifier {
             )
         }
     }
+
+    data class SettleResult(
+        val settled: Boolean,
+        val durationMs: Long,
+        val treeHash: String?,
+        val reason: String? = null
+    ) {
+        fun toJson(): JSONObject = JSONObject().apply {
+            put("ok", true)
+            put("settled", settled)
+            put("duration_ms", durationMs)
+            if (treeHash != null) put("tree_hash", treeHash)
+            if (reason != null) put("reason", reason)
+        }
+    }
+
+    /**
+     * Menunggu hingga pohon UI layar stabil (settle) secara kontinu tanpa animasi perubahan.
+     * Jika treeHash tidak berubah selama [settleMs] berturut-turut, kembalikan settled = true.
+     * Jika [timeoutMs] terlampaui dan layar masih berubah, kembalikan settled = false ("timeout_unsettled").
+     */
+    suspend fun waitForSettle(
+        timeoutMs: Long = 5000L,
+        settleMs: Long = 500L,
+        pollIntervalMs: Long = 100L,
+        timeSource: () -> Long = { System.currentTimeMillis() },
+        isCancelled: () -> Boolean = { false },
+        delayProvider: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+        snapshotProvider: suspend () -> SnapshotResult
+    ): SettleResult {
+        val startTime = timeSource()
+        var lastHash: String? = null
+        var stableSince = startTime
+
+        while (timeSource() - startTime <= timeoutMs) {
+            if (isCancelled()) {
+                return SettleResult(
+                    settled = false,
+                    durationMs = timeSource() - startTime,
+                    treeHash = lastHash,
+                    reason = ProtocolV2.ReasonCodes.CANCELLED
+                )
+            }
+
+            val currentSnap = snapshotProvider()
+            val currentHash = currentSnap.treeHash
+
+            if (currentHash != lastHash) {
+                lastHash = currentHash
+                stableSince = timeSource()
+            } else {
+                if (timeSource() - stableSince >= settleMs) {
+                    return SettleResult(
+                        settled = true,
+                        durationMs = timeSource() - startTime,
+                        treeHash = currentHash,
+                        reason = null
+                    )
+                }
+            }
+
+            val effectiveInterval = ProtocolV2.clampPollInterval(pollIntervalMs)
+            if (effectiveInterval > 0) {
+                delayProvider(effectiveInterval)
+            }
+        }
+
+        return SettleResult(
+            settled = false,
+            durationMs = timeSource() - startTime,
+            treeHash = lastHash,
+            reason = "timeout_unsettled"
+        )
+    }
 }

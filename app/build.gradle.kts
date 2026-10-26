@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 47 = 1.2.10 (PROD) — OEM Service Locking, Persistent Foreground A11y Pinning,
-        // Privileged Battery/Autostart Whitelisting & Universal Device Stability.
-        versionCode = 47
-        versionName = "1.2.10"
+        // versionCode 48 = 1.2.11-dev.1 (DEV) — Maestro Parity & Functional Gaps Closure:
+        // Complete Clipboard Operations (set/copy/paste), Stepwise Erase, Media Indexing, & On-Device Screen Settle.
+        versionCode = 48
+        versionName = "1.2.11-dev.1"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

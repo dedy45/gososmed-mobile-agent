@@ -559,3 +559,131 @@ Spesifikasi data lengkap, payload request/response, dan skenario pengujian disim
 - `docs/contracts/v1-fixtures.json` : Fixture lengkap command legacy v1 (termasuk kasus kegagalan dan envelope kontradiktif).
 - `docs/contracts/v2-fixtures.json` : Fixture lengkap Protocol Version 2 untuk seluruh command baru, two-message protocol, dan ke-18 canonical reason codes.
 - `docs/contracts/capability-fixture.json` : Snapshot referensi respon `capabilities` aktual dengan `protocol_versions: [1, 2]`.
+
+## 11. Maestro Parity & High-Performance On-Device Automation Commands
+
+Menutup 5 celah fungsionalitas (gaps) pada APK Kotlin agar memiliki paritas 1:1 dengan kapabilitas engine Maestro, mendukung eksekusi alur kerja YAML tanpa ketergantungan pada UiAutomator2 eksternal, dan mengeliminasi latensi WebSocket round-trip.
+
+### 11.1 `setClipboard`
+Mengisi clipboard sistem Android dengan teks (termasuk emoji, unicode, dan newline) tanpa risiko shell escaping.
+* **Request:**
+  ```json
+  {
+    "id": 101,
+    "cmd": "setClipboard",
+    "text": "Caption promo spesial 🔥🚀\nLink di bio!"
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 101,
+    "ok": true,
+    "result": { "ok": true, "length": 42 }
+  }
+  ```
+
+### 11.2 `copyText`
+Membaca teks atau contentDescription dari node target (atau node yang sedang difokuskan), mengisi clipboard sistem, dan mengembalikannya ke server.
+* **Request:**
+  ```json
+  {
+    "id": 101,
+    "cmd": "copyText",
+    "target": { "node_id": "optional_node_id" }
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 101,
+    "ok": true,
+    "result": { "ok": true, "text": "Teks yang disalin" }
+  }
+  ```
+
+### 11.3 `pasteText`
+Menempelkan teks clipboard ke node target atau node yang sedang fokus melalui `ACTION_PASTE`. Jika tidak didukung atau target tidak ada, fallback ke shell ADB UID 2000 (`input keyevent 279`).
+* **Request:**
+  ```json
+  {
+    "id": 102,
+    "cmd": "pasteText",
+    "target": { "node_id": "optional_node_id" }
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 102,
+    "ok": true,
+    "result": { "ok": true, "action_performed": true }
+  }
+  ```
+
+### 11.4 `eraseText`
+Menghapus teks bertahap tanpa perlu `pm clear` (menghindari logout akun aplikasi).
+* **Request:**
+  ```json
+  {
+    "id": 103,
+    "cmd": "eraseText",
+    "characters": 25
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 103,
+    "ok": true,
+    "result": { "ok": true, "erased_count": 25 }
+  }
+  ```
+
+### 11.5 `scanMedia` / `addMedia`
+Memindai file media baru di penyimpanan internal agar langsung terindeks ke MediaStore Android dan muncul di Galeri aplikasi (Instagram/TikTok Picker).
+* **Request:**
+  ```json
+  {
+    "id": 104,
+    "cmd": "scanMedia",
+    "path": "/sdcard/DCIM/GoSosmed/gosmed_video.mp4"
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 104,
+    "ok": true,
+    "result": {
+      "ok": true,
+      "path": "/sdcard/DCIM/GoSosmed/gosmed_video.mp4",
+      "uri": "content://media/external/video/media/12345"
+    }
+  }
+  ```
+
+### 11.6 `waitForSettle`
+Sinkronisasi kestabilan UI lokal di perangkat tanpa WebSocket round-trip terus-menerus.
+* **Request:**
+  ```json
+  {
+    "id": 105,
+    "cmd": "waitForSettle",
+    "timeout_ms": 4000,
+    "settle_ms": 500
+  }
+  ```
+* **Response:**
+  ```json
+  {
+    "id": 105,
+    "ok": true,
+    "result": {
+      "ok": true,
+      "settled": true,
+      "duration_ms": 620,
+      "tree_hash": "a1b2c3d4..."
+    }
+  }
+  ```

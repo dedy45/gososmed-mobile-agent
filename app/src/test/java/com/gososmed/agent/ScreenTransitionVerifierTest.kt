@@ -189,4 +189,71 @@ class ScreenTransitionVerifierTest {
         assertEquals(ProtocolV2.ReasonCodes.CANCELLED, result.reasonCode)
         assertFalse("Sleeper should NOT be called when cancelled before sleep", sleeperCalled)
     }
+
+    @Test
+    fun testWaitForSettleSucceedsWhenStable() = runBlocking {
+        val snap = createDummySnapshot("snap-1", "sha256:stable-hash")
+        var virtualTime = 0L
+
+        val result = ScreenTransitionVerifier.waitForSettle(
+            timeoutMs = 2000L,
+            settleMs = 300L,
+            pollIntervalMs = 50L,
+            timeSource = {
+                virtualTime += 100L
+                virtualTime
+            },
+            delayProvider = {},
+            snapshotProvider = { snap }
+        )
+
+        assertTrue("Screen should settle when treeHash is stable", result.settled)
+        assertEquals("sha256:stable-hash", result.treeHash)
+        assertNull(result.reason)
+    }
+
+    @Test
+    fun testWaitForSettleTimesOutWhenContinuouslyChanging() = runBlocking {
+        var counter = 0
+        var virtualTime = 0L
+
+        val result = ScreenTransitionVerifier.waitForSettle(
+            timeoutMs = 500L,
+            settleMs = 200L,
+            pollIntervalMs = 50L,
+            timeSource = {
+                virtualTime += 50L
+                virtualTime
+            },
+            delayProvider = {},
+            snapshotProvider = {
+                counter++
+                createDummySnapshot("snap-$counter", "sha256:hash-$counter")
+            }
+        )
+
+        assertFalse("Screen should NOT settle when continuously changing", result.settled)
+        assertEquals("timeout_unsettled", result.reason)
+    }
+
+    @Test
+    fun testWaitForSettleAbortsWhenCancelled() = runBlocking {
+        val snap = createDummySnapshot("snap-1", "sha256:hash-1")
+        var cancelTriggered = false
+
+        val result = ScreenTransitionVerifier.waitForSettle(
+            timeoutMs = 1000L,
+            settleMs = 500L,
+            pollIntervalMs = 50L,
+            isCancelled = { cancelTriggered },
+            delayProvider = {},
+            snapshotProvider = {
+                cancelTriggered = true
+                snap
+            }
+        )
+
+        assertFalse(result.settled)
+        assertEquals(ProtocolV2.ReasonCodes.CANCELLED, result.reason)
+    }
 }

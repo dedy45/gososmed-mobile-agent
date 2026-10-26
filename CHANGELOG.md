@@ -9,6 +9,25 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.11-dev.1] - 2026-10-27
+
+### Added — Maestro Parity & Penutupan Gaps Fungsionalitas APK
+- **Operasi Clipboard Lengkap (`setClipboard`, `copyText`, `pasteText`)**:
+  - `setClipboard`: Mengisi `ClipboardManager` via Context utama dengan penanganan thread-safe (`ClipData.newPlainText("gosmed", text)`).
+  - `copyText`: Membaca teks atau `contentDescription` dari node target atau node yang sedang fokus, menyalinnya ke clipboard sistem, dan mengembalikannya dalam response JSON `{"ok": true, "result": {"ok": true, "text": "..."}}`.
+  - `pasteText`: Memfokuskan node target dan menjalankan `AccessibilityNodeInfo.ACTION_PASTE`. Fallback otomatis ke shell ADB UID 2000 (`input keyevent 279` / KEYCODE_PASTE) jika aksi aksesibilitas tidak didukung atau target tidak ada.
+- **Penghapusan Teks Bertahap (`eraseText`)**:
+  - Menghapus sejumlah karakter tanpa melakukan `pm clear` (menghindari logout akun).
+  - Menjalankan `input keyevent 67` (KEYCODE_DEL) berulang jika `characters <= 10`, atau batch command `input keyevent 67 67 ...` / `ACTION_SET_TEXT` string kosong jika `characters > 10`.
+- **Pengindeksan Media Otomatis (`scanMedia` / `addMedia`)**:
+  - Memanggil `MediaScannerConnection.scanFile` secara native untuk mendaftarkan video/gambar ke MediaStore Android secara instan agar langsung muncul di pemilih galeri (TikTok/Instagram Gallery Picker).
+  - Mengembalikan Content URI (`content://media/external/...`) secara deterministik.
+- **Sinkronisasi Settle Layar di Perangkat (`waitForSettle`)**:
+  - Menunggu kestabilan animasi UI secara on-device dengan memantau `treeHash` aksesibilitas (`SnapshotCollector`).
+  - Mengeliminasi kebutuhan server memanggil `observe` polling berulang kali via WebSocket, menghemat latensi jaringan dan CPU.
+- **Pembaruan Pagar Keamanan Batch Flow (`BatchSecurityGuard.ALLOWED_ACTIONS`)**:
+  - Mendaftarkan seluruh perintah baru (`setClipboard`, `copyText`, `pasteText`, `eraseText`, `scanMedia`, `addMedia`, `waitForSettle`) ke dalam whitelist eksekusi `BatchFlowExecutor`.
+
 ## [1.2.10] - 2026-10-25
 
 ### Fixed — OEM Service Locking & Universal Multi-Device Stability

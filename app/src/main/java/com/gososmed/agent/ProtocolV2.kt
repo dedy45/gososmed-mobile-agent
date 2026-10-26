@@ -32,6 +32,14 @@ object ProtocolV2 {
         const val SCROLL_UNTIL_VISIBLE = "scrollUntilVisible"
         // Batch Flow Execution: Native deterministic sequential flow
         const val EXECUTE_BATCH = "executeBatch"
+        // Maestro Parity & Functional Gaps
+        const val SET_CLIPBOARD = "setClipboard"
+        const val COPY_TEXT = "copyText"
+        const val PASTE_TEXT = "pasteText"
+        const val ERASE_TEXT = "eraseText"
+        const val SCAN_MEDIA = "scanMedia"
+        const val ADD_MEDIA = "addMedia"
+        const val WAIT_FOR_SETTLE = "waitForSettle"
 
         val ALL: Set<String> = setOf(
             OBSERVE,
@@ -44,7 +52,14 @@ object ProtocolV2 {
             START_DEBUG_FRAMES,
             STOP_DEBUG_FRAMES,
             SCROLL_UNTIL_VISIBLE,
-            EXECUTE_BATCH
+            EXECUTE_BATCH,
+            SET_CLIPBOARD,
+            COPY_TEXT,
+            PASTE_TEXT,
+            ERASE_TEXT,
+            SCAN_MEDIA,
+            ADD_MEDIA,
+            WAIT_FOR_SETTLE
         )
     }
 

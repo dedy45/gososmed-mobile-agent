@@ -26,7 +26,14 @@ object BatchSecurityGuard {
         "back",
         "home",
         "recents",
-        "sleep"
+        "sleep",
+        "setClipboard",
+        "copyText",
+        "pasteText",
+        "eraseText",
+        "scanMedia",
+        "addMedia",
+        "waitForSettle"
     )
 
     fun isActionAllowed(action: String): Boolean = action in ALLOWED_ACTIONS

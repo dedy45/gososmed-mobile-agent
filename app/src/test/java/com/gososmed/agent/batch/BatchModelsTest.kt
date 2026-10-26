@@ -17,7 +17,8 @@ class BatchModelsTest {
         val safeActions = listOf(
             "startApp", "waitForScreen", "waitForNode", "actNode",
             "actAndVerify", "scrollUntilVisible", "tap", "click", "inputText", "setText",
-            "replaceText", "pressKey", "back", "home", "recents", "sleep"
+            "replaceText", "pressKey", "back", "home", "recents", "sleep",
+            "setClipboard", "copyText", "pasteText", "eraseText", "scanMedia", "addMedia", "waitForSettle"
         )
         for (action in safeActions) {
             assertTrue("Aksi aman '$action' harus diizinkan", BatchSecurityGuard.isActionAllowed(action))

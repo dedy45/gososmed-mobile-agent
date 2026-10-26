@@ -1,7 +1,16 @@
 package com.gososmed.agent
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.accessibility.AccessibilityNodeInfo
+import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONObject
-
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 /**
  * Node Action Executor (PLAN-DETERMINISTIC-ANDROID-PORTAL.md Section 9).
  * Implements the 12-step deterministic execution pipeline with pre/post checks,
@@ -17,7 +26,8 @@ object NodeActionExecutor {
     const val ACTION_SCROLL_BACKWARD = 0x00002000
     // Maestro Parity: Native scroll until element is visible in safe viewport
     const val ACTION_SCROLL_UNTIL_VISIBLE = 0x00000080
-
+    const val ACTION_COPY = 0x00004000
+    const val ACTION_PASTE = 0x00008000
     /**
      * Interface for dispatching node actions or gesture fallback taps.
      */
@@ -62,73 +72,217 @@ object NodeActionExecutor {
             return service.tap(x, y)
         }
         private fun findNodeById(
-            root: android.view.accessibility.AccessibilityNodeInfo,
+            root: AccessibilityNodeInfo,
             targetNodeId: String
-        ): android.view.accessibility.AccessibilityNodeInfo? {
-            // Check root itself
-            val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(root)
-            val rootNodeId = ActionableNodeRegistry.generateNodeId(
+        ): AccessibilityNodeInfo? = NodeActionExecutor.findNodeById(root, targetNodeId)
+    }
+
+    fun findNodeById(
+        root: AccessibilityNodeInfo,
+        targetNodeId: String
+    ): AccessibilityNodeInfo? {
+        val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(root)
+        val rootNodeId = ActionableNodeRegistry.generateNodeId(
+            displayId = 0,
+            windowId = root.windowId,
+            packageName = simulated.packageName,
+            resourceId = simulated.resourceId,
+            className = simulated.className,
+            text = simulated.text,
+            contentDescription = simulated.contentDescription,
+            ancestorPath = "",
+            siblingIndex = 0,
+            bounds = simulated.bounds
+        )
+        if (rootNodeId == targetNodeId) {
+            return root
+        }
+        return searchSubtree(root, targetNodeId, ancestorPath = "", siblingIndex = 0)
+    }
+
+    private fun searchSubtree(
+        node: AccessibilityNodeInfo,
+        targetNodeId: String,
+        ancestorPath: String,
+        siblingIndex: Int
+    ): AccessibilityNodeInfo? {
+        val count = node.childCount
+        val simpleClassName = (node.className?.toString() ?: "").substringAfterLast('.')
+        val currentPath = if (ancestorPath.isEmpty()) simpleClassName else "$ancestorPath/$simpleClassName"
+
+        for (i in 0 until count) {
+            val child = try {
+                node.getChild(i)
+            } catch (t: Throwable) {
+                android.util.Log.w("GoAgent", "Failed to get child $i: ${t.message}", t)
+                null
+            } ?: continue
+
+            val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(child)
+            val childNodeId = ActionableNodeRegistry.generateNodeId(
                 displayId = 0,
-                windowId = root.windowId,
+                windowId = child.windowId,
                 packageName = simulated.packageName,
                 resourceId = simulated.resourceId,
                 className = simulated.className,
                 text = simulated.text,
                 contentDescription = simulated.contentDescription,
-                ancestorPath = "",
-                siblingIndex = 0,
+                ancestorPath = currentPath,
+                siblingIndex = i,
                 bounds = simulated.bounds
             )
-            if (rootNodeId == targetNodeId) {
-                return root
+
+            if (childNodeId == targetNodeId) {
+                return child
             }
 
-            // Traversal search
-            return searchSubtree(root, targetNodeId, ancestorPath = "", siblingIndex = 0)
+            val found = searchSubtree(child, targetNodeId, currentPath, i)
+            if (found != null) {
+                return found
+            }
+        }
+        return null
+    }
+
+    /**
+     * Mengisi clipboard sistem Android dengan [text] pada context utama.
+     * Menangani pemanggilan di luar Main Looper secara aman dengan CountDownLatch.
+     */
+    fun setClipboard(context: Context, text: String): Boolean {
+        return try {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("gosmed", text))
+                    true
+                } else false
+            } else {
+                val latch = CountDownLatch(1)
+                var success = false
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        if (cm != null) {
+                            cm.setPrimaryClip(ClipData.newPlainText("gosmed", text))
+                            success = true
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.w("GoAgent", "setClipboard error: ${t.message}")
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                latch.await(2000, TimeUnit.MILLISECONDS)
+                success
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("GoAgent", "setClipboard failed: ${t.message}")
+            false
+        }
+    }
+
+    /**
+     * Membaca teks atau contentDescription dari node target (atau node yang sedang difokuskan),
+     * menyalinnya ke Clipboard sistem, dan mengembalikan teks tersebut.
+     */
+    fun copyText(service: AgentAccessibilityService, targetNodeId: String? = null): Pair<Boolean, String> {
+        val root = try {
+            service.rootInActiveWindow
+        } catch (t: Throwable) {
+            null
+        } ?: return Pair(false, "")
+
+        val node = if (!targetNodeId.isNullOrBlank()) {
+            findNodeById(root, targetNodeId)
+        } else {
+            root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        } ?: return Pair(false, "")
+
+        val text = node.text?.toString() ?: node.contentDescription?.toString() ?: ""
+        val ctx = service.applicationContext
+        val copied = setClipboard(ctx, text)
+        return Pair(copied, text)
+    }
+
+    /**
+     * Menempelkan teks clipboard ke node target atau node yang sedang fokus.
+     * Fallback ke shell ADB UID 2000: input keyevent 279 (KEYCODE_PASTE).
+     */
+    fun pasteText(service: AgentAccessibilityService, targetNodeId: String? = null): Boolean {
+        val root = try {
+            service.rootInActiveWindow
+        } catch (t: Throwable) {
+            null
         }
 
-        private fun searchSubtree(
-            node: android.view.accessibility.AccessibilityNodeInfo,
-            targetNodeId: String,
-            ancestorPath: String,
-            siblingIndex: Int
-        ): android.view.accessibility.AccessibilityNodeInfo? {
-            val count = node.childCount
-            val simpleClassName = (node.className?.toString() ?: "").substringAfterLast('.')
-            val currentPath = if (ancestorPath.isEmpty()) simpleClassName else "$ancestorPath/$simpleClassName"
+        var pasted = false
+        if (root != null) {
+            val node = if (!targetNodeId.isNullOrBlank()) {
+                findNodeById(root, targetNodeId)
+            } else {
+                root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                    ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+            }
 
-            for (i in 0 until count) {
-                val child = try {
-                    node.getChild(i)
-                } catch (t: Throwable) {
-                    android.util.Log.w("GoAgent", "Failed to get child $i: ${t.message}", t)
-                    null
-                } ?: continue
+            if (node != null) {
+                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                pasted = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            }
+        }
 
-                val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(child)
-                val childNodeId = ActionableNodeRegistry.generateNodeId(
-                    displayId = 0,
-                    windowId = child.windowId,
-                    packageName = simulated.packageName,
-                    resourceId = simulated.resourceId,
-                    className = simulated.className,
-                    text = simulated.text,
-                    contentDescription = simulated.contentDescription,
-                    ancestorPath = currentPath,
-                    siblingIndex = i,
-                    bounds = simulated.bounds
-                )
+        if (!pasted) {
+            val shell = PrivilegedShellHolder.get()
+            if (shell.status().connected) {
+                val res = shell.exec("input keyevent 279", 1000L)
+                pasted = res.ok
+            }
+        }
 
-                if (childNodeId == targetNodeId) {
-                    return child
+        return pasted
+    }
+
+    /**
+     * Menghapus teks bertahap:
+     * - characters <= 10: input keyevent 67 berulang.
+     * - characters > 10: batch input keyevent 67 67 ... atau ACTION_SET_TEXT "" jika fokus input teridentifikasi.
+     */
+    fun eraseText(service: AgentAccessibilityService, characters: Int = 1): Boolean {
+        val count = characters.coerceAtLeast(1)
+        val shell = PrivilegedShellHolder.get()
+
+        if (shell.status().connected) {
+            return if (count <= 10) {
+                var allOk = true
+                repeat(count) {
+                    val res = shell.exec("input keyevent 67", 500L)
+                    if (!res.ok) allOk = false
                 }
-
-                val found = searchSubtree(child, targetNodeId, currentPath, i)
-                if (found != null) {
-                    return found
+                allOk
+            } else {
+                val root = try { service.rootInActiveWindow } catch (_: Throwable) { null }
+                val focused = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                if (focused != null && focused.text != null && count >= focused.text.length) {
+                    val bundle = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+                    }
+                    focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                } else {
+                    val batchCmd = "input keyevent " + (1..count).joinToString(" ") { "67" }
+                    val res = shell.exec(batchCmd, (1000L + count * 50L).coerceAtMost(10_000L))
+                    res.ok
                 }
             }
-            return null
+        } else {
+            val root = try { service.rootInActiveWindow } catch (_: Throwable) { null }
+            val focused = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            return if (focused != null) {
+                val cur = focused.text?.toString() ?: ""
+                val newText = if (count >= cur.length) "" else cur.dropLast(count)
+                service.setText(newText)
+            } else {
+                false
+            }
         }
     }
 
