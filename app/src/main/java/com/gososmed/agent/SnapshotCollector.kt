@@ -30,16 +30,17 @@ object SnapshotCollector {
 
         override fun getDisplayMetrics(): SnapshotDisplay {
             val metrics = context.resources.displayMetrics
-            val wm = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager
             val rotation = try {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    context.display?.rotation ?: android.view.Surface.ROTATION_0
+                val dm = context.getSystemService(android.content.Context.DISPLAY_SERVICE) as? android.hardware.display.DisplayManager
+                val defaultDisplay = dm?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                if (defaultDisplay != null) {
+                    defaultDisplay.rotation
                 } else {
+                    val wm = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager
                     @Suppress("DEPRECATION")
                     wm?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
                 }
             } catch (t: Throwable) {
-                android.util.Log.w("GoAgent", "Failed to get display rotation: ${t.message}", t)
                 0
             }
 

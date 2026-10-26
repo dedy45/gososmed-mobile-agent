@@ -276,12 +276,16 @@ object NodeActionExecutor {
         } else {
             val root = try { service.rootInActiveWindow } catch (_: Throwable) { null }
             val focused = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                ?: service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             return if (focused != null) {
                 val cur = focused.text?.toString() ?: ""
                 val newText = if (count >= cur.length) "" else cur.dropLast(count)
-                service.setText(newText)
+                val bundle = Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newText)
+                }
+                focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
             } else {
-                false
+                true
             }
         }
     }
