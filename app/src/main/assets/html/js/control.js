@@ -197,8 +197,15 @@
     btnRotateScreen.addEventListener('click', () => {
       isLandscape = !isLandscape;
       if (phoneFrame) phoneFrame.classList.toggle('landscape', isLandscape);
+      document.body.classList.toggle('landscape-mode', isLandscape);
+      if (isLandscape) {
+        if (fileManagerPanel) fileManagerPanel.style.display = 'none';
+        const tel = document.getElementById('telemetryPanel');
+        if (tel) tel.style.display = 'none';
+        if (btnFileManager) btnFileManager.classList.remove('active');
+      }
       sendControl('rotate');
-      log(`Sent: Rotate (${isLandscape ? 'Landscape' : 'Portrait'})`, 'info');
+      log(`Sent: Rotate (${isLandscape ? 'Landscape (Panel Otomatis Sembunyi)' : 'Portrait'})`, 'info');
     });
   }
 
@@ -1341,8 +1348,11 @@
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
 
+  function isTextFile(name) {
+    return /\.(txt|log|json|xml|sh|properties|yaml|yml|csv|md|conf|cfg|ini)$/i.test(name);
+  }
   function isMediaFile(name) {
-    return /\.(mp4|mov|mkv|webm|jpg|jpeg|png|webp|gif)$/i.test(name);
+    return /\.(mp4|mov|mkv|webm|jpg|jpeg|png|webp|gif|txt|log|json|xml|sh|properties|yaml|yml|csv|md|conf|cfg|ini)$/i.test(name);
   }
   function isVideoFile(name) {
     return /\.(mp4|mov|mkv|webm)$/i.test(name);
@@ -1367,6 +1377,33 @@
       vid.style.borderRadius = '8px';
       vid.style.boxShadow = '0 10px 30px rgba(0,0,0,0.8)';
       previewContent.appendChild(vid);
+    } else if (isTextFile(file.name)) {
+      previewContent.innerHTML = '<div style="color: var(--text-muted); padding: 24px;">Memuat teks...</div>';
+      fetch(`/api/download?path=${encodeURIComponent(file.path)}`)
+        .then(r => r.text())
+        .then(text => {
+          previewContent.innerHTML = '';
+          const pre = document.createElement('pre');
+          pre.style.width = '100%';
+          pre.style.maxWidth = '85vw';
+          pre.style.maxHeight = '68vh';
+          pre.style.overflow = 'auto';
+          pre.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+          pre.style.fontSize = '0.78rem';
+          pre.style.lineHeight = '1.5';
+          pre.style.color = '#e2e8f0';
+          pre.style.background = '#020104';
+          pre.style.padding = '14px';
+          pre.style.borderRadius = '8px';
+          pre.style.border = '1px solid rgba(255,255,255,0.08)';
+          pre.style.whiteSpace = 'pre-wrap';
+          pre.style.wordBreak = 'break-all';
+          pre.textContent = text;
+          previewContent.appendChild(pre);
+        })
+        .catch(err => {
+          previewContent.innerHTML = `<div style="color: #ef4444; padding: 24px;">Gagal memuat teks: ${err.message}</div>`;
+        });
     } else {
       const img = document.createElement('img');
       img.src = mediaUrl;
@@ -1487,28 +1524,28 @@
 
       if (f.is_dir) {
         html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-          <td style="padding: 6px; text-align: center;">-</td>
-          <td style="padding: 6px 8px; word-break: break-all;">
-            <span class="fm-row-folder" data-folder="${encodeURIComponent(f.name)}" title="Klik untuk membuka folder">${icon} ${f.name}</span>
+          <td class="fm-col-cb" style="padding: 6px; text-align: center;">-</td>
+          <td class="fm-col-name" style="padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span class="fm-row-folder" data-folder="${encodeURIComponent(f.name)}" title="${f.name}">${icon} ${f.name}</span>
           </td>
-          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">Folder</td>
-          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
-          <td style="padding: 6px 8px; text-align: center;">
+          <td class="fm-col-size" style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem; text-align: right; white-space: nowrap;">Folder</td>
+          <td class="fm-col-date" style="padding: 6px 8px; color: var(--text-muted); font-size: 0.7rem; text-align: right; white-space: nowrap;">${formatTime(f.mtime)}</td>
+          <td class="fm-col-action" style="padding: 6px 8px; text-align: center; white-space: nowrap;">
             <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus folder">🗑️</button>
           </td>
         </tr>`;
       } else {
-        const previewBtn = isMediaFile(f.name) ? `<button class="fm-action-btn" data-preview="${encodeURIComponent(JSON.stringify({ name: f.name, path: fullPath, size: f.size, mtime: f.mtime }))}" title="Lihat Preview (Video/Foto)">👁️</button>` : '';
+        const previewBtn = isMediaFile(f.name) ? `<button class="fm-action-btn" data-preview="${encodeURIComponent(JSON.stringify({ name: f.name, path: fullPath, size: f.size, mtime: f.mtime }))}" title="Preview (Video/Foto/Teks)">👁️</button>` : '';
         html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-          <td style="padding: 6px; text-align: center;">
+          <td class="fm-col-cb" style="padding: 6px; text-align: center;">
             <input type="checkbox" class="fm-cb" data-path="${encodeURIComponent(fullPath)}" ${checked}>
           </td>
-          <td style="padding: 6px 8px; word-break: break-all;">
-            <span class="${isMediaFile(f.name) ? 'fm-row-media' : ''}" data-path="${encodeURIComponent(fullPath)}" style="${isMediaFile(f.name) ? 'cursor: pointer; color: #38bdf8;' : ''}">${icon} ${f.name}</span>
+          <td class="fm-col-name" style="padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span class="fm-filename ${isMediaFile(f.name) ? 'fm-row-media' : ''}" data-path="${encodeURIComponent(fullPath)}" title="${f.name}" style="${isMediaFile(f.name) ? 'cursor: pointer; color: #38bdf8;' : ''}">${icon} ${f.name}</span>
           </td>
-          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatBytes(f.size)}</td>
-          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
-          <td style="padding: 6px 8px; text-align: center; white-space: nowrap;">
+          <td class="fm-col-size" style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem; text-align: right; white-space: nowrap;">${formatBytes(f.size)}</td>
+          <td class="fm-col-date" style="padding: 6px 8px; color: var(--text-muted); font-size: 0.7rem; text-align: right; white-space: nowrap;">${formatTime(f.mtime)}</td>
+          <td class="fm-col-action" style="padding: 6px 8px; text-align: center; white-space: nowrap;">
             ${previewBtn}
             <button class="fm-action-btn" data-download="${encodeURIComponent(fullPath)}" title="Unduh ke PC">⬇️</button>
             <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus dari HP">🗑️</button>

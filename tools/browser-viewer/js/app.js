@@ -239,7 +239,17 @@
               if (msg.width && msg.height) {
                 const aspect = (msg.width / msg.height).toFixed(4);
                 document.documentElement.style.setProperty('--stream-aspect', aspect);
-                if (phoneFrame) phoneFrame.classList.toggle('landscape', msg.width > msg.height);
+                const isWide = msg.width > msg.height;
+                if (phoneFrame) phoneFrame.classList.toggle('landscape', isWide);
+                document.body.classList.toggle('landscape-mode', isWide);
+                if (isWide) {
+                  const fm = document.getElementById('fileManagerPanel');
+                  const tel = document.getElementById('telemetryPanel');
+                  const btnFm = document.getElementById('btnFileManager');
+                  if (fm) fm.style.display = 'none';
+                  if (tel) tel.style.display = 'none';
+                  if (btnFm) btnFm.classList.remove('active');
+                }
               }
             }
           } catch (_) {}

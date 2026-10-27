@@ -162,13 +162,14 @@ header.title-bar {
 main.workspace-area {
   flex: 1;
   width: 100%;
-  max-width: 1300px;
+  max-width: 100%;
   display: flex;
   justify-content: center;
   align-items: flex-start;
   gap: 20px;
-  padding: 20px 16px;
+  padding: 16px 20px;
   position: relative;
+  transition: all 0.25s ease;
 }
 
 /* Central Phone Viewport Container */
@@ -1080,13 +1081,14 @@ main.workspace-area {
 }
 /* WebADB File Manager Left Panel */
 .fm-panel {
-  width: 380px;
-  min-width: 320px;
-  max-width: 440px;
-  max-height: 85vh;
+  width: 480px;
+  min-width: 360px;
+  max-width: 540px;
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex-shrink: 0;
 }
 .fm-bookmarks {
   display: flex;
@@ -1124,8 +1126,9 @@ main.workspace-area {
 }
 .fm-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   text-align: left;
 }
 .fm-table th {
@@ -1136,6 +1139,25 @@ main.workspace-area {
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
   z-index: 2;
+  white-space: nowrap;
+}
+.fm-table th, .fm-table td {
+  padding: 6px 6px;
+  vertical-align: middle;
+}
+.fm-col-cb { width: 30px; text-align: center; }
+.fm-col-name { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm-col-size { width: 70px; text-align: right; white-space: nowrap; font-size: 0.72rem; color: var(--text-muted); }
+.fm-col-date { width: 98px; text-align: right; white-space: nowrap; font-size: 0.7rem; color: var(--text-muted); }
+.fm-col-action { width: 84px; text-align: center; white-space: nowrap; }
+
+.fm-filename {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 .fm-table tr {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
@@ -1144,14 +1166,16 @@ main.workspace-area {
 .fm-table tr:hover {
   background: rgba(255, 122, 47, 0.08);
 }
-.fm-table td {
-  padding: 6px 8px;
-  vertical-align: middle;
-}
 .fm-row-folder {
   cursor: pointer;
   font-weight: 600;
   color: #fbbf24;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 .fm-row-folder:hover {
   text-decoration: underline;
@@ -1174,5 +1198,79 @@ main.workspace-area {
   align-items: center;
   padding-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Landscape Auto-Hide for Side Panels */
+body.landscape-mode #fileManagerPanel,
+body.landscape-mode #telemetryPanel,
+.phone-frame.landscape ~ #telemetryPanel {
+  display: none !important;
+}
+body.landscape-mode .phone-container {
+  width: 100%;
+  justify-content: center;
+}
+.phone-frame.landscape .screen-viewport {
+  width: min(88vw, 960px);
+  height: min(76vh, 540px);
+}
+
+/* Mobile & Tablet Responsive Layout */
+@media (max-width: 1080px) {
+  header.title-bar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .title-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .title-right {
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    padding-top: 4px;
+  }
+  main.workspace-area {
+    flex-direction: column;
+    align-items: center;
+    padding: 8px;
+    gap: 16px;
+  }
+  .phone-container {
+    order: 1;
+    width: 100%;
+    justify-content: center;
+  }
+  .screen-viewport {
+    width: min(92vw, 360px);
+    max-height: 70vh;
+  }
+  .fm-panel {
+    order: 2;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    max-height: 60vh;
+  }
+  #telemetryPanel {
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+  }
+  .sidebar-toolbar {
+    position: fixed;
+    bottom: 12px;
+    right: 50%;
+    transform: translateX(50%);
+    top: auto;
+    flex-direction: row;
+    padding: 6px 10px;
+    overflow-x: auto;
+    max-width: 95vw;
+    z-index: 100;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.85);
+  }
 }
 .log-line.error { color: #ef4444; }
