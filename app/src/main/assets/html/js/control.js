@@ -1280,31 +1280,30 @@
   if (btnMaestroType) btnMaestroType.addEventListener('click', sendTextMaestro);
 
   // =========================================================================
-  // File Manager & Local-to-Phone Transfer Controller
+  // WebADB 1:1 Left-Docked File Manager Controller
   // =========================================================================
   const btnFileManager = document.getElementById('btnFileManager');
-  const fmBackdrop = document.getElementById('fmBackdrop');
-  const fmClose = document.getElementById('fmClose');
-  const fmDirSelect = document.getElementById('fmDirSelect');
+  const fileManagerPanel = document.getElementById('fileManagerPanel');
+  const btnFmClose = document.getElementById('btnFmClose');
+  const fmPathInput = document.getElementById('fmPathInput');
+  const fmBtnUp = document.getElementById('fmBtnUp');
+  const fmBtnRefresh = document.getElementById('fmBtnRefresh');
   const fmBtnUpload = document.getElementById('fmBtnUpload');
   const fmFileInput = document.getElementById('fmFileInput');
-  const fmBtnRefresh = document.getElementById('fmBtnRefresh');
   const fmFileTableBody = document.getElementById('fmFileTableBody');
+  const fmItemCount = document.getElementById('fmItemCount');
   const fmUploadProgress = document.getElementById('fmUploadProgress');
   const fmUploadStatus = document.getElementById('fmUploadStatus');
   const fmUploadBar = document.getElementById('fmUploadBar');
   const fmUploadPct = document.getElementById('fmUploadPct');
 
-  function getFmDir() {
-    return (fmDirSelect && fmDirSelect.value) || '/sdcard/DCIM/Camera';
-  }
+  let currentFmDir = '/sdcard/DCIM/Camera';
 
-  function requestFileList() {
-    const dir = getFmDir();
-    if (fmFileTableBody) {
-      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Memuat berkas...</td></tr>';
-    }
-    sendControl(JSON.stringify({ cmd: 'listFiles', dir: dir }));
+  function normalizePath(p) {
+    if (!p) return '/sdcard';
+    let s = p.replace(/\/+/g, '/');
+    if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
+    return s;
   }
 
   function formatBytes(bytes) {
@@ -1321,66 +1320,180 @@
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
 
-  function handleFilesUpload(files, targetDir) {
-    if (!files || !files.length) return;
-    const dir = targetDir || getFmDir();
-    const file = files[0];
+  async function requestFileList(dir) {
+    if (dir) currentFmDir = normalizePath(dir);
+    if (fmPathInput) fmPathInput.value = currentFmDir;
 
-    if (fmUploadProgress) {
-      fmUploadProgress.style.display = 'block';
-      if (fmUploadStatus) fmUploadStatus.textContent = `Mengunggah ${file.name} (${formatBytes(file.size)})...`;
-      if (fmUploadBar) fmUploadBar.style.width = '30%';
-      if (fmUploadPct) fmUploadPct.textContent = '30%';
+    // Update active chip state
+    document.querySelectorAll('.fm-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.path === currentFmDir);
+    });
+
+    if (fmFileTableBody) {
+      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>';
     }
 
-    log(`Memulai transfer file: ${file.name} -> ${dir}`, 'info');
+    // Try REST API first for instant response, with WebSocket fallback
+    try {
+      const resp = await fetch(`/api/files?dir=${encodeURIComponent(currentFmDir)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        renderFileList(data.files || []);
+        return;
+      }
+    } catch (_) {}
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
-      const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
-      if (fmUploadBar) fmUploadBar.style.width = '70%';
-      if (fmUploadPct) fmUploadPct.textContent = '70%';
+    // WebSocket fallback
+    sendControl(JSON.stringify({ cmd: 'listFiles', dir: currentFmDir }));
+  }
 
-      sendControl(JSON.stringify({
-        cmd: 'uploadFile',
-        filename: file.name,
-        dir: dir,
-        data: base64
-      }));
-    };
-    reader.onerror = (err) => {
-      log(`Gagal membaca file lokal: ${err}`, 'error');
-      if (fmUploadProgress) fmUploadProgress.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
+  function renderFileList(files) {
+    if (!fmFileTableBody) return;
+    if (!files || !files.length) {
+      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: var(--text-muted);">Folder kosong</td></tr>';
+      if (fmItemCount) fmItemCount.textContent = '0 item';
+      return;
+    }
+
+    if (fmItemCount) fmItemCount.textContent = `${files.length} item`;
+
+    // Sort folders first, then files by name
+    const sorted = [...files].sort((a, b) => {
+      if (a.is_dir && !b.is_dir) return -1;
+      if (!a.is_dir && b.is_dir) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    let html = '';
+    for (const f of sorted) {
+      const icon = f.is_dir ? '📁' : (f.name.match(/\.(mp4|mov|mkv)$/i) ? '🎬' : (f.name.match(/\.(jpg|jpeg|png|webp)$/i) ? '🖼️' : '📄'));
+      const fullPath = `${currentFmDir}/${f.name}`;
+
+      if (f.is_dir) {
+        html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <td style="padding: 6px 8px; word-break: break-all;">
+            <span class="fm-row-folder" data-folder="${encodeURIComponent(f.name)}" title="Klik untuk membuka folder">${icon} ${f.name}</span>
+          </td>
+          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">Folder</td>
+          <td style="padding: 6px 8px; text-align: center;">
+            <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus folder">🗑️</button>
+          </td>
+        </tr>`;
+      } else {
+        html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <td style="padding: 6px 8px; word-break: break-all;">${icon} ${f.name}</td>
+          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatBytes(f.size)}</td>
+          <td style="padding: 6px 8px; text-align: center; white-space: nowrap;">
+            <button class="fm-action-btn" data-download="${encodeURIComponent(fullPath)}" title="Unduh ke PC">⬇️</button>
+            <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus dari HP">🗑️</button>
+          </td>
+        </tr>`;
+      }
+    }
+    fmFileTableBody.innerHTML = html;
+
+    // Bind row click handlers
+    fmFileTableBody.querySelectorAll('.fm-row-folder').forEach(el => {
+      el.addEventListener('click', () => {
+        const folderName = decodeURIComponent(el.dataset.folder);
+        requestFileList(`${currentFmDir}/${folderName}`);
+      });
+    });
+
+    fmFileTableBody.querySelectorAll('[data-download]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const path = decodeURIComponent(btn.dataset.download);
+        window.open(`/api/download?path=${encodeURIComponent(path)}`, '_blank');
+      });
+    });
+
+    fmFileTableBody.querySelectorAll('[data-delete]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const path = decodeURIComponent(btn.dataset.delete);
+        const fname = path.split('/').pop();
+        if (!confirm(`Hapus "${fname}" dari HP?`)) return;
+        try {
+          const res = await fetch(`/api/delete?path=${encodeURIComponent(path)}`, { method: 'POST' });
+          if (res.ok) {
+            log(`Berkas "${fname}" berhasil dihapus.`, 'success');
+            requestFileList();
+          } else {
+            log(`Gagal menghapus berkas.`, 'error');
+          }
+        } catch (e) {
+          log(`Error delete: ${e.message}`, 'error');
+        }
+      });
+    });
   }
 
   window.GoControl = window.GoControl || {};
   window.GoControl.onFileList = (msg) => {
-    if (!fmFileTableBody) return;
-    if (!msg.files || !msg.files.length) {
-      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Folder kosong</td></tr>';
-      return;
-    }
-    let html = '';
-    for (const f of msg.files) {
-      const icon = f.is_dir ? '📁' : (f.name.match(/\.(mp4|mov|mkv)$/i) ? '🎬' : (f.name.match(/\.(jpg|jpeg|png|webp)$/i) ? '🖼️' : '📄'));
-      html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-        <td style="padding: 6px 10px; word-break: break-all;">${icon} ${f.name}</td>
-        <td style="padding: 6px 10px; color: var(--text-muted);">${f.is_dir ? '-' : formatBytes(f.size)}</td>
-        <td style="padding: 6px 10px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
-      </tr>`;
-    }
-    fmFileTableBody.innerHTML = html;
+    if (msg.dir) currentFmDir = normalizePath(msg.dir);
+    if (fmPathInput) fmPathInput.value = currentFmDir;
+    renderFileList(msg.files || []);
   };
 
-  window.GoControl.onUploadResult = (msg) => {
+  async function handleFilesUpload(files, targetDir) {
+    if (!files || !files.length) return;
+    const dir = targetDir || currentFmDir;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (fmUploadProgress) {
+        fmUploadProgress.style.display = 'block';
+        if (fmUploadStatus) fmUploadStatus.textContent = `Mengunggah (${i + 1}/${files.length}): ${file.name} (${formatBytes(file.size)})...`;
+        if (fmUploadBar) fmUploadBar.style.width = '20%';
+        if (fmUploadPct) fmUploadPct.textContent = '20%';
+      }
+
+      log(`Mengunggah ke HP: ${file.name} (${formatBytes(file.size)}) -> ${dir}`, 'info');
+
+      try {
+        const uploadUrl = `/api/upload?dir=${encodeURIComponent(dir)}&filename=${encodeURIComponent(file.name)}`;
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file
+        });
+        if (res.ok) {
+          log(`Transfer sukses: ${file.name} tersimpan dan diindeks ke galeri HP!`, 'success');
+        } else {
+          await uploadViaWebSocket(file, dir);
+        }
+      } catch (err) {
+        await uploadViaWebSocket(file, dir);
+      }
+    }
+
     if (fmUploadProgress) {
       if (fmUploadBar) fmUploadBar.style.width = '100%';
       if (fmUploadPct) fmUploadPct.textContent = '100%';
-      setTimeout(() => { fmUploadProgress.style.display = 'none'; }, 1000);
+      setTimeout(() => { fmUploadProgress.style.display = 'none'; }, 800);
     }
+    requestFileList();
+  }
+
+  function uploadViaWebSocket(file, dir) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+        sendControl(JSON.stringify({
+          cmd: 'uploadFile',
+          filename: file.name,
+          dir: dir,
+          data: base64
+        }));
+        resolve();
+      };
+      reader.onerror = () => resolve();
+      reader.readAsDataURL(file);
+    });
+  }
+
+  window.GoControl.onUploadResult = (msg) => {
     if (msg.ok) {
       log(`Transfer sukses: ${msg.filename} (${formatBytes(msg.size)}) telah diindeks ke galeri HP!`, 'success');
       requestFileList();
@@ -1389,51 +1502,85 @@
     }
   };
 
-  if (btnFileManager) {
-    btnFileManager.addEventListener('click', () => {
-      if (fmBackdrop) {
-        fmBackdrop.style.display = 'flex';
-        requestFileList();
+  // Bookmark Chips
+  document.querySelectorAll('.fm-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      requestFileList(chip.dataset.path);
+    });
+  });
+
+  // Up button (Parent folder)
+  if (fmBtnUp) {
+    fmBtnUp.addEventListener('click', () => {
+      if (currentFmDir === '/' || currentFmDir === '/sdcard') return;
+      const idx = currentFmDir.lastIndexOf('/');
+      const parent = idx <= 0 ? '/' : currentFmDir.substring(0, idx);
+      requestFileList(parent);
+    });
+  }
+
+  // Path input Enter navigation
+  if (fmPathInput) {
+    fmPathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        requestFileList(fmPathInput.value.trim());
       }
     });
   }
 
-  if (fmClose) {
-    fmClose.addEventListener('click', () => {
-      if (fmBackdrop) fmBackdrop.style.display = 'none';
-    });
-  }
+  if (fmBtnRefresh) fmBtnRefresh.addEventListener('click', () => requestFileList());
 
-  if (fmBtnRefresh) fmBtnRefresh.addEventListener('click', requestFileList);
-  if (fmDirSelect) fmDirSelect.addEventListener('change', requestFileList);
-
+  // Upload button
   if (fmBtnUpload && fmFileInput) {
     fmBtnUpload.addEventListener('click', () => fmFileInput.click());
     fmFileInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length) {
-        handleFilesUpload(e.target.files, getFmDir());
+        handleFilesUpload(e.target.files, currentFmDir);
         e.target.value = '';
       }
     });
   }
 
-  // Drag and Drop files onto phone viewport
-  const dropOverlay = document.getElementById('dropOverlay');
-  if (screenViewport) {
-    ['dragenter', 'dragover'].forEach(name => {
-      screenViewport.addEventListener(name, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (dropOverlay) dropOverlay.style.display = 'flex';
-      });
+  // Sidebar File Manager toggle button
+  if (btnFileManager) {
+    btnFileManager.addEventListener('click', () => {
+      if (!fileManagerPanel) return;
+      const isVisible = fileManagerPanel.style.display !== 'none';
+      fileManagerPanel.style.display = isVisible ? 'none' : 'flex';
+      btnFileManager.classList.toggle('active', !isVisible);
+      if (!isVisible) requestFileList();
+    });
+  }
+
+  // Close panel button
+  if (btnFmClose && fileManagerPanel) {
+    btnFmClose.addEventListener('click', () => {
+      fileManagerPanel.style.display = 'none';
+      if (btnFileManager) btnFileManager.classList.remove('active');
+    });
+  }
+
+  // Drag and drop onto screen viewport OR file manager panel
+  const dropTargets = [screenViewport, fileManagerPanel].filter(Boolean);
+  dropTargets.forEach(target => {
+    target.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dropOverlay) dropOverlay.style.display = 'flex';
     });
 
-    ['dragleave', 'dragend'].forEach(name => {
-      screenViewport.addEventListener(name, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (dropOverlay) dropOverlay.style.display = 'none';
-      });
+    target.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dropOverlay) dropOverlay.style.display = 'flex';
+    });
+  });
+
+  if (screenViewport) {
+    screenViewport.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dropOverlay) dropOverlay.style.display = 'none';
     });
 
     screenViewport.addEventListener('drop', (e) => {
@@ -1441,13 +1588,20 @@
       e.stopPropagation();
       if (dropOverlay) dropOverlay.style.display = 'none';
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        handleFilesUpload(e.dataTransfer.files, '/sdcard/DCIM/Camera');
+        handleFilesUpload(e.dataTransfer.files, currentFmDir);
       }
     });
   }
 
-  // Request initial IME
+  // Initial load: fetch file list and IME on start
+  requestFileList('/sdcard/DCIM/Camera');
   setTimeout(() => {
     sendControl(JSON.stringify({ cmd: 'getIme' }));
+    fetch('/api/ime').then(r => r.json()).then(data => {
+      if (data && data.default_ime_name) {
+        const badge = document.getElementById('valImeName');
+        if (badge) badge.textContent = `IME: ${data.default_ime_name}`;
+      }
+    }).catch(() => {});
   }, 1000);
 })();

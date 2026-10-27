@@ -47,6 +47,67 @@
   <!-- Main Workspace Area -->
   <main class="workspace-area">
 
+    <!-- Left-Docked File Manager Panel (WebADB Style 1:1) -->
+    <aside class="drawer-panel fm-panel" id="fileManagerPanel">
+      <div class="panel-header">
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; color: var(--ember-primary);">
+          <span>📁</span>
+          <span>FILE MANAGER (WebADB)</span>
+        </span>
+        <button class="log-clear" id="btnFmClose" title="Sembunyikan Panel">✕</button>
+      </div>
+
+      <!-- Quick Bookmarks -->
+      <div class="fm-bookmarks">
+        <button class="fm-chip active" data-path="/sdcard/DCIM/Camera">📷 Camera</button>
+        <button class="fm-chip" data-path="/sdcard/Download">📥 Download</button>
+        <button class="fm-chip" data-path="/sdcard/Movies">🎬 Movies</button>
+        <button class="fm-chip" data-path="/sdcard">📂 /sdcard</button>
+      </div>
+
+      <!-- Path & Actions Navigation Bar -->
+      <div class="fm-nav-bar">
+        <button class="btn btn-secondary" id="fmBtnUp" title="Folder Induk (Up)" style="padding: 5px 8px; font-size: 0.78rem;">⬆️</button>
+        <input type="text" id="fmPathInput" class="input-ws" style="flex: 1; font-size: 0.75rem; font-family: monospace; padding: 5px 8px;" value="/sdcard/DCIM/Camera">
+        <button class="btn btn-secondary" id="fmBtnRefresh" title="Muat ulang" style="padding: 5px 8px; font-size: 0.78rem;">⟳</button>
+        <button class="btn btn-primary" id="fmBtnUpload" title="Upload berkas dari PC ke HP" style="padding: 5px 10px; font-size: 0.75rem; font-weight: 600;">+ Upload</button>
+        <input type="file" id="fmFileInput" style="display: none;" multiple>
+      </div>
+
+      <!-- Upload Progress Bar -->
+      <div id="fmUploadProgress" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 10px; border-radius: 6px; font-size: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span id="fmUploadStatus">Mengunggah...</span>
+          <span id="fmUploadPct">0%</span>
+        </div>
+        <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+          <div id="fmUploadBar" style="width: 0%; height: 100%; background: var(--ember-primary); transition: width 0.2s;"></div>
+        </div>
+      </div>
+
+      <!-- File Explorer Table -->
+      <div class="fm-table-wrap">
+        <table class="fm-table">
+          <thead>
+            <tr>
+              <th style="padding: 8px 8px;">Nama Berkas</th>
+              <th style="padding: 8px 6px; width: 75px;">Ukuran</th>
+              <th style="padding: 8px 6px; width: 68px; text-align: center;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="fmFileTableBody">
+            <tr><td colspan="3" style="padding: 24px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer Status -->
+      <div class="fm-footer">
+        <span id="fmItemCount" style="color: var(--text-muted); font-size: 0.72rem;">0 item</span>
+        <span style="color: var(--text-muted); font-size: 0.72rem;">Tarik &amp; lepas berkas ke sini</span>
+      </div>
+    </aside>
+
     <!-- Phone Viewport Stage -->
     <div class="phone-container">
 
@@ -287,61 +348,6 @@
       </footer>
     </div>
 
-  <!-- File Manager & Transfer Modal -->
-  <div class="gpc-backdrop" id="fmBackdrop" style="display: none;">
-    <div class="gpc-modal" style="width: 580px; max-width: 95vw;" role="dialog" aria-modal="true" aria-label="File Manager &amp; Transfer">
-      <header class="gpc-head">
-        <span class="gpc-title">📁 File Manager &amp; Transfer HP</span>
-        <div class="gpc-head-actions">
-          <button class="gpc-icon-btn" id="fmClose" title="Tutup">✕</button>
-        </div>
-      </header>
-
-      <div class="fm-body" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-        <div class="fm-toolbar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Folder:</span>
-            <select id="fmDirSelect" class="input-ws" style="width: 220px; font-size: 0.8rem; padding: 4px 8px;">
-              <option value="/sdcard/DCIM/Camera">/sdcard/DCIM/Camera (Galeri)</option>
-              <option value="/sdcard/Download">/sdcard/Download</option>
-              <option value="/sdcard/Movies">/sdcard/Movies</option>
-            </select>
-          </div>
-          <div style="display: flex; gap: 6px;">
-            <input type="file" id="fmFileInput" style="display: none;" multiple>
-            <button class="btn btn-primary" id="fmBtnUpload" style="font-size: 0.8rem; padding: 6px 12px;">+ Upload Berkas PC</button>
-            <button class="btn btn-secondary" id="fmBtnRefresh" style="font-size: 0.8rem; padding: 6px 10px;" title="Muat ulang berkas">⟳</button>
-          </div>
-        </div>
-
-        <div id="fmUploadProgress" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px; font-size: 0.78rem;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span id="fmUploadStatus">Mengunggah...</span>
-            <span id="fmUploadPct">0%</span>
-          </div>
-          <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
-            <div id="fmUploadBar" style="width: 0%; height: 100%; background: var(--ember-primary); transition: width 0.2s;"></div>
-          </div>
-        </div>
-
-        <div class="fm-file-table-wrap" style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.3);">
-          <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem; text-align: left;">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); background: rgba(255,255,255,0.02);">
-                <th style="padding: 8px 10px;">Nama Berkas</th>
-                <th style="padding: 8px 10px; width: 85px;">Ukuran</th>
-                <th style="padding: 8px 10px; width: 130px;">Waktu</th>
-              </tr>
-            </thead>
-            <tbody id="fmFileTableBody">
-              <tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Memuat berkas...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-  </div>
 
   <!-- Modular Scripts -->
   <script src="/js/stream.js"></script>

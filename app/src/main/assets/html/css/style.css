@@ -1078,7 +1078,101 @@ main.workspace-area {
   display: block;
   margin-bottom: 8px;
 }
-.fm-file-table-wrap table tr:hover td {
+/* WebADB File Manager Left Panel */
+.fm-panel {
+  width: 380px;
+  min-width: 320px;
+  max-width: 440px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fm-bookmarks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fm-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.fm-chip:hover, .fm-chip.active {
+  background: rgba(255, 122, 47, 0.25);
+  border-color: var(--ember-primary);
+  color: #fff;
+}
+.fm-nav-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.fm-table-wrap {
+  flex: 1;
+  min-height: 280px;
+  max-height: 480px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #050207;
+}
+.fm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  text-align: left;
+}
+.fm-table th {
+  position: sticky;
+  top: 0;
+  background: #0f0717;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  z-index: 2;
+}
+.fm-table tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s;
+}
+.fm-table tr:hover {
   background: rgba(255, 122, 47, 0.08);
+}
+.fm-table td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+.fm-row-folder {
+  cursor: pointer;
+  font-weight: 600;
+  color: #fbbf24;
+}
+.fm-row-folder:hover {
+  text-decoration: underline;
+}
+.fm-action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  transition: background 0.15s;
+}
+.fm-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.fm-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 .log-line.error { color: #ef4444; }

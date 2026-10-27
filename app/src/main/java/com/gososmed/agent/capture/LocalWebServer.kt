@@ -613,6 +613,97 @@ button:active{transform:translateY(1px)}
                     socket.close()
                     return
                 }
+                if (rawPath == "/api/download") {
+                    val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
+                    val query = fullUrl.substringAfter('?', "")
+                    val filePath = query.split('&').find { it.startsWith("path=") }?.substringAfter("path=")?.let {
+                        try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+                    }
+                    val file = filePath?.let { java.io.File(it) }
+                    if (file != null && file.exists() && file.isFile) {
+                        val header = "HTTP/1.1 200 OK\r\n" +
+                                     "Content-Type: application/octet-stream\r\n" +
+                                     "Content-Disposition: attachment; filename=\"${file.name}\"\r\n" +
+                                     "Content-Length: ${file.length()}\r\n" +
+                                     "Access-Control-Allow-Origin: *\r\n" +
+                                     "Connection: close\r\n\r\n"
+                        output.write(header.toByteArray(Charsets.UTF_8))
+                        file.inputStream().use { it.copyTo(output) }
+                    } else {
+                        val msg = "File not found".toByteArray()
+                        output.write("HTTP/1.1 404 Not Found\r\nContent-Length: ${msg.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                        output.write(msg)
+                    }
+                    output.flush()
+                    socket.close()
+                    return
+                }
+
+                if (rawPath == "/api/delete") {
+                    val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
+                    val query = fullUrl.substringAfter('?', "")
+                    val filePath = query.split('&').find { it.startsWith("path=") }?.substringAfter("path=")?.let {
+                        try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+                    }
+                    val file = filePath?.let { java.io.File(it) }
+                    val deleted = file != null && file.delete()
+                    if (deleted && context != null && filePath != null) {
+                        android.media.MediaScannerConnection.scanFile(context, arrayOf(filePath), null) { _, _ -> }
+                    }
+                    val json = org.json.JSONObject().apply {
+                        put("ok", deleted)
+                        put("path", filePath ?: "")
+                    }
+                    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    output.write(jsonBytes)
+                    output.flush()
+                    socket.close()
+                    return
+                }
+
+                if (rawPath == "/api/upload") {
+                    val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
+                    val query = fullUrl.substringAfter('?', "")
+                    val filename = query.split('&').find { it.startsWith("filename=") }?.substringAfter("filename=")?.let {
+                        try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+                    } ?: "upload_${System.currentTimeMillis()}.bin"
+                    val dirParam = query.split('&').find { it.startsWith("dir=") }?.substringAfter("dir=")?.let {
+                        try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+                    } ?: "/sdcard/DCIM/Camera"
+                    val dir = java.io.File(dirParam).apply { mkdirs() }
+                    val targetFile = java.io.File(dir, filename)
+                    val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+
+                    if (contentLength > 0) {
+                        java.io.FileOutputStream(targetFile).use { fos ->
+                            val buf = CharArray(8192)
+                            var remaining = contentLength
+                            while (remaining > 0) {
+                                val r = reader.read(buf, 0, Math.min(buf.size, remaining))
+                                if (r <= 0) break
+                                val bytes = String(buf, 0, r).toByteArray(Charsets.ISO_8859_1)
+                                fos.write(bytes)
+                                remaining -= r
+                            }
+                        }
+                    }
+                    if (context != null) {
+                        android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null) { _, _ -> }
+                    }
+                    val json = org.json.JSONObject().apply {
+                        put("ok", true)
+                        put("path", targetFile.absolutePath)
+                        put("filename", filename)
+                        put("size", targetFile.length())
+                    }
+                    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    output.write(jsonBytes)
+                    output.flush()
+                    socket.close()
+                    return
+                }
                 // Static assets router
                 if (rawPath.contains("..")) {
                     val msg = "Not Found".toByteArray()
