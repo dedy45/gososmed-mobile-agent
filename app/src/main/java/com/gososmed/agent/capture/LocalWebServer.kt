@@ -407,21 +407,56 @@ button:active{transform:translateY(1px)}
 
     private fun handleClient(socket: Socket, context: Context?) {
         try {
-            val input = socket.getInputStream()
+            val rawInput = socket.getInputStream()
+            val input = java.io.BufferedInputStream(rawInput, 65536)
             val output = socket.getOutputStream()
-            val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
 
-            val requestLine = reader.readLine() ?: return socket.close()
+            fun readHttpHeaderLine(): String? {
+                val sb = java.lang.StringBuilder()
+                var prev = -1
+                var readCount = 0
+                while (true) {
+                    val b = input.read()
+                    if (b == -1) {
+                        if (readCount == 0) return null
+                        break
+                    }
+                    readCount++
+                    if (b == '\n'.code) {
+                        if (prev == '\r'.code && sb.isNotEmpty()) {
+                            sb.setLength(sb.length - 1)
+                        }
+                        break
+                    }
+                    sb.append(b.toChar())
+                    prev = b
+                }
+                return sb.toString()
+            }
+
+            val requestLine = readHttpHeaderLine() ?: return socket.close()
             val headers = mutableMapOf<String, String>()
-            var line: String? = reader.readLine()
-            while (!line.isNullOrBlank()) {
+            while (true) {
+                val line = readHttpHeaderLine() ?: break
+                if (line.isEmpty()) break
                 val idx = line.indexOf(':')
                 if (idx > 0) {
                     val k = line.substring(0, idx).trim().lowercase()
                     val v = line.substring(idx + 1).trim()
                     headers[k] = v
                 }
-                line = reader.readLine()
+            }
+
+            if (requestLine.startsWith("OPTIONS ")) {
+                val corsHeader = "HTTP/1.1 204 No Content\r\n" +
+                                 "Access-Control-Allow-Origin: *\r\n" +
+                                 "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
+                                 "Access-Control-Allow-Headers: Content-Type, Content-Length\r\n" +
+                                 "Connection: close\r\n\r\n"
+                output.write(corsHeader.toByteArray(Charsets.UTF_8))
+                output.flush()
+                socket.close()
+                return
             }
 
             val isWsUpgrade = headers["upgrade"]?.equals("websocket", ignoreCase = true) == true
@@ -603,7 +638,7 @@ button:active{transform:translateY(1px)}
                     socket.close()
                     return
                 }
-                if (rawPath == "/api/download") {
+                if (rawPath == "/api/download" || rawPath == "/api/preview") {
                     val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
                     val query = fullUrl.substringAfter('?', "")
                     val filePath = query.split('&').find { it.startsWith("path=") }?.substringAfter("path=")?.let {
@@ -611,11 +646,27 @@ button:active{transform:translateY(1px)}
                     }
                     val file = filePath?.let { java.io.File(it) }
                     if (file != null && file.exists() && file.isFile) {
+                        val ext = file.extension.lowercase()
+                        val contentType = when (ext) {
+                            "mp4" -> "video/mp4"
+                            "mov" -> "video/quicktime"
+                            "mkv" -> "video/x-matroska"
+                            "webm" -> "video/webm"
+                            "jpg", "jpeg" -> "image/jpeg"
+                            "png" -> "image/png"
+                            "webp" -> "image/webp"
+                            "gif" -> "image/gif"
+                            else -> "application/octet-stream"
+                        }
+                        val isPreview = rawPath == "/api/preview" || query.contains("preview=1")
+                        val disp = if (isPreview) "inline" else "attachment; filename=\"${file.name}\""
                         val header = "HTTP/1.1 200 OK\r\n" +
-                                     "Content-Type: application/octet-stream\r\n" +
-                                     "Content-Disposition: attachment; filename=\"${file.name}\"\r\n" +
+                                     "Content-Type: $contentType\r\n" +
+                                     "Content-Disposition: $disp\r\n" +
                                      "Content-Length: ${file.length()}\r\n" +
                                      "Access-Control-Allow-Origin: *\r\n" +
+                                     "Accept-Ranges: bytes\r\n" +
+                                     "Cache-Control: public, max-age=3600\r\n" +
                                      "Connection: close\r\n\r\n"
                         output.write(header.toByteArray(Charsets.UTF_8))
                         file.inputStream().use { it.copyTo(output) }
@@ -663,19 +714,20 @@ button:active{transform:translateY(1px)}
                     } ?: "/sdcard/DCIM/Camera"
                     val dir = java.io.File(dirParam).apply { mkdirs() }
                     val targetFile = java.io.File(dir, filename)
-                    val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+                    val contentLength = headers["content-length"]?.toLongOrNull() ?: 0L
 
                     if (contentLength > 0) {
                         java.io.FileOutputStream(targetFile).use { fos ->
-                            val buf = CharArray(8192)
+                            val buf = ByteArray(65536)
                             var remaining = contentLength
                             while (remaining > 0) {
-                                val r = reader.read(buf, 0, Math.min(buf.size, remaining))
+                                val toRead = Math.min(buf.size.toLong(), remaining).toInt()
+                                val r = input.read(buf, 0, toRead)
                                 if (r <= 0) break
-                                val bytes = String(buf, 0, r).toByteArray(Charsets.ISO_8859_1)
-                                fos.write(bytes)
+                                fos.write(buf, 0, r)
                                 remaining -= r
                             }
+                            fos.flush()
                         }
                     }
                     if (context != null) {

@@ -73,6 +73,28 @@
         <button class="btn btn-primary" id="fmBtnUpload" title="Upload berkas dari PC ke HP" style="padding: 5px 10px; font-size: 0.75rem; font-weight: 600;">+ Upload</button>
         <input type="file" id="fmFileInput" style="display: none;" multiple>
       </div>
+      <!-- Search, Sort & Filter Bar -->
+      <div class="fm-filter-row" style="display: flex; gap: 6px; align-items: center;">
+        <input type="text" id="fmSearchInput" class="input-ws" style="flex: 1; font-size: 0.75rem; padding: 4px 8px;" placeholder="🔍 Cari berkas...">
+        <select id="fmSortSelect" class="input-ws" style="width: 145px; font-size: 0.75rem; padding: 4px 6px; cursor: pointer;">
+          <option value="date_desc">Tanggal ▼ (Terbaru)</option>
+          <option value="date_asc">Tanggal ▲ (Terlama)</option>
+          <option value="name_asc">Nama (A - Z)</option>
+          <option value="name_desc">Nama (Z - A)</option>
+          <option value="size_desc">Ukuran ▼ (Besar)</option>
+          <option value="size_asc">Ukuran ▲ (Kecil)</option>
+        </select>
+      </div>
+
+      <!-- Batch Selection Action Bar -->
+      <div id="fmBatchBar" class="fm-batch-bar" style="display: none; justify-content: space-between; align-items: center; background: rgba(255, 122, 47, 0.15); border: 1px solid var(--ember-primary); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; font-weight: 600;">
+        <span id="fmBatchCount">0 dipilih</span>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-secondary" id="fmBatchDownload" style="padding: 3px 8px; font-size: 0.72rem;">⬇️ Unduh</button>
+          <button class="btn btn-danger" id="fmBatchDelete" style="padding: 3px 8px; font-size: 0.72rem; background: #dc2626; color: #fff;">🗑️ Hapus</button>
+          <button class="log-clear" id="fmBatchClear" style="font-size: 0.72rem;">✕</button>
+        </div>
+      </div>
 
       <!-- Upload Progress Bar -->
       <div id="fmUploadProgress" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 10px; border-radius: 6px; font-size: 0.75rem;">
@@ -81,7 +103,7 @@
           <span id="fmUploadPct">0%</span>
         </div>
         <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
-          <div id="fmUploadBar" style="width: 0%; height: 100%; background: var(--ember-primary); transition: width 0.2s;"></div>
+          <div id="fmUploadBar" style="width: 0%; height: 100%; background: var(--ember-primary); transition: width 0.1s linear;"></div>
         </div>
       </div>
 
@@ -90,13 +112,17 @@
         <table class="fm-table">
           <thead>
             <tr>
-              <th style="padding: 8px 8px;">Nama Berkas</th>
-              <th style="padding: 8px 6px; width: 75px;">Ukuran</th>
-              <th style="padding: 8px 6px; width: 68px; text-align: center;">Aksi</th>
+              <th style="padding: 8px 6px; width: 30px; text-align: center;">
+                <input type="checkbox" id="fmSelectAll" title="Pilih Semua">
+              </th>
+              <th style="padding: 8px 6px; cursor: pointer;" id="fmThName" title="Urutkan nama">Nama ↕</th>
+              <th style="padding: 8px 6px; width: 75px; cursor: pointer;" id="fmThSize" title="Urutkan ukuran">Ukuran ↕</th>
+              <th style="padding: 8px 6px; width: 85px; cursor: pointer;" id="fmThDate" title="Urutkan tanggal">Waktu ↕</th>
+              <th style="padding: 8px 6px; width: 85px; text-align: center;">Aksi</th>
             </tr>
           </thead>
           <tbody id="fmFileTableBody">
-            <tr><td colspan="3" style="padding: 24px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>
+            <tr><td colspan="5" style="padding: 24px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>
           </tbody>
         </table>
       </div>
@@ -349,6 +375,26 @@
     </div>
 
 
+
+  <!-- Media Preview Lightbox Modal (Images & Videos) -->
+  <div class="gpc-backdrop" id="previewModal" style="display: none; z-index: 200;">
+    <div class="gpc-modal" style="width: auto; max-width: 90vw; background: #0c0612; border: 1px solid var(--border-color); padding: 0;" role="dialog" aria-modal="true" aria-label="Media Preview">
+      <header class="gpc-head" style="padding: 10px 16px;">
+        <span class="gpc-title" id="previewTitle" style="font-size: 0.85rem; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Preview Media</span>
+        <div class="gpc-head-actions">
+          <button class="btn btn-secondary" id="previewBtnDownload" style="padding: 4px 10px; font-size: 0.75rem;">⬇️ Unduh</button>
+          <button class="gpc-icon-btn" id="previewBtnClose" title="Tutup Preview (Esc)">✕</button>
+        </div>
+      </header>
+      <div id="previewContent" style="padding: 16px; display: flex; justify-content: center; align-items: center; min-width: 320px; min-height: 240px; max-height: 80vh;">
+        <!-- Dynamic video or img injected here -->
+      </div>
+      <footer style="padding: 8px 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+        <span id="previewMeta">-</span>
+        <span>Tekan <b>Esc</b> untuk menutup</span>
+      </footer>
+    </div>
+  </div>
   <!-- Modular Scripts -->
   <script src="/js/stream.js"></script>
   <script src="/js/app.js"></script>

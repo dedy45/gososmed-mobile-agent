@@ -1296,8 +1296,29 @@
   const fmUploadStatus = document.getElementById('fmUploadStatus');
   const fmUploadBar = document.getElementById('fmUploadBar');
   const fmUploadPct = document.getElementById('fmUploadPct');
+  const fmSearchInput = document.getElementById('fmSearchInput');
+  const fmSortSelect = document.getElementById('fmSortSelect');
+  const fmSelectAll = document.getElementById('fmSelectAll');
+  const fmBatchBar = document.getElementById('fmBatchBar');
+  const fmBatchCount = document.getElementById('fmBatchCount');
+  const fmBatchDownload = document.getElementById('fmBatchDownload');
+  const fmBatchDelete = document.getElementById('fmBatchDelete');
+  const fmBatchClear = document.getElementById('fmBatchClear');
+
+  // Preview Lightbox elements
+  const previewModal = document.getElementById('previewModal');
+  const previewTitle = document.getElementById('previewTitle');
+  const previewContent = document.getElementById('previewContent');
+  const previewMeta = document.getElementById('previewMeta');
+  const previewBtnDownload = document.getElementById('previewBtnDownload');
+  const previewBtnClose = document.getElementById('previewBtnClose');
 
   let currentFmDir = '/sdcard/DCIM/Camera';
+  let rawFiles = [];
+  let selectedFiles = new Set();
+  let currentSort = 'date_desc';
+  let currentSearch = '';
+  let currentPreviewPath = null;
 
   function normalizePath(p) {
     if (!p) return '/sdcard';
@@ -1320,9 +1341,72 @@
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }
 
+  function isMediaFile(name) {
+    return /\.(mp4|mov|mkv|webm|jpg|jpeg|png|webp|gif)$/i.test(name);
+  }
+  function isVideoFile(name) {
+    return /\.(mp4|mov|mkv|webm)$/i.test(name);
+  }
+
+  function openPreview(file) {
+    if (!previewModal || !previewContent) return;
+    currentPreviewPath = file.path;
+    previewTitle.textContent = file.name;
+    previewMeta.textContent = `${formatBytes(file.size)} • ${formatTime(file.mtime)}`;
+    previewContent.innerHTML = '';
+
+    const mediaUrl = `/api/preview?path=${encodeURIComponent(file.path)}`;
+    if (isVideoFile(file.name)) {
+      const vid = document.createElement('video');
+      vid.src = mediaUrl;
+      vid.controls = true;
+      vid.autoplay = true;
+      vid.playsInline = true;
+      vid.style.maxWidth = '85vw';
+      vid.style.maxHeight = '72vh';
+      vid.style.borderRadius = '8px';
+      vid.style.boxShadow = '0 10px 30px rgba(0,0,0,0.8)';
+      previewContent.appendChild(vid);
+    } else {
+      const img = document.createElement('img');
+      img.src = mediaUrl;
+      img.alt = file.name;
+      img.style.maxWidth = '85vw';
+      img.style.maxHeight = '72vh';
+      img.style.borderRadius = '8px';
+      img.style.objectFit = 'contain';
+      previewContent.appendChild(img);
+    }
+    previewModal.style.display = 'flex';
+  }
+
+  function closePreview() {
+    if (!previewModal) return;
+    const vid = previewContent?.querySelector('video');
+    if (vid) { vid.pause(); vid.src = ''; }
+    previewModal.style.display = 'none';
+    currentPreviewPath = null;
+  }
+
+  if (previewBtnClose) previewBtnClose.addEventListener('click', closePreview);
+  if (previewBtnDownload) {
+    previewBtnDownload.addEventListener('click', () => {
+      if (currentPreviewPath) {
+        window.open(`/api/download?path=${encodeURIComponent(currentPreviewPath)}`, '_blank');
+      }
+    });
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && previewModal && previewModal.style.display !== 'none') {
+      closePreview();
+    }
+  });
+
   async function requestFileList(dir) {
     if (dir) currentFmDir = normalizePath(dir);
     if (fmPathInput) fmPathInput.value = currentFmDir;
+    selectedFiles.clear();
+    updateBatchBar();
 
     // Update active chip state
     document.querySelectorAll('.fm-chip').forEach(chip => {
@@ -1330,15 +1414,15 @@
     });
 
     if (fmFileTableBody) {
-      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>';
+      fmFileTableBody.innerHTML = '<tr><td colspan="5" style="padding: 24px; text-align: center; color: var(--text-muted);">Memuat berkas dari HP...</td></tr>';
     }
 
-    // Try REST API first for instant response, with WebSocket fallback
     try {
       const resp = await fetch(`/api/files?dir=${encodeURIComponent(currentFmDir)}`);
       if (resp.ok) {
         const data = await resp.json();
-        renderFileList(data.files || []);
+        rawFiles = data.files || [];
+        applySortAndRender();
         return;
       }
     } catch (_) {}
@@ -1347,43 +1431,85 @@
     sendControl(JSON.stringify({ cmd: 'listFiles', dir: currentFmDir }));
   }
 
-  function renderFileList(files) {
+  function applySortAndRender() {
+    let filtered = rawFiles.filter(f => {
+      if (!currentSearch) return true;
+      return f.name.toLowerCase().includes(currentSearch.toLowerCase());
+    });
+
+    // Sorting
+    filtered.sort((a, b) => {
+      if (a.is_dir && !b.is_dir) return -1;
+      if (!a.is_dir && b.is_dir) return 1;
+      switch (currentSort) {
+        case 'date_asc': return (a.mtime || 0) - (b.mtime || 0);
+        case 'date_desc': return (b.mtime || 0) - (a.mtime || 0);
+        case 'name_asc': return a.name.localeCompare(b.name);
+        case 'name_desc': return b.name.localeCompare(a.name);
+        case 'size_asc': return (a.size || 0) - (b.size || 0);
+        case 'size_desc': return (b.size || 0) - (a.size || 0);
+        default: return (b.mtime || 0) - (a.mtime || 0);
+      }
+    });
+
+    renderTable(filtered);
+  }
+
+  function updateBatchBar() {
+    const count = selectedFiles.size;
+    if (fmBatchBar) {
+      fmBatchBar.style.display = count > 0 ? 'flex' : 'none';
+    }
+    if (fmBatchCount) {
+      fmBatchCount.textContent = `${count} dipilih`;
+    }
+    if (fmSelectAll) {
+      const totalFiles = rawFiles.filter(f => !f.is_dir).length;
+      fmSelectAll.checked = count > 0 && count === totalFiles;
+    }
+  }
+
+  function renderTable(files) {
     if (!fmFileTableBody) return;
     if (!files || !files.length) {
-      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: var(--text-muted);">Folder kosong</td></tr>';
+      fmFileTableBody.innerHTML = '<tr><td colspan="5" style="padding: 24px; text-align: center; color: var(--text-muted);">Folder kosong</td></tr>';
       if (fmItemCount) fmItemCount.textContent = '0 item';
       return;
     }
 
     if (fmItemCount) fmItemCount.textContent = `${files.length} item`;
 
-    // Sort folders first, then files by name
-    const sorted = [...files].sort((a, b) => {
-      if (a.is_dir && !b.is_dir) return -1;
-      if (!a.is_dir && b.is_dir) return 1;
-      return a.name.localeCompare(b.name);
-    });
-
     let html = '';
-    for (const f of sorted) {
-      const icon = f.is_dir ? '📁' : (f.name.match(/\.(mp4|mov|mkv)$/i) ? '🎬' : (f.name.match(/\.(jpg|jpeg|png|webp)$/i) ? '🖼️' : '📄'));
+    for (const f of files) {
+      const icon = f.is_dir ? '📁' : (isVideoFile(f.name) ? '🎬' : (isMediaFile(f.name) ? '🖼️' : '📄'));
       const fullPath = `${currentFmDir}/${f.name}`;
+      const checked = selectedFiles.has(fullPath) ? 'checked' : '';
 
       if (f.is_dir) {
         html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <td style="padding: 6px; text-align: center;">-</td>
           <td style="padding: 6px 8px; word-break: break-all;">
             <span class="fm-row-folder" data-folder="${encodeURIComponent(f.name)}" title="Klik untuk membuka folder">${icon} ${f.name}</span>
           </td>
           <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">Folder</td>
+          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
           <td style="padding: 6px 8px; text-align: center;">
             <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus folder">🗑️</button>
           </td>
         </tr>`;
       } else {
+        const previewBtn = isMediaFile(f.name) ? `<button class="fm-action-btn" data-preview="${encodeURIComponent(JSON.stringify({ name: f.name, path: fullPath, size: f.size, mtime: f.mtime }))}" title="Lihat Preview (Video/Foto)">👁️</button>` : '';
         html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-          <td style="padding: 6px 8px; word-break: break-all;">${icon} ${f.name}</td>
+          <td style="padding: 6px; text-align: center;">
+            <input type="checkbox" class="fm-cb" data-path="${encodeURIComponent(fullPath)}" ${checked}>
+          </td>
+          <td style="padding: 6px 8px; word-break: break-all;">
+            <span class="${isMediaFile(f.name) ? 'fm-row-media' : ''}" data-path="${encodeURIComponent(fullPath)}" style="${isMediaFile(f.name) ? 'cursor: pointer; color: #38bdf8;' : ''}">${icon} ${f.name}</span>
+          </td>
           <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatBytes(f.size)}</td>
+          <td style="padding: 6px 8px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
           <td style="padding: 6px 8px; text-align: center; white-space: nowrap;">
+            ${previewBtn}
             <button class="fm-action-btn" data-download="${encodeURIComponent(fullPath)}" title="Unduh ke PC">⬇️</button>
             <button class="fm-action-btn" data-delete="${encodeURIComponent(fullPath)}" title="Hapus dari HP">🗑️</button>
           </td>
@@ -1392,11 +1518,26 @@
     }
     fmFileTableBody.innerHTML = html;
 
-    // Bind row click handlers
+    // Bind row handlers
     fmFileTableBody.querySelectorAll('.fm-row-folder').forEach(el => {
       el.addEventListener('click', () => {
         const folderName = decodeURIComponent(el.dataset.folder);
         requestFileList(`${currentFmDir}/${folderName}`);
+      });
+    });
+
+    fmFileTableBody.querySelectorAll('[data-preview]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fileInfo = JSON.parse(decodeURIComponent(btn.dataset.preview));
+        openPreview(fileInfo);
+      });
+    });
+
+    fmFileTableBody.querySelectorAll('.fm-row-media').forEach(el => {
+      el.addEventListener('click', () => {
+        const p = decodeURIComponent(el.dataset.path);
+        const f = files.find(x => `${currentFmDir}/${x.name}` === p);
+        if (f) openPreview({ name: f.name, path: p, size: f.size, mtime: f.mtime });
       });
     });
 
@@ -1425,72 +1566,179 @@
         }
       });
     });
+
+    // Checkbox toggles
+    fmFileTableBody.querySelectorAll('.fm-cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const path = decodeURIComponent(cb.dataset.path);
+        if (cb.checked) selectedFiles.add(path);
+        else selectedFiles.delete(path);
+        updateBatchBar();
+      });
+    });
   }
+
+  // Select All Checkbox
+  if (fmSelectAll) {
+    fmSelectAll.addEventListener('change', () => {
+      const isChecked = fmSelectAll.checked;
+      selectedFiles.clear();
+      if (isChecked) {
+        rawFiles.filter(f => !f.is_dir).forEach(f => {
+          selectedFiles.add(`${currentFmDir}/${f.name}`);
+        });
+      }
+      fmFileTableBody?.querySelectorAll('.fm-cb').forEach(cb => {
+        cb.checked = isChecked;
+      });
+      updateBatchBar();
+    });
+  }
+
+  // Batch Download
+  if (fmBatchDownload) {
+    fmBatchDownload.addEventListener('click', () => {
+      if (!selectedFiles.size) return;
+      selectedFiles.forEach(path => {
+        window.open(`/api/download?path=${encodeURIComponent(path)}`, '_blank');
+      });
+    });
+  }
+
+  // Batch Delete
+  if (fmBatchDelete) {
+    fmBatchDelete.addEventListener('click', async () => {
+      const count = selectedFiles.size;
+      if (!count || !confirm(`Hapus ${count} berkas yang dipilih secara permanen dari HP?`)) return;
+      let deleted = 0;
+      for (const path of selectedFiles) {
+        try {
+          const res = await fetch(`/api/delete?path=${encodeURIComponent(path)}`, { method: 'POST' });
+          if (res.ok) deleted++;
+        } catch (_) {}
+      }
+      log(`${deleted} dari ${count} berkas berhasil dihapus.`, 'success');
+      selectedFiles.clear();
+      requestFileList();
+    });
+  }
+
+  if (fmBatchClear) {
+    fmBatchClear.addEventListener('click', () => {
+      selectedFiles.clear();
+      updateBatchBar();
+      fmFileTableBody?.querySelectorAll('.fm-cb').forEach(cb => { cb.checked = false; });
+    });
+  }
+
+  // Search Filter
+  if (fmSearchInput) {
+    fmSearchInput.addEventListener('input', (e) => {
+      currentSearch = e.target.value.trim();
+      applySortAndRender();
+    });
+  }
+
+  // Sort Dropdown
+  if (fmSortSelect) {
+    fmSortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      applySortAndRender();
+    });
+  }
+
+  // Column header sort click
+  const fmThName = document.getElementById('fmThName');
+  const fmThSize = document.getElementById('fmThSize');
+  const fmThDate = document.getElementById('fmThDate');
+  if (fmThName) fmThName.addEventListener('click', () => {
+    currentSort = currentSort === 'name_asc' ? 'name_desc' : 'name_asc';
+    if (fmSortSelect) fmSortSelect.value = currentSort;
+    applySortAndRender();
+  });
+  if (fmThSize) fmThSize.addEventListener('click', () => {
+    currentSort = currentSort === 'size_desc' ? 'size_asc' : 'size_desc';
+    if (fmSortSelect) fmSortSelect.value = currentSort;
+    applySortAndRender();
+  });
+  if (fmThDate) fmThDate.addEventListener('click', () => {
+    currentSort = currentSort === 'date_desc' ? 'date_asc' : 'date_desc';
+    if (fmSortSelect) fmSortSelect.value = currentSort;
+    applySortAndRender();
+  });
 
   window.GoControl = window.GoControl || {};
   window.GoControl.onFileList = (msg) => {
     if (msg.dir) currentFmDir = normalizePath(msg.dir);
     if (fmPathInput) fmPathInput.value = currentFmDir;
-    renderFileList(msg.files || []);
+    rawFiles = msg.files || [];
+    applySortAndRender();
   };
+
+  // REAL XHR PROGRESS STREAMING UPLOAD
+  function uploadSingleFile(file, dir) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const uploadUrl = `/api/upload?dir=${encodeURIComponent(dir)}&filename=${encodeURIComponent(file.name)}`;
+      xhr.open('POST', uploadUrl, true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          const pct = Math.min(99, Math.round((ev.loaded / ev.total) * 100));
+          if (fmUploadBar) fmUploadBar.style.width = `${pct}%`;
+          if (fmUploadPct) fmUploadPct.textContent = `${pct}%`;
+          if (fmUploadStatus) {
+            fmUploadStatus.textContent = `Mengunggah: ${file.name} (${formatBytes(ev.loaded)} / ${formatBytes(ev.total)})`;
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (fmUploadBar) fmUploadBar.style.width = '100%';
+          if (fmUploadPct) fmUploadPct.textContent = '100%';
+          log(`Transfer sukses: ${file.name} (${formatBytes(file.size)}) tersimpan dan diindeks ke galeri HP!`, 'success');
+          resolve();
+        } else {
+          log(`Gagal mengunggah ${file.name} (HTTP ${xhr.status})`, 'error');
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        log(`Koneksi transfer terputus untuk ${file.name}`, 'error');
+        reject(new Error('Network error'));
+      };
+
+      xhr.send(file);
+    });
+  }
 
   async function handleFilesUpload(files, targetDir) {
     if (!files || !files.length) return;
     const dir = targetDir || currentFmDir;
 
+    if (fmUploadProgress) {
+      fmUploadProgress.style.display = 'block';
+      if (fmUploadBar) fmUploadBar.style.width = '0%';
+      if (fmUploadPct) fmUploadPct.textContent = '0%';
+    }
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (fmUploadProgress) {
-        fmUploadProgress.style.display = 'block';
-        if (fmUploadStatus) fmUploadStatus.textContent = `Mengunggah (${i + 1}/${files.length}): ${file.name} (${formatBytes(file.size)})...`;
-        if (fmUploadBar) fmUploadBar.style.width = '20%';
-        if (fmUploadPct) fmUploadPct.textContent = '20%';
-      }
-
-      log(`Mengunggah ke HP: ${file.name} (${formatBytes(file.size)}) -> ${dir}`, 'info');
-
+      log(`Mengunggah ke HP (${i + 1}/${files.length}): ${file.name} (${formatBytes(file.size)}) -> ${dir}`, 'info');
       try {
-        const uploadUrl = `/api/upload?dir=${encodeURIComponent(dir)}&filename=${encodeURIComponent(file.name)}`;
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: file
-        });
-        if (res.ok) {
-          log(`Transfer sukses: ${file.name} tersimpan dan diindeks ke galeri HP!`, 'success');
-        } else {
-          await uploadViaWebSocket(file, dir);
-        }
+        await uploadSingleFile(file, dir);
       } catch (err) {
-        await uploadViaWebSocket(file, dir);
+        log(`Upload gagal: ${err.message}`, 'error');
       }
     }
 
     if (fmUploadProgress) {
-      if (fmUploadBar) fmUploadBar.style.width = '100%';
-      if (fmUploadPct) fmUploadPct.textContent = '100%';
       setTimeout(() => { fmUploadProgress.style.display = 'none'; }, 800);
     }
     requestFileList();
-  }
-
-  function uploadViaWebSocket(file, dir) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target.result;
-        const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
-        sendControl(JSON.stringify({
-          cmd: 'uploadFile',
-          filename: file.name,
-          dir: dir,
-          data: base64
-        }));
-        resolve();
-      };
-      reader.onerror = () => resolve();
-      reader.readAsDataURL(file);
-    });
   }
 
   window.GoControl.onUploadResult = (msg) => {
