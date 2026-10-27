@@ -730,7 +730,7 @@ button:active{transform:translateY(1px)}
 
                 val body = try { context?.assets?.open(target)?.use { it.readBytes() } } catch (_: Exception) { null }
                 if (body != null) {
-                    val header = "HTTP/1.1 200 OK\r\nContent-Type: $mime\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+                    val header = "HTTP/1.1 200 OK\r\nContent-Type: $mime\r\nCache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cache\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
                     output.write(header.toByteArray(Charsets.UTF_8))
                     output.write(body)
                 } else {
