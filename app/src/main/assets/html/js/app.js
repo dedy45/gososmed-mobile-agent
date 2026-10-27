@@ -16,24 +16,18 @@
   let ws = null;
   let manualDisconnect = false;
   let reconnectTimer = null;
-  // String codec WebCodecs dari server (mis. `hev1.1.6.L120.B0`).
-  let lastCodec = null;
 
-  // Auto-detect dynamic WS host based on current page address (zero hardcode).
-  // The auth token issued by the PIN gate is forwarded to the WebSocket so the
-  // upgrade is authorised; without it the server answers 401.
+  // Auto-detect dynamic WS host based on current page address (zero hardcode)
   const currentHost = window.location.host;
   const wsProto = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
-  const authToken = new URLSearchParams(window.location.search).get('t') || '';
-  const wsSuffix = authToken ? `/ws?t=${encodeURIComponent(authToken)}` : '/ws';
   if (wsUrlInput) {
     if (currentHost) {
-      wsUrlInput.value = `${wsProto}//${currentHost}${wsSuffix}`;
+      wsUrlInput.value = `${wsProto}//${currentHost}/ws`;
     } else {
       const saved = localStorage.getItem('goso_remote_ws');
       const defaultHost = window.location.hostname || '127.0.0.1';
       const defaultPort = window.location.port || '8765';
-      wsUrlInput.value = saved || `${wsProto}//${defaultHost}:${defaultPort}${wsSuffix}`;
+      wsUrlInput.value = saved || `${wsProto}//${defaultHost}:${defaultPort}/ws`;
     }
   }
 
@@ -201,19 +195,31 @@
         if (typeof event.data === 'string') {
           try {
             const msg = JSON.parse(event.data);
-            if (msg.type === 'status') {
-              // Codec aktif dikirim server supaya viewer tahu sebelum
-              // paket config pertama tiba.
-              if (typeof msg.codec === 'string') lastCodec = msg.codec;
-              if (!msg.captureActive) {
-                log('CaptureService HP standby. Nyalakan switch Remote Controller di HP.', 'warn');
-                const tip = document.getElementById('streamWaitingTip');
-                if (tip) {
-                  const s = tip.querySelector('strong');
-                  if (s) s.textContent = 'Menunggu Switch di HP...';
+            if (msg.type === 'status' || msg.type === 'imeStatus') {
+              if (msg.activeImeName || msg.default_ime_name) {
+                const imeName = msg.activeImeName || msg.default_ime_name;
+                const badge = document.getElementById('valImeName');
+                if (badge) badge.textContent = `IME: ${imeName}`;
+              }
+              if (msg.type === 'status') {
+                if (!msg.captureActive) {
+                  log('CaptureService HP standby. Nyalakan switch Remote Controller di HP.', 'warn');
+                  const tip = document.getElementById('streamWaitingTip');
+                  if (tip) {
+                    const s = tip.querySelector('strong');
+                    if (s) s.textContent = 'Menunggu Switch di HP...';
+                  }
+                } else {
+                  log(`HP terhubung: ${msg.model || 'Android'} (Capture Aktif)`, 'success');
                 }
-              } else {
-                log(`HP terhubung: ${msg.model || 'Android'} (Capture Aktif)`, 'success');
+              }
+            } else if (msg.type === 'fileList') {
+              if (window.GoControl && window.GoControl.onFileList) {
+                window.GoControl.onFileList(msg);
+              }
+            } else if (msg.type === 'uploadResult') {
+              if (window.GoControl && window.GoControl.onUploadResult) {
+                window.GoControl.onUploadResult(msg);
               }
             } else if (msg.type === 'capture_error') {
               log(`Capture error: ${msg.message || msg.reason}`, 'error');
@@ -227,27 +233,6 @@
                 if (window.GoStream) window.GoStream.reset();
               } else {
                 log('Menunggu frame berikutnya dari HP...', 'warn');
-              }
-            } else if (msg.type === 'codec') {
-              // Codec yang dinegosiasikan HP (AVC/HEVC/AV1). Dua jalur decode
-              // yang berbeda: MSE hanya untuk AVC (muxer fMP4 kita membangun
-              // avc1/avcC), sedangkan HEVC hanya lewat WebCodecs.
-              // Probe MSE untuk HEVC karena itu salah jalur dan bisa mematikan
-              // HEVC yang sebenarnya berfungsi.
-              const viewerCodec = msg.viewer || 'avc1';
-              let supported;
-              if (viewerCodec === 'hvc1') {
-                supported = ('VideoDecoder' in window) && window.isSecureContext;
-              } else if (viewerCodec === 'av01') {
-                supported = ('VideoDecoder' in window) && window.isSecureContext;
-              } else {
-                supported = (typeof MediaSource !== 'undefined')
-                  && MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"');
-              }
-              log(`Codec HP: ${msg.mime} (${viewerCodec}) — ${supported ? 'didukung browser' : 'TIDAK didukung, minta AVC'}`,
-                  supported ? 'success' : 'warn');
-              if (!supported) {
-                sendControl(JSON.stringify({ cmd: 'setCodec', mime: 'video/avc' }));
               }
             } else if (msg.type === 'frame_meta') {
               if (valRes) valRes.textContent = `${msg.width}x${msg.height}`;
@@ -267,8 +252,8 @@
           if (!data.length) return;
 
           const t = data[0];
-          if (t === 3) { // MSG_CONFIG (VPS/SPS/PPS)
-            if (window.GoStream) window.GoStream.onConfig(data, lastCodec);
+          if (t === 3) { // MSG_CONFIG (SPS+PPS)
+            if (window.GoStream) window.GoStream.onConfig(data);
           } else if (t === 4) { // MSG_FRAME (NALU)
             if (window.GoStream) window.GoStream.onFrame(data);
           } else if (t === 5) { // MSG_AUDIO (PCM 16-bit 44100Hz Stereo)

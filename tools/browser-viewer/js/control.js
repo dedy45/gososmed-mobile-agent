@@ -1265,4 +1265,189 @@
       if (e.key === 'Enter') sendTextDirect();
     });
   }
+
+  // Maestro Unicode & Emoji typing
+  const btnMaestroType = document.getElementById('btnMaestroType');
+  function sendTextMaestro() {
+    if (!typeInput) return;
+    const txt = typeInput.value;
+    if (txt) {
+      sendControl(JSON.stringify({ cmd: 'maestroType', text: txt }));
+      log(`[Maestro Unicode] Sent: "${txt}"`, 'success');
+      typeInput.value = '';
+    }
+  }
+  if (btnMaestroType) btnMaestroType.addEventListener('click', sendTextMaestro);
+
+  // =========================================================================
+  // File Manager & Local-to-Phone Transfer Controller
+  // =========================================================================
+  const btnFileManager = document.getElementById('btnFileManager');
+  const fmBackdrop = document.getElementById('fmBackdrop');
+  const fmClose = document.getElementById('fmClose');
+  const fmDirSelect = document.getElementById('fmDirSelect');
+  const fmBtnUpload = document.getElementById('fmBtnUpload');
+  const fmFileInput = document.getElementById('fmFileInput');
+  const fmBtnRefresh = document.getElementById('fmBtnRefresh');
+  const fmFileTableBody = document.getElementById('fmFileTableBody');
+  const fmUploadProgress = document.getElementById('fmUploadProgress');
+  const fmUploadStatus = document.getElementById('fmUploadStatus');
+  const fmUploadBar = document.getElementById('fmUploadBar');
+  const fmUploadPct = document.getElementById('fmUploadPct');
+
+  function getFmDir() {
+    return (fmDirSelect && fmDirSelect.value) || '/sdcard/DCIM/Camera';
+  }
+
+  function requestFileList() {
+    const dir = getFmDir();
+    if (fmFileTableBody) {
+      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Memuat berkas...</td></tr>';
+    }
+    sendControl(JSON.stringify({ cmd: 'listFiles', dir: dir }));
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function formatTime(ms) {
+    if (!ms) return '-';
+    const d = new Date(ms);
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  function handleFilesUpload(files, targetDir) {
+    if (!files || !files.length) return;
+    const dir = targetDir || getFmDir();
+    const file = files[0];
+
+    if (fmUploadProgress) {
+      fmUploadProgress.style.display = 'block';
+      if (fmUploadStatus) fmUploadStatus.textContent = `Mengunggah ${file.name} (${formatBytes(file.size)})...`;
+      if (fmUploadBar) fmUploadBar.style.width = '30%';
+      if (fmUploadPct) fmUploadPct.textContent = '30%';
+    }
+
+    log(`Memulai transfer file: ${file.name} -> ${dir}`, 'info');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+      if (fmUploadBar) fmUploadBar.style.width = '70%';
+      if (fmUploadPct) fmUploadPct.textContent = '70%';
+
+      sendControl(JSON.stringify({
+        cmd: 'uploadFile',
+        filename: file.name,
+        dir: dir,
+        data: base64
+      }));
+    };
+    reader.onerror = (err) => {
+      log(`Gagal membaca file lokal: ${err}`, 'error');
+      if (fmUploadProgress) fmUploadProgress.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  window.GoControl = window.GoControl || {};
+  window.GoControl.onFileList = (msg) => {
+    if (!fmFileTableBody) return;
+    if (!msg.files || !msg.files.length) {
+      fmFileTableBody.innerHTML = '<tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Folder kosong</td></tr>';
+      return;
+    }
+    let html = '';
+    for (const f of msg.files) {
+      const icon = f.is_dir ? '📁' : (f.name.match(/\.(mp4|mov|mkv)$/i) ? '🎬' : (f.name.match(/\.(jpg|jpeg|png|webp)$/i) ? '🖼️' : '📄'));
+      html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <td style="padding: 6px 10px; word-break: break-all;">${icon} ${f.name}</td>
+        <td style="padding: 6px 10px; color: var(--text-muted);">${f.is_dir ? '-' : formatBytes(f.size)}</td>
+        <td style="padding: 6px 10px; color: var(--text-muted); font-size: 0.72rem;">${formatTime(f.mtime)}</td>
+      </tr>`;
+    }
+    fmFileTableBody.innerHTML = html;
+  };
+
+  window.GoControl.onUploadResult = (msg) => {
+    if (fmUploadProgress) {
+      if (fmUploadBar) fmUploadBar.style.width = '100%';
+      if (fmUploadPct) fmUploadPct.textContent = '100%';
+      setTimeout(() => { fmUploadProgress.style.display = 'none'; }, 1000);
+    }
+    if (msg.ok) {
+      log(`Transfer sukses: ${msg.filename} (${formatBytes(msg.size)}) telah diindeks ke galeri HP!`, 'success');
+      requestFileList();
+    } else {
+      log(`Transfer gagal: ${msg.error || 'Unknown error'}`, 'error');
+    }
+  };
+
+  if (btnFileManager) {
+    btnFileManager.addEventListener('click', () => {
+      if (fmBackdrop) {
+        fmBackdrop.style.display = 'flex';
+        requestFileList();
+      }
+    });
+  }
+
+  if (fmClose) {
+    fmClose.addEventListener('click', () => {
+      if (fmBackdrop) fmBackdrop.style.display = 'none';
+    });
+  }
+
+  if (fmBtnRefresh) fmBtnRefresh.addEventListener('click', requestFileList);
+  if (fmDirSelect) fmDirSelect.addEventListener('change', requestFileList);
+
+  if (fmBtnUpload && fmFileInput) {
+    fmBtnUpload.addEventListener('click', () => fmFileInput.click());
+    fmFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length) {
+        handleFilesUpload(e.target.files, getFmDir());
+        e.target.value = '';
+      }
+    });
+  }
+
+  // Drag and Drop files onto phone viewport
+  const dropOverlay = document.getElementById('dropOverlay');
+  if (screenViewport) {
+    ['dragenter', 'dragover'].forEach(name => {
+      screenViewport.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dropOverlay) dropOverlay.style.display = 'flex';
+      });
+    });
+
+    ['dragleave', 'dragend'].forEach(name => {
+      screenViewport.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dropOverlay) dropOverlay.style.display = 'none';
+      });
+    });
+
+    screenViewport.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dropOverlay) dropOverlay.style.display = 'none';
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        handleFilesUpload(e.dataTransfer.files, '/sdcard/DCIM/Camera');
+      }
+    });
+  }
+
+  // Request initial IME
+  setTimeout(() => {
+    sendControl(JSON.stringify({ cmd: 'getIme' }));
+  }, 1000);
 })();

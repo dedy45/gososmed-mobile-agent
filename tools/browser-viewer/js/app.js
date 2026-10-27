@@ -195,16 +195,31 @@
         if (typeof event.data === 'string') {
           try {
             const msg = JSON.parse(event.data);
-            if (msg.type === 'status') {
-              if (!msg.captureActive) {
-                log('CaptureService HP standby. Nyalakan switch Remote Controller di HP.', 'warn');
-                const tip = document.getElementById('streamWaitingTip');
-                if (tip) {
-                  const s = tip.querySelector('strong');
-                  if (s) s.textContent = 'Menunggu Switch di HP...';
+            if (msg.type === 'status' || msg.type === 'imeStatus') {
+              if (msg.activeImeName || msg.default_ime_name) {
+                const imeName = msg.activeImeName || msg.default_ime_name;
+                const badge = document.getElementById('valImeName');
+                if (badge) badge.textContent = `IME: ${imeName}`;
+              }
+              if (msg.type === 'status') {
+                if (!msg.captureActive) {
+                  log('CaptureService HP standby. Nyalakan switch Remote Controller di HP.', 'warn');
+                  const tip = document.getElementById('streamWaitingTip');
+                  if (tip) {
+                    const s = tip.querySelector('strong');
+                    if (s) s.textContent = 'Menunggu Switch di HP...';
+                  }
+                } else {
+                  log(`HP terhubung: ${msg.model || 'Android'} (Capture Aktif)`, 'success');
                 }
-              } else {
-                log(`HP terhubung: ${msg.model || 'Android'} (Capture Aktif)`, 'success');
+              }
+            } else if (msg.type === 'fileList') {
+              if (window.GoControl && window.GoControl.onFileList) {
+                window.GoControl.onFileList(msg);
+              }
+            } else if (msg.type === 'uploadResult') {
+              if (window.GoControl && window.GoControl.onUploadResult) {
+                window.GoControl.onUploadResult(msg);
               }
             } else if (msg.type === 'capture_error') {
               log(`Capture error: ${msg.message || msg.reason}`, 'error');

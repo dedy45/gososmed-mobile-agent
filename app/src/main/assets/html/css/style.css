@@ -1054,4 +1054,31 @@ main.workspace-area {
 .log-line.info { color: #38bdf8; }
 .log-line.success { color: var(--status-online); }
 .log-line.warn { color: var(--status-warn); }
+
+/* Drag and Drop Overlay & File Manager */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 6, 18, 0.92);
+  backdrop-filter: blur(6px);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--ember-primary);
+  border-radius: 12px;
+  pointer-events: none;
+}
+.drop-box {
+  text-align: center;
+  padding: 24px;
+}
+.drop-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 8px;
+}
+.fm-file-table-wrap table tr:hover td {
+  background: rgba(255, 122, 47, 0.08);
+}
 .log-line.error { color: #ef4444; }

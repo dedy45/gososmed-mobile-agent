@@ -180,6 +180,16 @@ object RemoteControlManager {
                     true
                 } else false
             }
+            "maestro_type", "type_unicode", "paste_text" -> {
+                if (svc == null) return false
+                val text = arg
+                val ok = com.gososmed.agent.NodeActionExecutor.setClipboard(svc.applicationContext, text)
+                if (ok) {
+                    com.gososmed.agent.NodeActionExecutor.pasteText(svc, null)
+                } else {
+                    svc.setText(text)
+                }
+            }
             else -> false
         }
     }

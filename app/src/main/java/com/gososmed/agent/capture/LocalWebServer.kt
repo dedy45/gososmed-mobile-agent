@@ -502,13 +502,25 @@ button:active{transform:translateY(1px)}
 
                 // Immediately send status info to client
                 try {
+                    val defaultIme = try {
+                        android.provider.Settings.Secure.getString(context?.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD) ?: ""
+                    } catch (_: Exception) { "" }
+                    val imeName = when {
+                        defaultIme.contains("latin", ignoreCase = true) || defaultIme.contains("gboard", ignoreCase = true) -> "Gboard"
+                        defaultIme.contains("adbkeyboard", ignoreCase = true) -> "ADB Keyboard"
+                        defaultIme.contains("stf", ignoreCase = true) -> "STF Keyboard"
+                        defaultIme.contains("swiftkey", ignoreCase = true) -> "SwiftKey"
+                        defaultIme.contains("samsung", ignoreCase = true) -> "Samsung Keyboard"
+                        defaultIme.contains("xm", ignoreCase = true) -> "Xiaomi Keyboard"
+                        else -> defaultIme.substringAfterLast('.').ifBlank { "System Keyboard" }
+                    }
                     val statusObj = org.json.JSONObject().apply {
                         put("type", "status")
                         put("captureActive", CaptureService.instance != null)
                         put("model", android.os.Build.MODEL)
                         put("manufacturer", android.os.Build.MANUFACTURER)
-                        // Codec yang sedang aktif, supaya viewer bisa memilih
-                        // decoder sebelum paket config pertama tiba.
+                        put("activeIme", defaultIme)
+                        put("activeImeName", imeName)
                         codec?.let { put("codec", it) }
                     }
                     wsClient.sendRaw(encodeWsFrame(statusObj.toString().toByteArray(Charsets.UTF_8), isBinary = false))
@@ -540,8 +552,67 @@ button:active{transform:translateY(1px)}
                         } catch (_: Exception) {}
                     }
                 }
-                handleWebSocketConnection(wsClient, input)
+                handleWebSocketConnection(wsClient, input, context)
             } else {
+                if (rawPath == "/api/ime") {
+                    val defaultIme = try {
+                        android.provider.Settings.Secure.getString(context?.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD) ?: ""
+                    } catch (_: Exception) { "" }
+                    val imm = context?.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                    val allImes = imm?.inputMethodList?.map { it.id } ?: emptyList()
+                    val imeName = when {
+                        defaultIme.contains("latin", ignoreCase = true) || defaultIme.contains("gboard", ignoreCase = true) -> "Gboard"
+                        defaultIme.contains("adbkeyboard", ignoreCase = true) -> "ADB Keyboard"
+                        defaultIme.contains("stf", ignoreCase = true) -> "STF Keyboard"
+                        defaultIme.contains("swiftkey", ignoreCase = true) -> "SwiftKey"
+                        defaultIme.contains("samsung", ignoreCase = true) -> "Samsung Keyboard"
+                        defaultIme.contains("xm", ignoreCase = true) -> "Xiaomi Keyboard"
+                        else -> defaultIme.substringAfterLast('.').ifBlank { "System Keyboard" }
+                    }
+                    val json = org.json.JSONObject().apply {
+                        put("ok", true)
+                        put("default_ime", defaultIme)
+                        put("default_ime_name", imeName)
+                        put("all_imes", org.json.JSONArray(allImes))
+                    }
+                    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    output.write(jsonBytes)
+                    output.flush()
+                    socket.close()
+                    return
+                }
+
+                if (rawPath == "/api/files") {
+                    val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
+                    val query = fullUrl.substringAfter('?', "")
+                    val dirParam = query.split('&').find { it.startsWith("dir=") }?.substringAfter("dir=")?.let {
+                        try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
+                    } ?: "/sdcard/DCIM/Camera"
+                    val dir = java.io.File(dirParam)
+                    val json = org.json.JSONObject().apply {
+                        put("ok", true)
+                        put("dir", dir.absolutePath)
+                        val arr = org.json.JSONArray()
+                        if (dir.exists() && dir.isDirectory) {
+                            dir.listFiles()?.sortedByDescending { it.lastModified() }?.take(100)?.forEach { f ->
+                                arr.put(org.json.JSONObject().apply {
+                                    put("name", f.name)
+                                    put("size", f.length())
+                                    put("mtime", f.lastModified())
+                                    put("is_dir", f.isDirectory)
+                                })
+                            }
+                        }
+                        put("files", arr)
+                    }
+                    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    output.write(jsonBytes)
+                    output.flush()
+                    socket.close()
+                    return
+                }
                 // Static assets router
                 if (rawPath.contains("..")) {
                     val msg = "Not Found".toByteArray()
@@ -584,7 +655,7 @@ button:active{transform:translateY(1px)}
         }
     }
 
-    private fun handleWebSocketConnection(client: WebSocketClient, input: InputStream) {
+    private fun handleWebSocketConnection(client: WebSocketClient, input: InputStream, context: Context?) {
         try {
             while (running && !client.isClosed) {
                 val b0 = input.read()
@@ -700,6 +771,98 @@ button:active{transform:translateY(1px)}
                                 "setText" -> RemoteControlManager.handleCommand("text:${json.optString("text")}")
                                 "startAudio" -> CaptureService.instance?.setAudioEnabled(true)
                                 "stopAudio" -> CaptureService.instance?.setAudioEnabled(false)
+                                "maestroType", "typeUnicode" -> {
+                                    val text = json.optString("text", "")
+                                    RemoteControlManager.handleCommand("maestro_type:$text")
+                                }
+                                "getIme" -> {
+                                    val defaultIme = try {
+                                        android.provider.Settings.Secure.getString(context?.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD) ?: ""
+                                    } catch (_: Exception) { "" }
+                                    val imeName = when {
+                                        defaultIme.contains("latin", ignoreCase = true) || defaultIme.contains("gboard", ignoreCase = true) -> "Gboard"
+                                        defaultIme.contains("adbkeyboard", ignoreCase = true) -> "ADB Keyboard"
+                                        defaultIme.contains("stf", ignoreCase = true) -> "STF Keyboard"
+                                        defaultIme.contains("swiftkey", ignoreCase = true) -> "SwiftKey"
+                                        defaultIme.contains("samsung", ignoreCase = true) -> "Samsung Keyboard"
+                                        defaultIme.contains("xm", ignoreCase = true) -> "Xiaomi Keyboard"
+                                        else -> defaultIme.substringAfterLast('.').ifBlank { "System Keyboard" }
+                                    }
+                                    val resp = org.json.JSONObject().apply {
+                                        put("type", "imeStatus")
+                                        put("ok", true)
+                                        put("default_ime", defaultIme)
+                                        put("default_ime_name", imeName)
+                                    }
+                                    client.sendRaw(encodeWsFrame(resp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                }
+                                "listFiles" -> {
+                                    val dirPath = json.optString("dir", "/sdcard/DCIM/Camera")
+                                    val targetDir = java.io.File(dirPath)
+                                    val listResp = org.json.JSONObject().apply {
+                                        put("type", "fileList")
+                                        put("ok", true)
+                                        put("dir", targetDir.absolutePath)
+                                        val arr = org.json.JSONArray()
+                                        if (targetDir.exists() && targetDir.isDirectory) {
+                                            targetDir.listFiles()?.sortedByDescending { it.lastModified() }?.take(100)?.forEach { f ->
+                                                arr.put(org.json.JSONObject().apply {
+                                                    put("name", f.name)
+                                                    put("size", f.length())
+                                                    put("mtime", f.lastModified())
+                                                    put("is_dir", f.isDirectory)
+                                                })
+                                            }
+                                        }
+                                        put("files", arr)
+                                    }
+                                    client.sendRaw(encodeWsFrame(listResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                }
+                                "uploadFile" -> {
+                                    val filename = json.optString("filename", "file_${System.currentTimeMillis()}.bin")
+                                    val dir = json.optString("dir", "/sdcard/DCIM/Camera")
+                                    val base64 = json.optString("data", "")
+                                    if (base64.isNotEmpty()) {
+                                        kotlin.concurrent.thread(name = "goso-upload", isDaemon = true) {
+                                            try {
+                                                val targetDir = java.io.File(dir).apply { mkdirs() }
+                                                val targetFile = java.io.File(targetDir, filename)
+                                                val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                                                targetFile.writeBytes(bytes)
+                                                val appContext = context ?: com.gososmed.agent.AgentAccessibilityService.getAppContext()
+                                                if (appContext != null) {
+                                                    android.media.MediaScannerConnection.scanFile(appContext, arrayOf(targetFile.absolutePath), null) { p: String?, uri: android.net.Uri? ->
+                                                        val resp = org.json.JSONObject().apply {
+                                                            put("type", "uploadResult")
+                                                            put("ok", true)
+                                                            put("filename", filename)
+                                                            put("path", p ?: targetFile.absolutePath)
+                                                            put("uri", uri?.toString())
+                                                            put("size", bytes.size)
+                                                        }
+                                                        client.sendRaw(encodeWsFrame(resp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                                    }
+                                                } else {
+                                                    val resp = org.json.JSONObject().apply {
+                                                        put("type", "uploadResult")
+                                                        put("ok", true)
+                                                        put("filename", filename)
+                                                        put("path", targetFile.absolutePath)
+                                                        put("size", bytes.size)
+                                                    }
+                                                    client.sendRaw(encodeWsFrame(resp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                                }
+                                            } catch (t: Throwable) {
+                                                val errResp = org.json.JSONObject().apply {
+                                                    put("type", "uploadResult")
+                                                    put("ok", false)
+                                                    put("error", t.message ?: "Upload failed")
+                                                }
+                                                client.sendRaw(encodeWsFrame(errResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                            }
+                                        }
+                                    }
+                                }
                                 else -> RemoteControlManager.handleCommand(cmd)
                             }
                         } catch (_: Exception) {}

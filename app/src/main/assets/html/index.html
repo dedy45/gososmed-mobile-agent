@@ -18,6 +18,10 @@
           <span class="status-dot" id="statusDot"></span>
           <span id="statusText">Disconnected</span>
         </span>
+        <span class="badge-status" id="badgeIme" style="margin-left: 8px; font-size: 0.72rem; padding: 2px 8px;" title="Keyboard IME yang terdeteksi di HP">
+          <span>⌨️</span>
+          <span id="valImeName">IME: Mendeteksi...</span>
+        </span>
       </div>
     </div>
 
@@ -70,9 +74,17 @@
             </div>
           </div>
 
+          <!-- Drag & Drop Upload Overlay -->
+          <div id="dropOverlay" class="drop-overlay" style="display: none;">
+            <div class="drop-box">
+              <span class="drop-icon">📥</span>
+              <strong style="color: var(--text-primary); font-size: 1rem; display: block; margin-bottom: 4px;">Lepaskan Berkas untuk Transfer ke HP</strong>
+              <p style="color: var(--text-muted); font-size: 0.8rem;">Otomatis disimpan ke <code>/sdcard/DCIM/Camera/</code> dan diindeks ke Galeri</p>
+            </div>
+          </div>
+
           <!-- Game Keymapping Overlay (dynamic, draggable, persisted) -->
           <div id="keymapOverlay" class="keymap-overlay" style="display: none;"></div>
-
           <!-- Keymap Editor Bar (shown in edit mode) -->
           <div id="keymapEditor" class="keymap-editor" style="display: none;">
             <div class="km-row">
@@ -111,9 +123,11 @@
         </nav>
 
         <!-- Direct Typing Input Bar -->
+        <!-- Direct Typing Input Bar with Maestro Unicode Support -->
         <div class="typing-bar">
-          <input type="text" id="typeInput" class="input-text" placeholder="Ketik teks untuk dikirim ke HP..." autocomplete="off">
-          <button id="btnSendText" class="btn btn-secondary">Kirim</button>
+          <input type="text" id="typeInput" class="input-text" placeholder="Ketik teks atau tempel emoji 🔥🚀..." autocomplete="off">
+          <button id="btnSendText" class="btn btn-secondary" title="Ketik teks standar (input text)">Kirim</button>
+          <button id="btnMaestroType" class="btn btn-primary" title="Maestro Unicode: injeksi teks + emoji via clipboard paste" style="padding: 6px 12px; font-weight: 600;">⚡ Maestro</button>
         </div>
       </div>
 
@@ -130,6 +144,7 @@
         <button class="side-btn" id="btnToggleKeymap" data-tooltip="Game Keymapping (WASD)">🎮</button>
         <button class="side-btn" id="btnKeymapConfig" data-tooltip="Konfigurasi Gamepad (Layout, Tombol, Preset)">⚙️</button>
         <button class="side-btn" id="btnClipboardSync" data-tooltip="Kirim Clipboard PC ke HP">📋</button>
+        <button class="side-btn" id="btnFileManager" data-tooltip="File Manager &amp; Transfer Berkas (PC ⇄ HP)">📁</button>
         <button class="side-btn" id="btnFullscreen" data-tooltip="Layar Penuh (Fullscreen)">⛶</button>
         <button class="side-btn" id="btnTelemetryToggle" data-tooltip="Statistik Streaming">⚙</button>
       </aside>
@@ -271,6 +286,61 @@
         <button class="gpc-btn gpc-primary" id="gpcSave">Simpan &amp; Tutup</button>
       </footer>
     </div>
+
+  <!-- File Manager & Transfer Modal -->
+  <div class="gpc-backdrop" id="fmBackdrop" style="display: none;">
+    <div class="gpc-modal" style="width: 580px; max-width: 95vw;" role="dialog" aria-modal="true" aria-label="File Manager &amp; Transfer">
+      <header class="gpc-head">
+        <span class="gpc-title">📁 File Manager &amp; Transfer HP</span>
+        <div class="gpc-head-actions">
+          <button class="gpc-icon-btn" id="fmClose" title="Tutup">✕</button>
+        </div>
+      </header>
+
+      <div class="fm-body" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <div class="fm-toolbar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Folder:</span>
+            <select id="fmDirSelect" class="input-ws" style="width: 220px; font-size: 0.8rem; padding: 4px 8px;">
+              <option value="/sdcard/DCIM/Camera">/sdcard/DCIM/Camera (Galeri)</option>
+              <option value="/sdcard/Download">/sdcard/Download</option>
+              <option value="/sdcard/Movies">/sdcard/Movies</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <input type="file" id="fmFileInput" style="display: none;" multiple>
+            <button class="btn btn-primary" id="fmBtnUpload" style="font-size: 0.8rem; padding: 6px 12px;">+ Upload Berkas PC</button>
+            <button class="btn btn-secondary" id="fmBtnRefresh" style="font-size: 0.8rem; padding: 6px 10px;" title="Muat ulang berkas">⟳</button>
+          </div>
+        </div>
+
+        <div id="fmUploadProgress" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px; font-size: 0.78rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span id="fmUploadStatus">Mengunggah...</span>
+            <span id="fmUploadPct">0%</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+            <div id="fmUploadBar" style="width: 0%; height: 100%; background: var(--ember-primary); transition: width 0.2s;"></div>
+          </div>
+        </div>
+
+        <div class="fm-file-table-wrap" style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.3);">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem; text-align: left;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); background: rgba(255,255,255,0.02);">
+                <th style="padding: 8px 10px;">Nama Berkas</th>
+                <th style="padding: 8px 10px; width: 85px;">Ukuran</th>
+                <th style="padding: 8px 10px; width: 130px;">Waktu</th>
+              </tr>
+            </thead>
+            <tbody id="fmFileTableBody">
+              <tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--text-muted);">Memuat berkas...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
   </div>
 
   <!-- Modular Scripts -->
