@@ -199,6 +199,20 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- Maestro-Parity Virtual Keyboard IME (InputMethodService) -->
+        <service
+            android:name=".input.GoSosmedInputMethodService"
+            android:label="GoSosmed Unicode Keyboard"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/gososmed_input_method" />
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
