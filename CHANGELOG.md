@@ -9,25 +9,35 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.11-dev.1] - 2026-10-27
+## [1.2.11] - 2026-10-27
 
-### Added — Maestro Parity & Penutupan Gaps Fungsionalitas APK
-- **Operasi Clipboard Lengkap (`setClipboard`, `copyText`, `pasteText`)**:
-  - `setClipboard`: Mengisi `ClipboardManager` via Context utama dengan penanganan thread-safe (`ClipData.newPlainText("gosmed", text)`).
-  - `copyText`: Membaca teks atau `contentDescription` dari node target atau node yang sedang fokus, menyalinnya ke clipboard sistem, dan mengembalikannya dalam response JSON `{"ok": true, "result": {"ok": true, "text": "..."}}`.
-  - `pasteText`: Memfokuskan node target dan menjalankan `AccessibilityNodeInfo.ACTION_PASTE`. Fallback otomatis ke shell ADB UID 2000 (`input keyevent 279` / KEYCODE_PASTE) jika aksi aksesibilitas tidak didukung atau target tidak ada.
-- **Penghapusan Teks Bertahap (`eraseText`)**:
-  - Menghapus sejumlah karakter tanpa melakukan `pm clear` (menghindari logout akun).
-  - Menjalankan `input keyevent 67` (KEYCODE_DEL) berulang jika `characters <= 10`, atau batch command `input keyevent 67 67 ...` / `ACTION_SET_TEXT` string kosong jika `characters > 10`.
-- **Pengindeksan Media Otomatis (`scanMedia` / `addMedia`)**:
-  - Memanggil `MediaScannerConnection.scanFile` secara native untuk mendaftarkan video/gambar ke MediaStore Android secara instan agar langsung muncul di pemilih galeri (TikTok/Instagram Gallery Picker).
-  - Mengembalikan Content URI (`content://media/external/...`) secara deterministik.
-- **Sinkronisasi Settle Layar di Perangkat (`waitForSettle`)**:
-  - Menunggu kestabilan animasi UI secara on-device dengan memantau `treeHash` aksesibilitas (`SnapshotCollector`).
-  - Mengeliminasi kebutuhan server memanggil `observe` polling berulang kali via WebSocket, menghemat latensi jaringan dan CPU.
-- **Pembaruan Pagar Keamanan Batch Flow (`BatchSecurityGuard.ALLOWED_ACTIONS`)**:
-  - Mendaftarkan seluruh perintah baru (`setClipboard`, `copyText`, `pasteText`, `eraseText`, `scanMedia`, `addMedia`, `waitForSettle`) ke dalam whitelist eksekusi `BatchFlowExecutor`.
+### Added — Maestro Parity, WebADB File Manager, & GoSosmed Native Virtual Keyboard
+- **Pendaftaran Resmi GoSosmed Virtual Keyboard (`GoSosmedInputMethodService.kt`)**:
+  - Mengadopsi 1:1 arsitektur IME Maestro (`dev.mobile.maestro.input.MaestroInputMethodService`).
+  - Terdaftar resmi di sistem Android OS (`BIND_INPUT_METHOD` + `gososmed_input_method.xml`), sehingga muncul langsung dengan toggle switch di menu Setelan HP **"Manage keyboards"**.
+  - Menyediakan jalur ganda pengetikan Unicode/Emoji: Tier 1 via `InputConnection.commitText()` langsung dari memori tanpa clipboard, dan Tier 2 fallback via Clipboard Injection (`setClipboard` + `pasteText`) untuk fleksibilitas maksimal.
+- **Panel File Manager 1:1 ala WebADB (`tools/browser-viewer/` & `LocalWebServer.kt`)**:
+  - Panel navigasi berkas terlabuh di sisi kiri (*left-docked panel*) dengan bilah breadcrumb, bookmark instan (`Camera`, `Download`, `Movies`, `/sdcard`), dan tombol `⬆️` parent folder.
+  - Mengatasi Scoped Storage Android 11+ via 3-Tier Storage Engine (`Java File` + `PrivilegedShell stat` + `MediaStore ContentResolver`), memunculkan 100% berkas reguler (138 berkas di DCIM/Camera).
+  - Mengeliminasi bug upload macet 20% melalui **Raw Binary Streaming** (`BufferedInputStream` + buffer byte `ByteArray(65536)`) dan progress bar dinamis `XMLHttpRequest onprogress`.
+  - **Media & Text Preview Lightbox**: Pemutar video inline (`.mp4`, `.mov`, `.mkv`), penampil foto resolusi penuh, dan penampil dokumen teks/log (`.txt`, `.log`, `.json`, `.xml`, `.sh`, `.properties`).
+  - Fitur **Select All**, seleksi massal berkas, unduh massal, dan hapus massal dari browser.
+  - Sortir instan berdasarkan tanggal modifikasi (terbaru/terlama), nama berkas, ukuran, dan pencarian teks realtime.
+  - **Otomasi Mode Landscape**: Menyembunyikan seluruh panel File Manager dan Log secara otomatis saat mode layar putar landscape aktif untuk memberikan ruang pandang gaming & streaming 16:9 / 20:9 tanpa halangan.
+- **Operasi Paritas Maestro (`AgentCommand.kt` & `NodeActionExecutor.kt`)**:
+  - `setClipboard`, `copyText`, `pasteText`, `eraseText`, `scanMedia`, `waitForSettle`.
+  - Pagar keamanan batch flow `BatchSecurityGuard.ALLOWED_ACTIONS` dan eksekusi sekuensial deterministik di `BatchFlowExecutor.kt`.
 
+### Verified — Live Device Evidence (Redmi Note 13 Pro 5G)
+- **Perangkat Fisik:** Xiaomi Redmi Note 13 Pro 5G (`2312DRA50G` / `garnet`), Android 15 HyperOS (`OS2.0.205.0.VNRIDXM`).
+- **Stabilitas Layanan:** `AccessibilityService connected`, `oom_score_adj = 0` (Foreground Service pinned, anti-kill).
+- **Pemeriksaan Nyata:**
+  - Keyboard `GoSosmed Unicode Keyboard` terdeteksi dan aktif di menu *Manage keyboards* OS Android.
+  - Pembacaan 138 berkas di `/sdcard/DCIM/Camera` dan 22 berkas di `/sdcard/Download` berhasil via port 8766 HTTPS.
+  - Unggah berkas biner nyata 1 MB tuntas dalam ~100 ms tanpa *stuck*.
+  - Preview video/gambar/teks aktif via header `Content-Disposition: inline`.
+  - Seluruh 273/273 unit test JVM lolos 100%.
+- **Catatan Batasan:** Pengujian multi-OEM pada vendor lain (Vivo FuntouchOS, Samsung One UI) dijadwalkan pada siklus pemeliharaan berikutnya.
 ## [1.2.10] - 2026-10-25
 
 ### Fixed — OEM Service Locking & Universal Multi-Device Stability

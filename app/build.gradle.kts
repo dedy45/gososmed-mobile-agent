@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 48 = 1.2.11-dev.1 (DEV) — Maestro Parity & Functional Gaps Closure:
-        // Complete Clipboard Operations (set/copy/paste), Stepwise Erase, Media Indexing, & On-Device Screen Settle.
+        // versionCode 48 = 1.2.11 (PROD) — Maestro Parity, WebADB File Manager, Media Lightbox Preview,
+        // Scoped Storage Bypass, & GoSosmed Native Virtual Keyboard IME.
         versionCode = 48
-        versionName = "1.2.11-dev.1"
+        versionName = "1.2.11"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
