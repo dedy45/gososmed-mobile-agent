@@ -590,20 +590,10 @@ button:active{transform:translateY(1px)}
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     } ?: "/sdcard/DCIM/Camera"
                     val dir = java.io.File(dirParam)
+                    val arr = getDirectoryFiles(dir, context)
                     val json = org.json.JSONObject().apply {
                         put("ok", true)
                         put("dir", dir.absolutePath)
-                        val arr = org.json.JSONArray()
-                        if (dir.exists() && dir.isDirectory) {
-                            dir.listFiles()?.sortedByDescending { it.lastModified() }?.take(100)?.forEach { f ->
-                                arr.put(org.json.JSONObject().apply {
-                                    put("name", f.name)
-                                    put("size", f.length())
-                                    put("mtime", f.lastModified())
-                                    put("is_dir", f.isDirectory)
-                                })
-                            }
-                        }
                         put("files", arr)
                     }
                     val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
@@ -890,21 +880,11 @@ button:active{transform:translateY(1px)}
                                 "listFiles" -> {
                                     val dirPath = json.optString("dir", "/sdcard/DCIM/Camera")
                                     val targetDir = java.io.File(dirPath)
+                                    val arr = getDirectoryFiles(targetDir, context)
                                     val listResp = org.json.JSONObject().apply {
                                         put("type", "fileList")
                                         put("ok", true)
                                         put("dir", targetDir.absolutePath)
-                                        val arr = org.json.JSONArray()
-                                        if (targetDir.exists() && targetDir.isDirectory) {
-                                            targetDir.listFiles()?.sortedByDescending { it.lastModified() }?.take(100)?.forEach { f ->
-                                                arr.put(org.json.JSONObject().apply {
-                                                    put("name", f.name)
-                                                    put("size", f.length())
-                                                    put("mtime", f.lastModified())
-                                                    put("is_dir", f.isDirectory)
-                                                })
-                                            }
-                                        }
                                         put("files", arr)
                                     }
                                     client.sendRaw(encodeWsFrame(listResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
@@ -1036,6 +1016,96 @@ button:active{transform:translateY(1px)}
                 out
             }
         }
+    }
+
+    private fun getDirectoryFiles(dir: java.io.File, context: Context?): org.json.JSONArray {
+        val arr = org.json.JSONArray()
+        val seen = mutableSetOf<String>()
+
+        // 1. Try Java File.listFiles()
+        try {
+            if (dir.exists() && dir.isDirectory) {
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.forEach { f ->
+                    if (seen.add(f.name)) {
+                        arr.put(org.json.JSONObject().apply {
+                            put("name", f.name)
+                            put("size", f.length())
+                            put("mtime", f.lastModified())
+                            put("is_dir", f.isDirectory)
+                        })
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Query via PrivilegedShellHolder (UID 2000 has raw Linux filesystem access,
+        // bypassing Android 11+ Scoped Storage restrictions)
+        val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+        if (shell.status().available) {
+            try {
+                val res = shell.exec("stat -c '%F|%s|%Y|%n' '${dir.absolutePath}'/* 2>/dev/null", 3000L)
+                if (res.ok && res.stdout.isNotBlank()) {
+                    val lines = res.stdout.trim().lines()
+                    for (l in lines) {
+                        val parts = l.split('|')
+                        if (parts.size >= 4) {
+                            val name = parts[3].substringAfterLast('/')
+                            if (name.isNotBlank() && seen.add(name)) {
+                                val isDir = parts[0].contains("directory", ignoreCase = true)
+                                val size = parts[1].toLongOrNull() ?: 0L
+                                val mtime = (parts[2].toLongOrNull() ?: 0L) * 1000L
+                                arr.put(org.json.JSONObject().apply {
+                                    put("name", name)
+                                    put("size", size)
+                                    put("mtime", mtime)
+                                    put("is_dir", isDir)
+                                })
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. MediaStore query fallback for DCIM/Camera and media folders
+        val ctx = context ?: com.gososmed.agent.AgentAccessibilityService.getAppContext()
+        if (ctx != null) {
+            try {
+                val uri = android.provider.MediaStore.Files.getContentUri("external")
+                val projection = arrayOf(
+                    android.provider.MediaStore.Files.FileColumns.DISPLAY_NAME,
+                    android.provider.MediaStore.Files.FileColumns.SIZE,
+                    android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED,
+                    android.provider.MediaStore.Files.FileColumns.DATA
+                )
+                val selection = "${android.provider.MediaStore.Files.FileColumns.DATA} LIKE ?"
+                val selectionArgs = arrayOf("${dir.absolutePath}/%")
+                ctx.contentResolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
+                    val nameCol = cursor.getColumnIndex(android.provider.MediaStore.Files.FileColumns.DISPLAY_NAME)
+                    val sizeCol = cursor.getColumnIndex(android.provider.MediaStore.Files.FileColumns.SIZE)
+                    val dateCol = cursor.getColumnIndex(android.provider.MediaStore.Files.FileColumns.DATE_MODIFIED)
+                    val dataCol = cursor.getColumnIndex(android.provider.MediaStore.Files.FileColumns.DATA)
+                    while (cursor.moveToNext() && arr.length() < 250) {
+                        val fullPath = cursor.getString(dataCol) ?: continue
+                        if (fullPath.substringBeforeLast('/') == dir.absolutePath) {
+                            val name = cursor.getString(nameCol) ?: fullPath.substringAfterLast('/')
+                            if (name.isNotBlank() && seen.add(name)) {
+                                val size = cursor.getLong(sizeCol)
+                                val mtime = cursor.getLong(dateCol) * 1000L
+                                arr.put(org.json.JSONObject().apply {
+                                    put("name", name)
+                                    put("size", size)
+                                    put("mtime", mtime)
+                                    put("is_dir", false)
+                                })
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        return arr
     }
 
 }
