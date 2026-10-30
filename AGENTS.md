@@ -48,12 +48,32 @@ All four must be true. There is no automation for #3 yet, so it is your responsi
 
 > **If it has not been tested on a real device, the tag MUST be `-dev`.**
 
-### 2.2 Incident that produced this rule — 2026-09-13
+### 2.2 Prosedur Wajib Promosi Produksi (Merge ke `main` & Push Tag Rilis)
+
+Ketika pengguna meminta **"naikan ke mode production"** atau rilis stabil baru:
+1. **Verifikasi Gate §2.1:** Seluruh tes unit lolos, dan telah diuji secara nyata pada perangkat fisik Android (bukti dicatat di `CHANGELOG.md`).
+2. **Fast-forward/Merge ke branch `main`:**
+   ```bash
+   git checkout main
+   git merge dev --ff-only  # atau git merge dev
+   git push origin main
+   ```
+3. **Terbitkan Tag Rilis Resmi:**
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z: <ringkasan fitur>"
+   git push origin vX.Y.Z
+   ```
+   *Push tag inilah yang secara otomatis memicu GitHub Actions `.github/workflows/release.yml` untuk mem-build signed release APK, memverifikasi `apksigner`, dan menerbitkan rilis publik di GitHub Releases.*
+4. **Kembali ke branch `dev`:**
+   ```bash
+   git checkout dev
+   ```
+
+### 2.3 Incident that produced this rule — 2026-09-13
 
 Eight **stable** tags shipped in 24 hours (v0.9.0 at 16:57 → v0.9.7 the next morning at 08:24). The `-dev` channel had been used exactly **once in the entire project history** (`v0.5.0-dev.1`). Each release fixed a defect in the previous one, and none had been tested on a phone — yet all reached users labelled "stable".
 
 Read that as the failure mode to avoid: **rapid-fire stable tagging turns users into your test bench.** When you are iterating on a fix you cannot verify locally, tag `-dev`, verify on the device, and only then promote to stable.
-
 ---
 
 ## 3. Build, test, and verify
@@ -129,9 +149,8 @@ Do not attach a `RemoteInput` action before the pairing port is known, and do no
 1. `gradle testDebugUnitTest assembleDebug` succeeds; new behaviour has a regression test where testable on the JVM.
 2. `CHANGELOG.md` updated under `[Unreleased]` (or the version section when releasing).
 3. Honest report to the human: **what changed**, **what was verified**, and **what remains unverified** (in particular: whether it was tested on a real device).
-4. Exactly one commit, pushed. Tag only if it meets §2.1.
+4. **Alur Rilis Produksi:** Jika menaikkan ke produksi, merge `dev` ke `main`, push `main`, buat tag `vX.Y.Z`, dan push tag ke `origin` untuk memicu `.github/workflows/release.yml`.
 5. `README.md` version reference updated if it states a version in prose.
-
 ---
 
 ## 7. Documentation map
