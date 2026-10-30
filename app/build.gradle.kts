@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 49 = 1.2.12-dev.1 (DEV) — Auto-Recovery Loopback ADB Port & Silent Reconnect,
-        // Pre-Flight Connection Interceptor, Real-time 11 Health Checks & Telemetry Refresh.
-        versionCode = 49
-        versionName = "1.2.12-dev.1"
+        // versionCode 50 = 1.2.12 (PROD) — Auto-Recovery Loopback ADB Port & Silent Reconnect,
+        // Pre-Flight Connection Interceptor, Real-time 11 Health Checks & Telemetry Live Refresh.
+        versionCode = 50
+        versionName = "1.2.12"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

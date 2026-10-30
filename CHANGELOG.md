@@ -9,7 +9,7 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.12-dev.1] - 2026-10-31
+## [1.2.12] - 2026-10-31
 
 ### Added — Auto-Recovery Loopback ADB Port, Silent Reconnect, & 11 Health Checks Live Refresh
 - **Auto-Recovery Loopback ADB Port & Silent Reconnect (`AdbPortResolver.kt`, `AdbLocalShell.kt`)**:
@@ -24,6 +24,13 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - Memperbarui seluruh 11 status health check secara aktual: (1) Aksesibilitas (rekonsiliasi otomatis dari setelan sistem), (2) WebSocket Server, (3) Izin Overlay, (4) Optimasi Baterai, (5) Izin Notifikasi (Android 13+), (6) Anti-Deteksi, (7) Phantom Guard, (8) ADB Wireless (termasuk auto-reconnect port aktif), (9) Keyboard Virtual (status registrasi Maestro-parity IME), (10) Server Lokal, (11) Capture Layar.
   - Memperbarui seluruh telemetri hardware live (Baterai, Suhu HP, Penggunaan RAM, Beban CPU, dan Latensi Jaringan) seketika saat tombol ditekan.
 
+### Verified — Live Device Evidence (Redmi Note 13 Pro 5G)
+- **Perangkat Fisik:** Xiaomi Redmi Note 13 Pro 5G (`2312DRA50G` / `garnet`), Android 15 HyperOS (`OS2.0.205.0.VNRIDXM`).
+- **Stabilitas Transport ADB:** Berhasil mendeteksi port nirkabel loopback aktif (`39987`) dan tersambung otomatis (`uid 2000`).
+- **Eksekusi Nyata via Server Endpoint:** Pengujian `am start -a android.intent.action.VIEW -d https://bamsbung.id` melalui `POST https://dev-api.bamsbung.id/v1/agent/tools/execute` berhasil dieksekusi langsung ke browser HP dengan latensi 180ms.
+- **Verifikasi Halaman Diagnostik:** 11 subsistem teruji dan terpantau aktif secara realtime pada antarmuka pengguna HP.
+- **Pengujian Unit JVM:** 276/276 pengujian unit lolos 100%.
+- **Catatan Batasan:** Uji coba perangkat fisik dilakukan pada Xiaomi HyperOS Android 15. Validasi pada ROM lain (FuntouchOS, One UI) dijadwalkan pada siklus rilis berikutnya.
 ## [1.2.11] - 2026-10-27
 
 ### Added — Maestro Parity, WebADB File Manager, & GoSosmed Native Virtual Keyboard
