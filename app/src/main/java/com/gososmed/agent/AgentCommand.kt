@@ -907,6 +907,7 @@ object AgentCommand {
                             put("ok", ok)
                             put("paired", status.paired)
                             put("adb_connected", status.connected)
+                            put("adb_port", status.port)
                             if (!ok) put("reason", reason.ifEmpty { status.error })
                         }
                     )
@@ -918,6 +919,7 @@ object AgentCommand {
                             put("ok", status.connected)
                             put("paired", status.paired)
                             put("adb_connected", status.connected)
+                            put("adb_port", status.port)
                             if (!status.connected) {
                                 put("reason", status.error.ifEmpty { "adb_not_paired: belum dihubungkan" })
                             }

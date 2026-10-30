@@ -396,6 +396,7 @@ class AgentWsClient(
         // NeuralBridge — user tidak lagi menebak device_id.
         // v0.6.1: + agent_version untuk badge "update tersedia" di dasbor
         // (server bandingkan dengan GOSOSMED_AGENT_LATEST_VERSION).
+        val shellStatus = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
         val dm = context.resources.displayMetrics
         val hello = JSONObject()
             .put("type", "register")
@@ -405,6 +406,9 @@ class AgentWsClient(
             .put("protocol_versions", org.json.JSONArray(listOf(1, 2)))
             .put("app_signature", getSigningCertificateFingerprint())
             .put("is_debug_build", BuildConfig.DEBUG)
+            .put("adb_paired", shellStatus.paired)
+            .put("adb_connected", shellStatus.connected)
+            .put("adb_port", shellStatus.port)
             .put("device_info", JSONObject()
                 .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
                 .put("android_ver", Build.VERSION.RELEASE ?: "")

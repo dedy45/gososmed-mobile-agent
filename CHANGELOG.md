@@ -9,6 +9,21 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.12-dev.1] - 2026-10-31
+
+### Added — Auto-Recovery Loopback ADB Port, Silent Reconnect, & 11 Health Checks Live Refresh
+- **Auto-Recovery Loopback ADB Port & Silent Reconnect (`AdbPortResolver.kt`, `AdbLocalShell.kt`)**:
+  - Deteksi port dinamis adbd nirkabel lokal via query UDP mDNS cepat ke `_adb-tls-connect._tcp.local` (`224.0.0.251:5353`) dengan fallback `NsdManager` dan verifikasi TCP socket liveness loopback.
+  - **Pre-Flight Connection Interceptor**: Sebelum mengeksekusi perintah shell (`am start`, `monkey`, `rawShell`, dll.), mengecek kesehatan socket dan port aktif; jika putus atau port berotasi akibat Wi-Fi reconnect/deep sleep oleh OS Android 14/15, otomatis melakukan silent reconnect ke port baru tanpa interupsi.
+  - **Thread-Safe Serialization**: Eksekusi terkoordinasi pada single-thread IO executor mencegah race conditions jika beberapa perintah WebSocket tiba bersamaan selama fase penyambungan.
+  - **Transparent Auto-Retry**: Percobaan ulang 1x otomatis jika koneksi stream socket terputus mendadak di tengah eksekusi.
+- **Pelaporan Telemetri Port ADB (`adb_port`)**:
+  - `ShellStatus`, `healthSnapshot()`, `capabilitiesSnapshot()`, `capabilitiesJson()`, paket `register`, dan response `CMD_ADB_PAIR` kini mengekspos field `adb_port`.
+- **Perbaikan Realtime Halaman Diagnostik (11 Health Checks & Telemetry Live Refresh)**:
+  - Tombol "Periksa Ulang" (`btnHealthRefresh`) kini mengeksekusi probe subsistem secara asynchronous di latar belakang dengan indikator status `"Memeriksa…"`.
+  - Memperbarui seluruh 11 status health check secara aktual: (1) Aksesibilitas (rekonsiliasi otomatis dari setelan sistem), (2) WebSocket Server, (3) Izin Overlay, (4) Optimasi Baterai, (5) Izin Notifikasi (Android 13+), (6) Anti-Deteksi, (7) Phantom Guard, (8) ADB Wireless (termasuk auto-reconnect port aktif), (9) Keyboard Virtual (status registrasi Maestro-parity IME), (10) Server Lokal, (11) Capture Layar.
+  - Memperbarui seluruh telemetri hardware live (Baterai, Suhu HP, Penggunaan RAM, Beban CPU, dan Latensi Jaringan) seketika saat tombol ditekan.
+
 ## [1.2.11] - 2026-10-27
 
 ### Added — Maestro Parity, WebADB File Manager, & GoSosmed Native Virtual Keyboard

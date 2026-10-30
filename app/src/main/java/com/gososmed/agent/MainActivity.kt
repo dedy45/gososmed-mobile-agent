@@ -1513,13 +1513,16 @@ class MainActivity : AppCompatActivity() {
         val items = mutableListOf<HealthItem>()
 
         // 1. Accessibility service (Core)
+        AgentAccessibilityService.reconcileFromSettings(this)
         val a11yAlive = AgentAccessibilityService.isServiceAlive()
         val a11yReady = AgentAccessibilityService.isReady()
+        val a11yEnabled = AgentAccessibilityService.isEnabled()
         items += HealthItem(
             name = "Aksesibilitas",
             ok = a11yAlive && a11yReady,
             detail = when {
-                !a11yAlive -> "belum aktif"
+                !a11yAlive && !a11yEnabled -> "belum aktif"
+                !a11yAlive -> "layanan terhenti (OS restart)"
                 a11yReady -> "aktif & siap"
                 else -> "aktif, layar belum terbaca"
             },
@@ -1559,7 +1562,18 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 5. Anti-Deteksi (Core - Hiding developer options & accessibility untuk Jenius/Bank)
+        // 5. Izin Notifikasi (Core - Android 13+)
+        val notifGranted = Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        items += HealthItem(
+            name = "Izin Notifikasi",
+            ok = notifGranted,
+            detail = if (notifGranted) "diizinkan ✓" else "belum diizinkan",
+            isOptional = false,
+            category = HealthCategory.CORE
+        )
+
+        // 6. Anti-Deteksi (Core - Hiding developer options & accessibility untuk Jenius/Bank)
         items += HealthItem(
             name = "Anti-Deteksi",
             ok = true,
@@ -1568,7 +1582,7 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 6. Phantom Process Guard (Core - Shizuku-Next anti-SIGKILL)
+        // 7. Phantom Process Guard (Core - Shizuku-Next anti-SIGKILL)
         val phantomDisabled = com.gososmed.agent.privileged.PhantomProcessGuard.isMonitorDisabled()
         items += HealthItem(
             name = "Phantom Guard",
@@ -1578,14 +1592,14 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 7. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
+        // 8. ADB Wireless (Core - otomasi lanjutan uid 2000, opsional)
         val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
         val isAdbTrulyConnected = shell.available && shell.connected && shell.uid >= 0
         items += HealthItem(
             name = "ADB Wireless",
             ok = isAdbTrulyConnected,
             detail = if (isAdbTrulyConnected) {
-                "aktif (uid ${shell.uid})"
+                "aktif (uid ${shell.uid}, port ${if (shell.port > 0) shell.port else "lokal"})"
             } else if (shell.paired) {
                 "terputus (Opsi Pengembang mati)"
             } else {
@@ -1595,16 +1609,22 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.CORE
         )
 
-        // 8. Log error (Core)
-        val errLines = AgentLog.recentErrors(limit = 8)
+        // 9. Keyboard Virtual (Core - Maestro-parity IME)
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+        val enabledImes = imm?.enabledInputMethodList ?: emptyList()
+        val imeRegistered = enabledImes.any {
+            it.id == com.gososmed.agent.input.GoSosmedInputMethodService.IME_ID ||
+            it.packageName == packageName
+        }
         items += HealthItem(
-            name = "Log Error",
-            ok = errLines.isEmpty(),
-            detail = if (errLines.isEmpty()) "bersih" else "${errLines.size} entri terakhir",
-            isOptional = false,
+            name = "Keyboard Virtual",
+            ok = imeRegistered,
+            detail = if (imeRegistered) "aktif & terdaftar (Maestro-parity) ✓" else "belum diaktifkan (opsional)",
+            isOptional = true,
             category = HealthCategory.CORE
         )
-        // 7. Server Lokal (Remote Control - Berdiri Sendiri)
+
+        // 10. Server Lokal (Remote Control - Berdiri Sendiri)
         val serverRunning = com.gososmed.agent.capture.LocalWebServer.isRunning
         val pin = com.gososmed.agent.capture.LocalWebServer.currentPin()
         items += HealthItem(
@@ -1616,7 +1636,7 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.REMOTE_CONTROL
         )
 
-        // 8. Capture Layar (Remote Control - Berdiri Sendiri)
+        // 11. Capture Layar (Remote Control - Berdiri Sendiri)
         val captureAlive = com.gososmed.agent.capture.CaptureService.instance != null
         items += HealthItem(
             name = "Capture Layar",
@@ -1626,21 +1646,44 @@ class MainActivity : AppCompatActivity() {
             category = HealthCategory.REMOTE_CONTROL
         )
 
+        val errLines = AgentLog.recentErrors(limit = 8)
         return HealthReport(items, errLines)
     }
 
     private fun refreshHealthCheck() {
-        try {
-            val report = buildHealthReport()
-            tvHealthSummary.text = report.summary()
-            tvHealthRows.text = report.rowsText()
-            tvHealthErrors.text = report.errorsText()
-        } catch (t: Throwable) {
-            // Tab diagnostik tidak boleh crash karena satu probe gagal.
-            tvHealthSummary.text = "⚠️ Pemeriksaan gagal"
-            tvHealthRows.text = t.message ?: t.javaClass.simpleName
-            tvHealthErrors.text = "Tidak ada error."
-        }
+        btnHealthRefresh.isEnabled = false
+        btnHealthRefresh.text = "Memeriksa…"
+        Thread {
+            try {
+                // 1. Reconcile accessibility from system settings
+                AgentAccessibilityService.reconcileFromSettings(this)
+                // 2. Auto-reconnect ADB jika perangkat sudah pernah pairing
+                val shellStatus = com.gososmed.agent.privileged.PrivilegedShellHolder.get().status()
+                if (shellStatus.paired && !shellStatus.connected) {
+                    com.gososmed.agent.privileged.AdbPairingController.ensureConnected(2000L)
+                }
+                // 3. Bangun health report segar
+                val report = buildHealthReport()
+                runOnUiThread {
+                    tvHealthSummary.text = report.summary()
+                    tvHealthRows.text = report.rowsText()
+                    tvHealthErrors.text = report.errorsText()
+                    refreshTelemetry()
+                    btnHealthRefresh.isEnabled = true
+                    btnHealthRefresh.text = getString(R.string.btn_recheck)
+                    toast("Status diagnostik diperbarui ✓")
+                }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    tvHealthSummary.text = "⚠️ Pemeriksaan gagal"
+                    tvHealthRows.text = t.message ?: t.javaClass.simpleName
+                    tvHealthErrors.text = "Tidak ada error."
+                    refreshTelemetry()
+                    btnHealthRefresh.isEnabled = true
+                    btnHealthRefresh.text = getString(R.string.btn_recheck)
+                }
+            }
+        }.start()
     }
 
     private fun performEchoTest() {

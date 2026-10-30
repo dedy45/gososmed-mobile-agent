@@ -171,6 +171,10 @@ internal class AdbLocalShell(
     @Volatile
     private var linkUp = false
 
+    /** Port loopback 127.0.0.1 yang sedang aktif tersambung ke adbd; -1 bila terputus. */
+    @Volatile
+    private var activePort = -1
+
     /** Listener perubahan status liveness koneksi (real-time notification & UI). */
     var onStateChanged: (() -> Unit)? = null
 
@@ -245,6 +249,7 @@ internal class AdbLocalShell(
             connected = connected,
             uid = effectiveUid,
             error = if (connected) "" else notConnectedReason(),
+            port = if (connected) activePort else -1,
         )
     }
 
@@ -253,14 +258,6 @@ internal class AdbLocalShell(
         // memblokir biner destruktif dan mengizinkan biner otomasi agent.
         val blocked = PrivilegedShell.validateCommand(command)
         if (blocked != null) return blocked
-        // Cek cepat TANPA kunci library (lihat [linkUp]). Bila nilainya keliru
-        // positif, openStream di thread IO akan gagal dan dilaporkan jujur.
-        if (!linkUp) {
-            return ShellResult(
-                ok = false, exitCode = -1, stdout = "", stderr = "",
-                failure = notConnectedReason(),
-            )
-        }
         val future: Future<ShellResult> = io.submit(Callable { execOnIo(command, timeoutMs) })
         return try {
             future.get(timeoutMs + GRACE_MS, TimeUnit.MILLISECONDS)
@@ -279,7 +276,6 @@ internal class AdbLocalShell(
             )
         }
     }
-
     // ------------------------------------------------------------------ pairing
 
     /**
@@ -323,8 +319,8 @@ internal class AdbLocalShell(
      * memakai [connectTo] dengan host+port manual dari layar Debug nirkabel.
      */
     fun connectNow(discoveryTimeoutMs: Long = DISCOVERY_TIMEOUT_MS): Boolean {
-        if (linkUp) return true
-        return runBounded(CONNECT_WORST_CASE_MS) { doConnect(discoveryTimeoutMs) } == true
+        if (linkUp && activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) return true
+        return runBounded(CONNECT_WORST_CASE_MS) { doEnsureConnected(discoveryTimeoutMs) } == true
     }
 
     /**
@@ -343,7 +339,7 @@ internal class AdbLocalShell(
      * melewati batas 30 dtk command agent (`agenthub.DefaultTimeout`).
      */
     fun connectAsync(discoveryTimeoutMs: Long = DISCOVERY_TIMEOUT_MS) {
-        io.execute { doConnect(discoveryTimeoutMs) }
+        io.execute { doEnsureConnected(discoveryTimeoutMs) }
     }
 
     /** Sambung dengan host+port eksplisit (jalur cadangan bila mDNS diblokir). */
@@ -359,6 +355,52 @@ internal class AdbLocalShell(
      * Tidak memakai [runBounded] sendiri (itu tugas pemanggil): inilah yang
      * membuat [connectAsync] tidak lagi menyerahkan tugas bersarang.
      */
+    /**
+     * Memastikan sesi ADB aktif ke 127.0.0.1.
+     * Jika linkUp false atau socket dead, mendeteksi port baru via [AdbPortResolver]
+     * dan menghubungkan ulang secara transparan di background.
+     */
+    fun ensureConnected(timeoutMs: Long = 3000L): Boolean {
+        if (linkUp && activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
+            return true
+        }
+        val future = io.submit(Callable { doEnsureConnected(timeoutMs) })
+        return try {
+            future.get(timeoutMs + GRACE_MS, TimeUnit.MILLISECONDS) == true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun doEnsureConnected(timeoutMs: Long): Boolean {
+        if (linkUp && activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
+            return true
+        }
+        Log.i(TAG, "ADB loopback connection lost or uninitialized. Performing silent auto-recovery...")
+
+        // 1. Coba reconnect langsung jika port sebelumnya masih listening di loopback
+        if (activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
+            if (doConnectManual(LOOPBACK_HOST, activePort)) {
+                Log.i(TAG, "Silent reconnect sukses pada port cached: $activePort")
+                return true
+            }
+        }
+
+        // 2. Discover dynamic port via AdbPortResolver (fast UDP mDNS + NSD fallback)
+        val discoveredPort = AdbPortResolver.discoverActiveAdbPort(appContext, timeoutMs = timeoutMs)
+        if (discoveredPort != null && discoveredPort > 0) {
+            Log.i(TAG, "Discovered active adbd port: $discoveredPort. Performing handshake...")
+            if (doConnectManual(LOOPBACK_HOST, discoveredPort)) {
+                Log.i(TAG, "Silent auto-reconnect successful on 127.0.0.1:$discoveredPort")
+                return true
+            }
+        }
+
+        // 3. Fallback library mDNS
+        Log.i(TAG, "Mencoba fallback connectTls bawaan library...")
+        return doConnect(timeoutMs)
+    }
+
     private fun doConnect(discoveryTimeoutMs: Long): Boolean = try {
         val ok = connectTls(appContext, discoveryTimeoutMs)
         if (ok) {
@@ -366,9 +408,10 @@ internal class AdbLocalShell(
             lastError = ""
             linkUp = true
             probeUid()
-            Log.i(TAG, "tersambung ke adbd dengan uid $cachedUid")
+            Log.i(TAG, "tersambung ke adbd via mDNS dengan uid $cachedUid")
         } else {
             linkUp = false
+            activePort = -1
             cachedUid = -1
             lastError = "adb_disconnected: koneksi ke adbd tidak terbentuk"
         }
@@ -376,6 +419,7 @@ internal class AdbLocalShell(
         ok
     } catch (t: Throwable) {
         linkUp = false
+        activePort = -1
         classifyConnectFailure(t)
         notifyStateChanged()
         false
@@ -388,9 +432,12 @@ internal class AdbLocalShell(
             paired = true
             lastError = ""
             linkUp = true
+            activePort = port
             probeUid()
+            Log.i(TAG, "tersambung ke adbd di $host:$port dengan uid $cachedUid")
         } else {
             linkUp = false
+            activePort = -1
             cachedUid = -1
             lastError = "adb_disconnected: koneksi ke $host:$port tidak terbentuk"
         }
@@ -398,6 +445,7 @@ internal class AdbLocalShell(
         ok
     } catch (t: Throwable) {
         linkUp = false
+        activePort = -1
         classifyConnectFailure(t)
         notifyStateChanged()
         false
@@ -405,21 +453,12 @@ internal class AdbLocalShell(
 
     /**
      * Putuskan sesi (kunci TETAP tersimpan, jadi pairing tidak perlu diulang).
-     *
-     * TIDAK MEMBLOKIR PEMANGGIL (bug yang diperbaiki di v0.9.2):
-     * `disconnect()` pada library meminta `synchronized (mLock)` — kunci yang
-     * bisa sedang ditahan `autoConnect()` sampai ~11 dtk. Metode ini dipanggil
-     * dari MAIN THREAD (tombol "Putuskan" di tab Setup), jadi memanggilnya
-     * langsung berisiko ANR. Sekarang flag status diturunkan SEKETIKA (UI
-     * langsung melihat "terputus"), sedangkan penutupan socket sebenarnya
-     * dijadwalkan ke thread IO.
      */
     fun disconnectNow() {
-        // Status dulu: UI harus langsung jujur bahwa sesi sudah tidak dipakai.
         linkUp = false
+        activePort = -1
         cachedUid = -1
         notifyStateChanged()
-        // Penutupan sebenarnya di thread IO — tidak menahan pemanggil.
         io.execute {
             closeActiveStream()
             try {
@@ -429,7 +468,6 @@ internal class AdbLocalShell(
             }
         }
     }
-
     /**
      * Bersihkan resource permanen (saat ini TIDAK dipanggil siapa pun; disediakan
      * untuk kelengkapan siklus hidup proses).
@@ -461,6 +499,17 @@ internal class AdbLocalShell(
     // ------------------------------------------------------------------ internal
 
     private fun execOnIo(command: String, timeoutMs: Long): ShellResult {
+        // Pre-Flight Connection Interceptor: pastikan koneksi sehat sebelum mengirim perintah
+        if (!linkUp || activePort <= 0 || !AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
+            val recovered = doEnsureConnected(2500L)
+            if (!recovered || !linkUp) {
+                return ShellResult(
+                    ok = false, exitCode = -1, stdout = "", stderr = "",
+                    failure = notConnectedReason(),
+                )
+            }
+        }
+
         var stream: AdbStream? = null
         val result = try {
             stream = openStream("shell:${AdbShellOutput.wrap(command)}")
@@ -471,19 +520,39 @@ internal class AdbLocalShell(
                 ok = code == 0,
                 exitCode = code,
                 stdout = output,
-                // stderr digabung ke stdout pada layanan `shell:` ADB — lihat
-                // AdbShellOutput.wrap() dan catatan kontrak §3.1.
                 stderr = "",
                 failure = null,
             )
         } catch (t: Throwable) {
-            // Kegagalan saat membuka/membaca stream hampir selalu berarti
-            // koneksi sudah tidak sehat. Turunkan [linkUp] supaya `status()`
-            // melaporkan keadaan yang benar pada polling berikutnya, tanpa
-            // perlu memanggil `isConnected()` library (yang memblokir).
             if (t is java.io.IOException) {
                 linkUp = false
+                activePort = -1
                 notifyStateChanged()
+                // Coba auto-reconnect 1x dan retry jika koneksi terputus tiba-tiba
+                val recovered = doEnsureConnected(2000L)
+                if (recovered && linkUp) {
+                    var retryStream: AdbStream? = null
+                    try {
+                        retryStream = openStream("shell:${AdbShellOutput.wrap(command)}")
+                        activeStream = retryStream
+                        val raw = readAll(retryStream, timeoutMs)
+                        val (output, code) = AdbShellOutput.parse(raw)
+                        return ShellResult(
+                            ok = code == 0,
+                            exitCode = code,
+                            stdout = output,
+                            stderr = "",
+                            failure = null,
+                        )
+                    } catch (t2: Throwable) {
+                        return ShellResult(
+                            ok = false, exitCode = -1, stdout = "", stderr = "",
+                            failure = classifyExecFailure(t2),
+                        )
+                    } finally {
+                        try { retryStream?.close() } catch (_: Throwable) {}
+                    }
+                }
             }
             ShellResult(
                 ok = false, exitCode = -1, stdout = "", stderr = "",
@@ -494,13 +563,8 @@ internal class AdbLocalShell(
             try {
                 stream?.close()
             } catch (_: Throwable) {
-                // stream sudah ditutup peer / koneksi sudah hilang — abaikan.
             }
         }
-        // Probe uid di LUAR blok finally di atas: stream perintah sudah
-        // ditutup lebih dulu, sehingga probe memiliki siklus hidupnya sendiri
-        // dan tidak bertabrakan dengan [activeStream]. Hanya dijalankan setelah
-        // perintah benar-benar sukses (sesi terbukti hidup).
         if (result.ok && cachedUid == -1) probeUid()
         return result
     }
@@ -646,5 +710,6 @@ internal class AdbLocalShell(
 
     private fun notConnectedReason(): String =
         if (lastError.isNotEmpty()) lastError
-        else "adb_not_paired: otomasi lanjutan belum dihubungkan di HP ini"
+        else if (!paired) "adb_not_paired: otomasi lanjutan belum dihubungkan di HP ini"
+        else "adb_disconnected: port Debug nirkabel tidak ditemukan atau terputus. Pastikan Debug nirkabel aktif di Opsi Pengembang."
 }

@@ -213,6 +213,17 @@ object AdbPairingController {
         instance.connectAsync(discoveryTimeoutMs)
     }
 
+    /**
+     * Memastikan sesi ADB aktif via auto-recovery dan silent reconnect.
+     */
+    fun ensureConnected(timeoutMs: Long = 3000L): Boolean {
+        val ctx = appContext ?: return false
+        val instance = ensureShell(ctx) ?: return false
+        val ok = instance.ensureConnected(timeoutMs)
+        if (ok) rememberPaired(ctx, true)
+        return ok
+    }
+
     fun lockProcessPrivileged(ctx: Context) {
         val instance = shell ?: return
         if (!instance.status().available) return
@@ -289,6 +300,7 @@ object AdbPairingController {
                 connected = false,
                 uid = -1,
                 error = initError.ifEmpty { "adb_not_paired: otomasi lanjutan belum disiapkan" },
+                port = -1,
             )
         return instance.status()
     }

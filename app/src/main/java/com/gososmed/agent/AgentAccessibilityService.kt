@@ -237,6 +237,7 @@ class AgentAccessibilityService : AccessibilityService() {
                 put("adb_available", shellStatus.available)
                 put("adb_connected", shellStatus.connected)
                 put("adb_paired", shellStatus.paired)
+                put("adb_port", shellStatus.port)
                 put("adb_error", shellStatus.error)
             }
         }
@@ -266,6 +267,7 @@ class AgentAccessibilityService : AccessibilityService() {
                 put("last_launch_transport", TRANSPORT_A11Y)
                 put("adb_paired", shellStatus.paired)
                 put("adb_connected", shellStatus.connected)
+                put("adb_port", shellStatus.port)
                 put("adb_uid", shellStatus.uid)
                 put("adb_error", shellStatus.error)
                 put("can_shell", shellStatus.available)
@@ -1438,6 +1440,7 @@ class AgentAccessibilityService : AccessibilityService() {
             put("last_launch_transport", lastLaunchTransport)
             put("adb_paired", shellStatus.paired)
             put("adb_connected", shellStatus.connected)
+            put("adb_port", shellStatus.port)
             put("adb_uid", shellStatus.uid)
             put("adb_error", shellStatus.error)
             put("can_shell", shellStatus.available)

@@ -125,6 +125,7 @@ data class ShellStatus(
     val connected: Boolean,
     val uid: Int,
     val error: String,
+    val port: Int = -1,
 )
 
 /**
