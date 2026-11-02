@@ -72,7 +72,7 @@ object AdbPortResolver {
         }
         dos.writeByte(0x00)    // Terminating zero
         dos.writeShort(0x000C) // Type: PTR (12)
-        dos.writeShort(0x0001) // Class: IN (1)
+        dos.writeShort(0x8001.toInt()) // Class: IN (1) dengan bit QU (Unicast Response) agar adbd membalas langsung ke socket kita
         return out.toByteArray()
     }
 
