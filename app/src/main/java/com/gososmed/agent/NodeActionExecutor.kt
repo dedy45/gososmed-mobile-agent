@@ -46,15 +46,14 @@ object NodeActionExecutor {
     ) : ActionDispatcher {
 
         override fun performNodeAction(nodeId: String, action: Int, args: Map<String, Any>?): Boolean {
-            val root = try {
-                service.rootInActiveWindow
-            } catch (t: Throwable) {
-                android.util.Log.w("GoAgent", "Failed to get rootInActiveWindow: ${t.message}", t)
-                null
-            } ?: return false
-
-            val targetInfo = findNodeById(root, nodeId) ?: return false
-
+            val roots = service.getAllInteractiveRoots()
+            if (roots.isEmpty()) return false
+            var targetInfo: android.view.accessibility.AccessibilityNodeInfo? = null
+            for (root in roots) {
+                targetInfo = findNodeById(root, nodeId)
+                if (targetInfo != null) break
+            }
+            if (targetInfo == null) return false
             return if (action == android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT) {
                 val text = args?.get("text")?.toString() ?: ""
                 val bundle = android.os.Bundle()
@@ -187,7 +186,7 @@ object NodeActionExecutor {
      */
     fun copyText(service: AgentAccessibilityService, targetNodeId: String? = null): Pair<Boolean, String> {
         val root = try {
-            service.rootInActiveWindow
+            service.getTopInteractiveRoot()
         } catch (t: Throwable) {
             null
         } ?: return Pair(false, "")
@@ -211,7 +210,7 @@ object NodeActionExecutor {
      */
     fun pasteText(service: AgentAccessibilityService, targetNodeId: String? = null): Boolean {
         val root = try {
-            service.rootInActiveWindow
+            service.getTopInteractiveRoot()
         } catch (t: Throwable) {
             null
         }

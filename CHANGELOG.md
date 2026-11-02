@@ -9,8 +9,32 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.12] - 2026-10-31
+## [1.2.13-dev.1] - 2026-11-02
 
+### Added — Multi-Window Z-Order Layer Traversal & Media Tile Extraction
+- **Multi-Window Z-Order Layer Traversal (`AgentAccessibilityService.kt`, `NodeActionExecutor.kt`)**:
+  - Menggantikan `rootInActiveWindow` tunggal dengan `getAllInteractiveRoots()` dan `getTopInteractiveRoot()`.
+  - Mengiterasi seluruh jendela interaktif via `getWindows()` yang terurut menurun berdasarkan Z-order (`window.layer`).
+  - Memastikan jendela modal/dialog dan BottomSheet pemilih media galeri (TikTok, Instagram, Google Photos) terbaca sebagai jendela aktif terdepan, bukan tertutup Activity kamera di latar belakang.
+  - Memperbarui `NodeActionExecutor.performNodeAction()` untuk mencari node di seluruh root jendela interaktif terurut.
+- **Perlindungan Petak Media Galeri Tanpa Label (`AnnotatedScreenshotHelper.kt`)**:
+  - Node petak foto/video di `RecyclerView` galeri tanpa `text` dan `contentDescription` kini dilindungi jika `isClickable` dan dimensi W >= 60px && H >= 60px pada kelas `FrameLayout`, `ImageView`, `View`, atau `Media`.
+  - Diberi label sintetis `[Media Tile]`, nomor badge Set-of-Marks, dan koordinat titik tengah sehingga dapat dikenali dan diketuk secara presisi oleh AI Vision.
+  - Mendukung `annotateRoots()` untuk membubuhi nomor Set-of-Marks dari seluruh jendela interaktif secara menyeluruh.
+
+### Fixed — Shizuku-Parity ADB Auto-Reconnect & TCP Port Persistence
+- **NsdManager Serialized Queue (`AdbPortResolver.kt`)**:
+  - Mengadopsi pola antrean Shizuku-Next (`AdbMdns.kt`): `NsdManager.resolveService()` di-serialize menggunakan `ConcurrentLinkedQueue` untuk mencegah error 3 (`FAILURE_ALREADY_ACTIVE`) dan `BusyListenerException` pada Android 11-16.
+  - Menambahkan pengecekan cepat (sub-1ms) port klasik ADB 5555 sebelum memulai penemuan multicast mDNS.
+- **Pembersihan Koneksi & TCP Port 5555 Persistence (`AdbLocalShell.kt`)**:
+  - Memanggil `closeActiveStream()` dan `disconnect()` sebelum `connect()` manual untuk membersihkan state koneksi lama yang mati.
+  - Mengaktifkan persistensi port via `setprop service.adb.tcp.port 5555` saat berhasil tersambung, menjaga listener ADB tetap aktif pada port 5555 loopback.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus (276+ tests).
+- **Kanal Rilis:** Diterbitkan sebagai pre-release dev `v1.2.13-dev.1` untuk divalidasi langsung di perangkat fisik pengguna (TikTok/Instagram media picker & stabilitas Wireless ADB).
+
+## [1.2.12] - 2026-10-31
 ### Added — Auto-Recovery Loopback ADB Port, Silent Reconnect, & 11 Health Checks Live Refresh
 - **Auto-Recovery Loopback ADB Port & Silent Reconnect (`AdbPortResolver.kt`, `AdbLocalShell.kt`)**:
   - Deteksi port dinamis adbd nirkabel lokal via query UDP mDNS cepat ke `_adb-tls-connect._tcp.local` (`224.0.0.251:5353`) dengan fallback `NsdManager` dan verifikasi TCP socket liveness loopback.

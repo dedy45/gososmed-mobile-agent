@@ -15,10 +15,10 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-
 /**
  * Penemu port nirkabel ADB (`_adb-tls-connect._tcp`) dinamis untuk Android 11+.
  *
@@ -165,12 +165,46 @@ object AdbPortResolver {
 
     /**
      * Jalur penemuan cadangan menggunakan NsdManager bawaan sistem Android.
+     * Menerapkan Shizuku-parity queue: NsdManager di Android 11-16 hanya mengizinkan
+     * 1 resolveService sekaligus; resolve ganda bersamaan akan memicu kegagalan (kode 3).
      */
     fun discoverViaNsd(context: Context?, timeoutMs: Long = 1500L): Int? {
         val ctx = context?.applicationContext ?: return null
         val nsd = ctx.getSystemService(Context.NSD_SERVICE) as? NsdManager ?: return null
         val resolvedPort = AtomicInteger(-1)
         val latch = CountDownLatch(1)
+        val resolveQueue = ConcurrentLinkedQueue<NsdServiceInfo>()
+        val resolveLock = Any()
+        var isResolving = false
+        var running = true
+
+        fun drainQueue() {
+            synchronized(resolveLock) {
+                isResolving = false
+                if (!running || resolvedPort.get() > 0) return
+                val next = resolveQueue.poll() ?: return
+                isResolving = true
+                try {
+                    nsd.resolveService(next, object : NsdManager.ResolveListener {
+                        override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                            drainQueue()
+                        }
+
+                        override fun onServiceResolved(resolved: NsdServiceInfo) {
+                            val p = resolved.port
+                            if (p in 1024..65535 && isSocketAlive("127.0.0.1", p, 250)) {
+                                resolvedPort.set(p)
+                                latch.countDown()
+                            } else {
+                                drainQueue()
+                            }
+                        }
+                    })
+                } catch (t: Throwable) {
+                    drainQueue()
+                }
+            }
+        }
 
         val discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {}
@@ -182,18 +216,31 @@ object AdbPortResolver {
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (resolvedPort.get() > 0) return
-                try {
-                    nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                        override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
-                        override fun onServiceResolved(resolved: NsdServiceInfo) {
-                            val p = resolved.port
-                            if (p in 1024..65535 && isSocketAlive("127.0.0.1", p, 250)) {
-                                resolvedPort.set(p)
-                                latch.countDown()
-                            }
+                synchronized(resolveLock) {
+                    if (!isResolving) {
+                        isResolving = true
+                        try {
+                            nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                    drainQueue()
+                                }
+
+                                override fun onServiceResolved(resolved: NsdServiceInfo) {
+                                    val p = resolved.port
+                                    if (p in 1024..65535 && isSocketAlive("127.0.0.1", p, 250)) {
+                                        resolvedPort.set(p)
+                                        latch.countDown()
+                                    } else {
+                                        drainQueue()
+                                    }
+                                }
+                            })
+                        } catch (_: Throwable) {
+                            drainQueue()
                         }
-                    })
-                } catch (_: Throwable) {
+                    } else {
+                        resolveQueue.add(serviceInfo)
+                    }
                 }
             }
 
@@ -206,6 +253,7 @@ object AdbPortResolver {
         } catch (t: Throwable) {
             Log.w(TAG, "discoverViaNsd gagal: ${t.message}")
         } finally {
+            synchronized(resolveLock) { running = false }
             try { nsd.stopServiceDiscovery(discoveryListener) } catch (_: Throwable) {}
         }
 
@@ -215,14 +263,20 @@ object AdbPortResolver {
 
     /**
      * Resolusi komprehensif port wireless ADB aktif pada loopback 127.0.0.1.
-     * Menggabungkan UDP mDNS cepat, NsdManager, dan verifikasi socket liveness.
+     * Menggabungkan port standar 5555, UDP mDNS cepat, NsdManager, dan verifikasi socket liveness.
      */
     fun discoverActiveAdbPort(context: Context?, timeoutMs: Long = 2000L): Int? {
-        // 1. Coba UDP mDNS (biasanya selesai dalam 50-200ms)
-        val udpPort = discoverViaMdnsUdp(context, timeoutMs.coerceAtMost(1200L))
+        // 1. Cek port standar TCP 5555 terlebih dahulu (sub-1ms)
+        if (isSocketAlive("127.0.0.1", 5555, 120)) {
+            Log.i(TAG, "Ditemukan port ADB standar 5555 aktif di loopback")
+            return 5555
+        }
+
+        // 2. Coba UDP mDNS cepat (50-200ms)
+        val udpPort = discoverViaMdnsUdp(context, timeoutMs.coerceAtMost(1000L))
         if (udpPort != null) return udpPort
 
-        // 2. Fallback ke NsdManager
+        // 3. Fallback ke NsdManager terserialisasi (Shizuku-parity)
         val nsdPort = discoverViaNsd(context, timeoutMs.coerceAtMost(1500L))
         if (nsdPort != null) return nsdPort
 

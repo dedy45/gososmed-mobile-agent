@@ -33,10 +33,19 @@ object AnnotatedScreenshotHelper {
         scale: Float = 0.6f,
         quality: Int = 75,
         roi: Rect? = null
+    ): Pair<String, JSONArray> = annotateRoots(bitmap, if (rootNode != null) listOf(rootNode) else emptyList(), scale, quality, roi)
+
+    fun annotateRoots(
+        bitmap: Bitmap,
+        rootNodes: List<AccessibilityNodeInfo>,
+        scale: Float = 0.6f,
+        quality: Int = 75,
+        roi: Rect? = null
     ): Pair<String, JSONArray> {
         val elements = mutableListOf<MarkedElement>()
-        if (rootNode != null) {
-            collectInteractiveNodes(rootNode, elements, 1, 0)
+        var nextMarkId = 1
+        for (root in rootNodes) {
+            nextMarkId = collectInteractiveNodes(root, elements, nextMarkId, 0)
         }
 
         // Filter elemen jika ada Region of Interest (ROI)
@@ -219,20 +228,31 @@ object AnnotatedScreenshotHelper {
 
         val hasSemanticDesc = desc.isNotEmpty() && !desc.equals("null", ignoreCase = true)
         val hasLabel = label.isNotEmpty()
+
+        // Perlindungan petak media galeri tanpa label (TikTok, IG, Google Photos, sistem picker)
+        val isMediaTileCandidate = !hasLabel && node.isClickable &&
+                rect.width() >= 60 && rect.height() >= 60 &&
+                (node.className?.contains("FrameLayout") == true ||
+                 node.className?.contains("ImageView") == true ||
+                 node.className?.endsWith(".View") == true ||
+                 node.className?.contains("Media") == true)
+
+        if (label.isEmpty() && isMediaTileCandidate) {
+            label = "[Media Tile]"
+        }
+
         val isActionableClass = node.className?.contains("Button") == true ||
                 node.className?.contains("EditText") == true ||
                 (node.className?.contains("ImageView") == true && hasSemanticDesc)
 
         // Saring kontainer layout raksasa kosongan yang membungkus hampir seluruh layar
         val isHugeEmptyLayout = (node.className?.contains("Layout") == true || node.className?.contains("ViewGroup") == true) &&
-                !hasLabel && rect.width() > 1000 && rect.height() > 1800
+                !hasLabel && !isMediaTileCandidate && rect.width() > 1000 && rect.height() > 1800
 
-        val isInteractive = (node.isClickable || isActionableClass || hasSemanticDesc || (hasLabel && node.className?.contains("TextView") == true)) &&
+        val isInteractive = (node.isClickable || isActionableClass || hasSemanticDesc || isMediaTileCandidate || (hasLabel && node.className?.contains("TextView") == true)) &&
                 !isHugeEmptyLayout &&
                 rect.width() > 15 && rect.height() > 15
-
         val isDuplicateBounds = list.any { it.bounds == rect }
-
         if (isInteractive && !isDuplicateBounds && rect.left >= 0 && rect.top >= 0) {
             val className = node.className?.toString()?.substringAfterLast(".") ?: "View"
             list.add(MarkedElement(

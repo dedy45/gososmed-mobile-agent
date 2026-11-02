@@ -377,7 +377,6 @@ internal class AdbLocalShell(
             return true
         }
         Log.i(TAG, "ADB loopback connection lost or uninitialized. Performing silent auto-recovery...")
-
         // 1. Coba reconnect langsung jika port sebelumnya masih listening di loopback
         if (activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
             if (doConnectManual(LOOPBACK_HOST, activePort)) {
@@ -386,7 +385,15 @@ internal class AdbLocalShell(
             }
         }
 
-        // 2. Discover dynamic port via AdbPortResolver (fast UDP mDNS + NSD fallback)
+        // 2. Coba port standar 5555 jika aktif di loopback (sub-1ms)
+        if (AdbPortResolver.isSocketAlive(LOOPBACK_HOST, 5555, 120)) {
+            if (doConnectManual(LOOPBACK_HOST, 5555)) {
+                Log.i(TAG, "Silent reconnect sukses pada port standar 5555")
+                return true
+            }
+        }
+
+        // 3. Discover dynamic port via AdbPortResolver (fast UDP mDNS + NSD fallback)
         val discoveredPort = AdbPortResolver.discoverActiveAdbPort(appContext, timeoutMs = timeoutMs)
         if (discoveredPort != null && discoveredPort > 0) {
             Log.i(TAG, "Discovered active adbd port: $discoveredPort. Performing handshake...")
@@ -396,12 +403,14 @@ internal class AdbLocalShell(
             }
         }
 
-        // 3. Fallback library mDNS
+        // 4. Fallback library mDNS
         Log.i(TAG, "Mencoba fallback connectTls bawaan library...")
         return doConnect(timeoutMs)
     }
 
     private fun doConnect(discoveryTimeoutMs: Long): Boolean = try {
+        closeActiveStream()
+        try { disconnect() } catch (_: Throwable) {}
         val ok = connectTls(appContext, discoveryTimeoutMs)
         if (ok) {
             paired = true
@@ -409,6 +418,10 @@ internal class AdbLocalShell(
             linkUp = true
             probeUid()
             Log.i(TAG, "tersambung ke adbd via mDNS dengan uid $cachedUid")
+            // Shizuku-parity: pertahankan listener port 5555 untuk kemudahan reconnect
+            io.execute {
+                try { execOnIo("setprop service.adb.tcp.port 5555", 1500L) } catch (_: Throwable) {}
+            }
         } else {
             linkUp = false
             activePort = -1
@@ -427,6 +440,9 @@ internal class AdbLocalShell(
 
     /** Bodi penyambungan MANUAL (host+port eksplisit) — WAJIB di thread IO. */
     private fun doConnectManual(host: String, port: Int): Boolean = try {
+        closeActiveStream()
+        try { disconnect() } catch (_: Throwable) {}
+        setHostAddress(host)
         val ok = connect(host, port)
         if (ok) {
             paired = true
@@ -435,6 +451,10 @@ internal class AdbLocalShell(
             activePort = port
             probeUid()
             Log.i(TAG, "tersambung ke adbd di $host:$port dengan uid $cachedUid")
+            // Shizuku-parity: pertahankan listener port 5555 untuk kemudahan reconnect
+            io.execute {
+                try { execOnIo("setprop service.adb.tcp.port 5555", 1500L) } catch (_: Throwable) {}
+            }
         } else {
             linkUp = false
             activePort = -1

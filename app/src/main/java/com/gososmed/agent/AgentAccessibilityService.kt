@@ -22,6 +22,7 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.gososmed.agent.privileged.PairingDialogParser
 import com.gososmed.agent.privileged.PrivilegedShellHolder
 import org.json.JSONArray
@@ -722,11 +723,48 @@ class AgentAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Dumps the current active window as uiautomator-compatible XML. */
-    fun dumpXml(): String = HierarchySerializer.dump(rootInActiveWindow)
+    /**
+     * Mengambil seluruh root node jendela interaktif yang terurut berdasarkan
+     * Z-order layer teratas (descending layer).
+     * Jendela modal/dialog (seperti BottomSheet pemilih galeri) berada pada layer
+     * lebih tinggi daripada Activity latar belakang kamera.
+     */
+    fun getAllInteractiveRoots(): List<AccessibilityNodeInfo> {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        val windowList = try { windows } catch (_: Throwable) { null }
+        if (!windowList.isNullOrEmpty()) {
+            val sorted = windowList.sortedByDescending { it.layer }
+            for (w in sorted) {
+                if (w == null) continue
+                val type = w.type
+                if (type == AccessibilityWindowInfo.TYPE_APPLICATION || type == AccessibilityWindowInfo.TYPE_SYSTEM) {
+                    val root = try { w.root } catch (_: Throwable) { null }
+                    if (root != null) {
+                        roots.add(root)
+                    }
+                }
+            }
+        }
+        if (roots.isEmpty()) {
+            val fallback = try { rootInActiveWindow } catch (_: Throwable) { null }
+            if (fallback != null) roots.add(fallback)
+        }
+        return roots
+    }
+
+    /**
+     * Mengambil root node terdepan (top-most interactive layer).
+     * Mengatasi desinkronisasi getRootInActiveWindow() saat modal/dialog terbuka di atas Activity.
+     */
+    fun getTopInteractiveRoot(): AccessibilityNodeInfo? {
+        return getAllInteractiveRoots().firstOrNull() ?: rootInActiveWindow
+    }
+
+    /** Dumps the current top interactive window as uiautomator-compatible XML. */
+    fun dumpXml(): String = HierarchySerializer.dump(getTopInteractiveRoot())
 
     fun currentPackage(): String {
-        val root = rootInActiveWindow ?: return ""
+        val root = getTopInteractiveRoot() ?: return ""
         return root.packageName?.toString() ?: ""
     }
 

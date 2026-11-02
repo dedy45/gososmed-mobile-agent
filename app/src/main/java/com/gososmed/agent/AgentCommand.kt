@@ -1452,7 +1452,7 @@ object AgentCommand {
                         resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
                     } else {
                         var bmp: Bitmap? = null
-                        var root: AccessibilityNodeInfo? = null
+                        var roots: List<AccessibilityNodeInfo> = emptyList()
                         try {
                             val opts = android.graphics.BitmapFactory.Options().apply {
                                 inMutable = true
@@ -1463,8 +1463,8 @@ object AgentCommand {
                                 Log.e(TAG, "annotatedScreenshot failed: $errMsg")
                                 resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
                             } else {
-                                root = svc.rootInActiveWindow
-                                val (base64, elements) = AnnotatedScreenshotHelper.annotate(bmp, root, scale, quality, roi)
+                                roots = svc.getAllInteractiveRoots()
+                                val (base64, elements) = AnnotatedScreenshotHelper.annotateRoots(bmp, roots, scale, quality, roi)
                                 resp.put("ok", true)
                                 resp.put("result", JSONObject().apply {
                                     put("image_base64", base64)
@@ -1479,7 +1479,9 @@ object AgentCommand {
                                 })
                             }
                         } finally {
-                            root?.recycle()
+                            for (r in roots) {
+                                try { r.recycle() } catch (_: Throwable) {}
+                            }
                             bmp?.recycle()
                         }
                     }
