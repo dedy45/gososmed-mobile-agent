@@ -9,8 +9,19 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.13-dev.1] - 2026-11-02
+## [1.2.13-dev.2] - 2026-11-02
 
+### Fixed — Prioritasi Jendela TYPE_APPLICATION di Atas SystemUI Navigation Bar
+- **Prioritasi Jendela Aplikasi (`AgentAccessibilityService.kt`)**:
+  - `getAllInteractiveRoots()` kini memisahkan jendela `TYPE_APPLICATION` (TikTok, Instagram) dari `TYPE_SYSTEM` (bilah navigasi / status bar).
+  - Jendela aplikasi diurutkan paling depan (`appWindows + otherWindows`) agar tidak tertimpa layer navigasi sistem `com.android.systemui` yang memiliki layer tinggi (20.000+).
+  - `getTopInteractiveRoot()` memprioritaskan root aplikasi (`packageName?.contains("systemui") != true`), mencegah `dumpXml()` mengekspor bilah navigasi saja dan memastikan seluruh pohon antarmuka galeri TikTok terkirim utuh.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus (276+ tests).
+- **Kanal Rilis:** Diterbitkan sebagai pre-release dev `v1.2.13-dev.2` untuk validasi pemilih media galeri TikTok di perangkat fisik.
+
+## [1.2.13-dev.1] - 2026-11-02
 ### Added — Multi-Window Z-Order Layer Traversal & Media Tile Extraction
 - **Multi-Window Z-Order Layer Traversal (`AgentAccessibilityService.kt`, `NodeActionExecutor.kt`)**:
   - Menggantikan `rootInActiveWindow` tunggal dengan `getAllInteractiveRoots()` dan `getTopInteractiveRoot()`.

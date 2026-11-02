@@ -733,15 +733,19 @@ class AgentAccessibilityService : AccessibilityService() {
         val roots = mutableListOf<AccessibilityNodeInfo>()
         val windowList = try { windows } catch (_: Throwable) { null }
         if (!windowList.isNullOrEmpty()) {
-            val sorted = windowList.sortedByDescending { it.layer }
-            for (w in sorted) {
-                if (w == null) continue
-                val type = w.type
-                if (type == AccessibilityWindowInfo.TYPE_APPLICATION || type == AccessibilityWindowInfo.TYPE_SYSTEM) {
-                    val root = try { w.root } catch (_: Throwable) { null }
-                    if (root != null) {
-                        roots.add(root)
-                    }
+            // 1. Pisahkan jendela aplikasi dan jendela sistem.
+            // Jendela aplikasi (TikTok / Instagram) WAJIB dievaluasi paling depan!
+            val appWindows = windowList
+                .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                .sortedByDescending { it.layer }
+            val otherWindows = windowList
+                .filter { it.type != AccessibilityWindowInfo.TYPE_APPLICATION }
+                .sortedByDescending { it.layer }
+
+            for (w in appWindows + otherWindows) {
+                val root = try { w.root } catch (_: Throwable) { null }
+                if (root != null) {
+                    roots.add(root)
                 }
             }
         }
@@ -754,12 +758,17 @@ class AgentAccessibilityService : AccessibilityService() {
 
     /**
      * Mengambil root node terdepan (top-most interactive layer).
-     * Mengatasi desinkronisasi getRootInActiveWindow() saat modal/dialog terbuka di atas Activity.
+     * Mengatasi desinkronisasi getRootInActiveWindow() saat modal/dialog terbuka di atas Activity,
+     * dan memprioritaskan jendela aplikasi target di atas bilah navigasi sistem (systemui).
      */
     fun getTopInteractiveRoot(): AccessibilityNodeInfo? {
-        return getAllInteractiveRoots().firstOrNull() ?: rootInActiveWindow
+        val roots = getAllInteractiveRoots()
+        // Prioritaskan root aplikasi terdepan (bukan systemui / nav bar)
+        val appRoot = roots.firstOrNull {
+            it.packageName?.toString()?.contains("systemui") != true
+        }
+        return appRoot ?: roots.firstOrNull() ?: rootInActiveWindow
     }
-
     /** Dumps the current top interactive window as uiautomator-compatible XML. */
     fun dumpXml(): String = HierarchySerializer.dump(getTopInteractiveRoot())
 

@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 51 = 1.2.13-dev.1 (DEV) — Multi-window Z-order Layer Traversal,
+        // versionCode 52 = 1.2.13-dev.2 (DEV) — Prioritas TYPE_APPLICATION di atas TYPE_SYSTEM (systemui navigation bar),
         // Unlabeled Media Tile Extraction, Shizuku-parity Nsd resolve queue & ADB tcpip persistence.
-        versionCode = 51
-        versionName = "1.2.13-dev.1"
+        versionCode = 52
+        versionName = "1.2.13-dev.2"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
