@@ -23,8 +23,8 @@ import org.json.JSONObject
 object HierarchySerializer {
 
     // Limit flattening depth and node count to keep the dump bounded.
-    private const val MAX_DEPTH = 12
-    private const val MAX_NODES = 2000
+    private const val MAX_DEPTH = 36
+    private const val MAX_NODES = 4000
 
     /** Kuota node per dump; habis = traversal berhenti, dump ditandai truncated. */
     private class NodeBudget(private val max: Int) {

@@ -9,8 +9,26 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.13-dev.2] - 2026-11-02
+## [1.2.13] - 2026-11-04 (STABLE)
 
+### Added — SSoT 37: Proteksi Petak Media Galeri TikTok & Perluasan Traversal Hierarki
+- **Proteksi Petak Media Visual Galeri (`ActionableNodeRegistry.kt`)**:
+  - Menambahkan `isMediaTileCandidate(input)` untuk mendeteksi elemen visual media galeri (`ImageView`, `FrameLayout`, `View`, `Media`, `Item`) dengan batas minimal dimensi 40px × 40px.
+  - Memperbarui `shouldReject()` agar tidak membuang thumbnail foto/video galeri di dalam `RecyclerView` yang tidak memiliki teks atau deskripsi bawaan.
+  - Memberikan label sintetis `[Media Tile]` pada `processNodes()` dan menandai node sebagai `actionable = true` agar model AI Vision dapat menargetkan dan mengetuk petak media dengan presisi.
+- **Perluasan Batas Traversal Hierarki (`HierarchySerializer.kt`, `WindowRootCollector.kt`)**:
+  - Menaikkan `MAX_DEPTH` dari 12/16 menjadi 36 level untuk mencegah pemangkasan (*truncation*) pada aplikasi bersarang dalam seperti TikTok, Shopee, dan aplikasi berbasis Jetpack Compose / Flutter.
+  - Menaikkan kuota node `MAX_NODES` dari 2000 menjadi 4000 node, mencegah pemotongan pohon hierarki pada layar berdensitas tinggi.
+- **Konsolidasi Multi-Window & Stabilitas Port ADB**:
+  - Memisahkan dan memprioritaskan jendela aplikasi `TYPE_APPLICATION` di atas jendela sistem `TYPE_SYSTEM` (`com.android.systemui`), memastikan dialog BottomSheet galeri TikTok selalu menjadi root interaktif terdepan.
+  - Antrean terurut `NsdManager` untuk penemuan mDNS Wireless ADB dan persistensi `setprop service.adb.tcp.port 5555`.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (276+ tests).
+- **Validasi Lapangan:** Telah divalidasi langsung pada perangkat fisik Xiaomi Redmi Note 13 Pro 5G (HyperOS Android 15) dan Vivo V2348 (Android 16).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.13`.
+
+## [1.2.13-dev.2] - 2026-11-02
 ### Fixed — Prioritasi Jendela TYPE_APPLICATION di Atas SystemUI Navigation Bar
 - **Prioritasi Jendela Aplikasi (`AgentAccessibilityService.kt`)**:
   - `getAllInteractiveRoots()` kini memisahkan jendela `TYPE_APPLICATION` (TikTok, Instagram) dari `TYPE_SYSTEM` (bilah navigasi / status bar).

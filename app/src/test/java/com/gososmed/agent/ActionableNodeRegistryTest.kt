@@ -143,12 +143,12 @@ class ActionableNodeRegistryTest {
         )
         assertTrue(ActionableNodeRegistry.shouldReject(outsideNode, 1080, 2400))
 
-        // 6. Decorative without semantic value
+        // 6. Decorative without semantic value (divider line < 40px height)
         val decorativeNode = ActionableNodeRegistry.RawNodeInput(
             windowId = 1,
             packageName = "com.example.app",
             className = "android.view.View",
-            bounds = validBounds,
+            bounds = SnapshotBounds(0, 100, 1080, 102), // 2px height divider line
             enabled = true,
             clickable = false,
             text = null,
@@ -156,6 +156,20 @@ class ActionableNodeRegistryTest {
             resourceId = null
         )
         assertTrue(ActionableNodeRegistry.shouldReject(decorativeNode, 1080, 2400))
+
+        // 7. Visual media tile candidate (e.g. 100x100 thumbnail in gallery) must NOT be rejected
+        val mediaTileNode = ActionableNodeRegistry.RawNodeInput(
+            windowId = 1,
+            packageName = "com.zhiliaoapp.musically",
+            className = "android.widget.ImageView",
+            bounds = validBounds,
+            enabled = true,
+            clickable = false,
+            text = null,
+            contentDescription = null,
+            resourceId = null
+        )
+        assertFalse(ActionableNodeRegistry.shouldReject(mediaTileNode, 1080, 2400))
     }
 
     @Test
@@ -212,6 +226,32 @@ class ActionableNodeRegistryTest {
         )
         assertTrue(result.isEmpty())
     }
+    @Test
+    fun testUnlabeledMediaTileGetsSyntheticLabelAndActionable() {
+        val mediaTile = ActionableNodeRegistry.RawNodeInput(
+            windowId = 1,
+            packageName = "com.zhiliaoapp.musically",
+            className = "android.widget.ImageView",
+            bounds = SnapshotBounds(100, 100, 400, 400),
+            enabled = true,
+            clickable = false,
+            text = null,
+            contentDescription = null,
+            resourceId = null
+        )
+
+        val processed = ActionableNodeRegistry.processNodes(
+            rawNodes = listOf(mediaTile),
+            displayId = 0,
+            displayWidth = 1080,
+            displayHeight = 2400
+        )
+
+        assertEquals(1, processed.size)
+        val node = processed[0]
+        assertEquals("[Media Tile]", node.text)
+        assertTrue(node.actionable)
+    }
 
     @Test
     fun testPasswordRedactionReplacesTextAndDescription() {
@@ -249,10 +289,10 @@ class ActionableNodeRegistryTest {
 
     @Test
     fun testHierarchyDepthBudgetAndMaxNodesLimit() {
-        assertEquals(16, WindowRootCollector.MAX_DEPTH)
-        assertEquals(2000, WindowRootCollector.MAX_NODES)
+        assertEquals(36, WindowRootCollector.MAX_DEPTH)
+        assertEquals(4000, WindowRootCollector.MAX_NODES)
 
-        // 1. Deep recursion test (depth 25 > 16)
+        // 1. Deep recursion test (depth 50 > 36)
         fun buildDeepChain(currentDepth: Int, maxDepth: Int): WindowRootCollector.SimulatedNode {
             val child = if (currentDepth < maxDepth) {
                 listOf(buildDeepChain(currentDepth + 1, maxDepth))
@@ -266,19 +306,19 @@ class ActionableNodeRegistryTest {
             )
         }
 
-        val deepRoot = buildDeepChain(0, 25)
+        val deepRoot = buildDeepChain(0, 50)
         val deepSource = object : WindowRootCollector.WindowTreeSource {
             override fun getWindows(): List<WindowRootCollector.WindowDescriptor> = listOf(
                 WindowRootCollector.WindowDescriptor(id = 1, type = WindowRootCollector.TYPE_APPLICATION, rootNode = deepRoot)
             )
         }
         val collectedDeep = WindowRootCollector.collectRawNodes(deepSource)
-        // Maximum collected depth must be capped at MAX_DEPTH (16 levels = at most 17 nodes from 0..16)
+        // Maximum collected depth must be capped at MAX_DEPTH (36 levels = at most 37 nodes from 0..36)
         assertTrue(collectedDeep.size <= WindowRootCollector.MAX_DEPTH + 1)
         assertFalse("Deep recursion must terminate without StackOverflowError", collectedDeep.isEmpty())
 
-        // 2. Broad node count test (> 2000 nodes)
-        val wideChildren = (1..2500).map { i ->
+        // 2. Broad node count test (> 4000 nodes)
+        val wideChildren = (1..4500).map { i ->
             WindowRootCollector.SimulatedNode(
                 packageName = "com.example.wide",
                 className = "android.widget.TextView",

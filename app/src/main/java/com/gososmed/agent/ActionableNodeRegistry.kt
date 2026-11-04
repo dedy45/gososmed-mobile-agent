@@ -87,6 +87,23 @@ object ActionableNodeRegistry {
         val hasId = !input.resourceId.isNullOrBlank()
         return hasText || hasDesc || hasId
     }
+    /**
+     * Detects if node is a visual media tile candidate in a gallery picker (TikTok, Instagram, etc.).
+     */
+    fun isMediaTileCandidate(input: RawNodeInput): Boolean {
+        val w = input.bounds.width
+        val h = input.bounds.height
+        if (w < 40 || h < 40) return false
+        // Huge container covering whole screen is a background/root layout, not a media tile
+        if (w > 1000 && h > 1800) return false
+
+        val cls = input.className
+        return cls.contains("ImageView") ||
+                cls.contains("FrameLayout") ||
+                cls.contains("View") ||
+                cls.contains("Media") ||
+                cls.contains("Item")
+    }
 
     /**
      * Rejection rules from Section 7:
@@ -110,6 +127,11 @@ object ActionableNodeRegistry {
         // Viewport check: completely outside display bounds
         val displayBounds = SnapshotBounds(0, 0, displayWidth, displayHeight)
         if (!displayBounds.intersects(input.bounds)) return true
+
+        // JANGAN BUANG jika node merupakan kandidat media visual galeri
+        if (isMediaTileCandidate(input)) {
+            return false
+        }
 
         // Reject decorative node without semantic value AND not directly actionable
         if (!isDirectlyActionable(input) && !isInformative(input)) {
@@ -174,13 +196,19 @@ object ActionableNodeRegistry {
                 continue
             }
 
+            val isCandidate = isMediaTileCandidate(node)
             val directAction = isDirectlyActionable(node)
             val clickableAncestorId = clickableAncestorIds[i]
-            val actionable = directAction || (clickableAncestorId != null)
+            val actionable = directAction || (clickableAncestorId != null) || isCandidate
 
             val safeText = if (node.password) "[REDACTED]" else node.text
             val safeDesc = if (node.password) "[REDACTED]" else node.contentDescription
-            if (actionable || isInformative(node)) {
+            val resolvedText = if (safeText.isNullOrBlank() && isCandidate) {
+                "[Media Tile]"
+            } else {
+                safeText
+            }
+            if (actionable || isInformative(node) || isCandidate) {
                 result.add(
                     SnapshotNode(
                         nodeId = nodeIds[i],
@@ -188,7 +216,7 @@ object ActionableNodeRegistry {
                         packageName = node.packageName,
                         className = node.className,
                         resourceId = node.resourceId,
-                        text = safeText,
+                        text = resolvedText,
                         contentDescription = safeDesc,
                         bounds = node.bounds,
                         clickable = node.clickable,

@@ -253,7 +253,7 @@ class SnapshotCollectorTest {
 
     @Test
     fun testDepthLimitInHierarchyTraversal() {
-        // Construct a deeply nested tree: depth 20 (> MAX_DEPTH 16)
+        // Construct a deeply nested tree: depth 50 (> MAX_DEPTH 36)
         var leaf = WindowRootCollector.SimulatedNode(
             packageName = "com.example.app",
             className = "android.widget.TextView",
@@ -261,7 +261,7 @@ class SnapshotCollectorTest {
             bounds = SnapshotBounds(10, 10, 50, 50),
             clickable = true
         )
-        for (depth in 19 downTo 0) {
+        for (depth in 49 downTo 0) {
             leaf = WindowRootCollector.SimulatedNode(
                 packageName = "com.example.app",
                 className = "android.widget.FrameLayout",
@@ -277,15 +277,15 @@ class SnapshotCollectorTest {
         )
 
         val rawNodes = WindowRootCollector.collectRawNodes(MockTreeSource(listOf(window)))
-        // Depths 0 through 16 = at most 17 nodes; nodes beyond MAX_DEPTH (16) must not be collected
+        // Depths 0 through 36 = at most 37 nodes; nodes beyond MAX_DEPTH (36) must not be collected
         assertTrue(rawNodes.size <= WindowRootCollector.MAX_DEPTH + 1)
         assertFalse(rawNodes.any { it.text == "Deepest Leaf" })
     }
 
     @Test
     fun testMaxNodesCapInHierarchyTraversal() {
-        // Construct a wide tree with 2500 children (> MAX_NODES 2000)
-        val children = (1..2500).map { i ->
+        // Construct a wide tree with 4500 children (> MAX_NODES 4000)
+        val children = (1..4500).map { i ->
             WindowRootCollector.SimulatedNode(
                 packageName = "com.example.app",
                 className = "android.widget.Button",
@@ -308,7 +308,7 @@ class SnapshotCollectorTest {
 
         val rawResult = WindowRootCollector.collectRawNodesWithCount(MockTreeSource(listOf(window)))
         assertEquals(WindowRootCollector.MAX_NODES, rawResult.nodes.size)
-        assertEquals(2501, rawResult.totalCount) // 1 root + 2500 children
+        assertEquals(4501, rawResult.totalCount) // 1 root + 4500 children
         assertTrue(rawResult.truncated)
     }
 

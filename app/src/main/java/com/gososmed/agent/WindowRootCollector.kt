@@ -7,8 +7,8 @@ package com.gososmed.agent
  */
 object WindowRootCollector {
 
-    const val MAX_DEPTH = 16
-    const val MAX_NODES = 2000
+    const val MAX_DEPTH = 36
+    const val MAX_NODES = 4000
     const val MAX_DISCOVERED = 5000 // Circuit breaker for infinite DOM trees
     /**
      * Budget tracker to prevent unbounded recursion or OOM on complex layouts.
