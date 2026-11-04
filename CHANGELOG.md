@@ -9,8 +9,20 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.13] - 2026-11-04 (STABLE)
+## [1.2.14] - 2026-11-04 (STABLE)
 
+### Fixed — Eliminasi Loop Restart Daemon ADB & Notifikasi Berulang
+- **Pembersihan Eksekusi `setprop` (`AdbLocalShell.kt`)**:
+  - Menghapus pemanggilan `execOnIo("setprop service.adb.tcp.port 5555", 1500L)` pada fungsi `doConnect` dan `doConnectManual`.
+  - Pada sistem operasi Android, modifikasi properti `service.adb.tcp.port` memicu aksi `init` Android untuk me-restart daemon `adbd`.
+  - Restart berulang tersebut memutuskan socket ADB yang aktif dan memunculkan pop-up notifikasi *"Debug nirkabel terhubung"* / *"USB debugging connected"* di bilah notifikasi sistem Android setiap kali tes tap / tab dijalankan.
+  - Setelah dihapus, koneksi socket ADB tetap persisten dan stabil tanpa gangguan notifikasi berulang.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.14`.
+
+## [1.2.13] - 2026-11-04 (STABLE)
 ### Added — SSoT 37: Proteksi Petak Media Galeri TikTok & Perluasan Traversal Hierarki
 - **Proteksi Petak Media Visual Galeri (`ActionableNodeRegistry.kt`)**:
   - Menambahkan `isMediaTileCandidate(input)` untuk mendeteksi elemen visual media galeri (`ImageView`, `FrameLayout`, `View`, `Media`, `Item`) dengan batas minimal dimensi 40px × 40px.

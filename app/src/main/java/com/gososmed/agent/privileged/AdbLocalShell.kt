@@ -418,10 +418,6 @@ internal class AdbLocalShell(
             linkUp = true
             probeUid()
             Log.i(TAG, "tersambung ke adbd via mDNS dengan uid $cachedUid")
-            // Shizuku-parity: pertahankan listener port 5555 untuk kemudahan reconnect
-            io.execute {
-                try { execOnIo("setprop service.adb.tcp.port 5555", 1500L) } catch (_: Throwable) {}
-            }
         } else {
             linkUp = false
             activePort = -1
@@ -451,10 +447,6 @@ internal class AdbLocalShell(
             activePort = port
             probeUid()
             Log.i(TAG, "tersambung ke adbd di $host:$port dengan uid $cachedUid")
-            // Shizuku-parity: pertahankan listener port 5555 untuk kemudahan reconnect
-            io.execute {
-                try { execOnIo("setprop service.adb.tcp.port 5555", 1500L) } catch (_: Throwable) {}
-            }
         } else {
             linkUp = false
             activePort = -1

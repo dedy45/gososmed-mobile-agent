@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 53 = 1.2.13 (STABLE) — SSoT 37: Proteksi petak media galeri TikTok,
-        // perluasan traversal MAX_DEPTH = 36 & MAX_NODES = 4000, multi-window Z-order TYPE_APPLICATION.
-        versionCode = 53
-        versionName = "1.2.13"
+        // versionCode 54 = 1.2.14 (STABLE) — Eliminasi setprop service.adb.tcp.port 5555
+        // untuk menghentikan loop restart adbd dan notifikasi berulang USB/Wireless debugging.
+        versionCode = 54
+        versionName = "1.2.14"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
