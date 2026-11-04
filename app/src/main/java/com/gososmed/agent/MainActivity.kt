@@ -110,6 +110,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var restrictedGuideLayout: View
     private lateinit var openOverlayBtn: Button
     private lateinit var debugSection: View
+    private lateinit var envToggleGroup: com.google.android.material.button.MaterialButtonToggleGroup
 
     // Telemetri Live & Kontrol Ekstrem
     private lateinit var tvTelemetryBattery: TextView
@@ -233,7 +234,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun prefs() = getSharedPreferences("agent", MODE_PRIVATE)
 
-    private fun loadWsUrl(): String = prefs().getString("ws_url", "") ?: ""
+    private fun loadWsUrl(): String {
+        val saved = prefs().getString("ws_url", "") ?: ""
+        if (saved.isNotEmpty()) return saved
+        val env = prefs().getString("ws_env", "")
+        return when (env) {
+            "dev" -> BuildConfig.DEV_WS_URL
+            "prod" -> BuildConfig.PROD_WS_URL
+            else -> BuildConfig.DEFAULT_WS_URL
+        }
+    }
 
     private fun loadPairingCode(): String = prefs().getString("pairing_code", "") ?: ""
     override fun attachBaseContext(newBase: Context) {
@@ -368,6 +378,8 @@ class MainActivity : AppCompatActivity() {
         tvTelemetryNetwork = findViewById(R.id.tvTelemetryNetwork)
         btnEchoTest = findViewById(R.id.btnEchoTest)
         btnScanQr = findViewById(R.id.btnScanQr)
+        envToggleGroup = findViewById(R.id.envToggleGroup)
+        setupEnvToggle()
 
         // Health check
         tvHealthSummary = findViewById(R.id.tvHealthSummary)
@@ -1296,7 +1308,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val ws = data.getQueryParameter("ws")?.trim().orEmpty()
-            .ifEmpty { BuildConfig.DEFAULT_WS_URL }
+            .ifEmpty { loadWsUrl() }
+        if (::envToggleGroup.isInitialized) {
+            if (ws.contains("dev-api")) {
+                envToggleGroup.check(R.id.btnEnvDev)
+            } else if (ws.contains("api.bamsbung.id")) {
+                envToggleGroup.check(R.id.btnEnvProd)
+            }
+        }
         AgentLog.event("tautan pairing diterima — menghubungkan otomatis…")
         doConnect(ws, code)
         // Konsumsi data agar rotasi/resume tidak memicu ulang.
@@ -2137,6 +2156,29 @@ class MainActivity : AppCompatActivity() {
             OemOptimizationHelper.openOemBackgroundSettings(this)
         }
     }
+    private fun setupEnvToggle() {
+        val currentUrl = loadWsUrl()
+        val isDev = currentUrl.contains("dev-api")
+        envToggleGroup.check(if (isDev) R.id.btnEnvDev else R.id.btnEnvProd)
+
+        envToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                val isDevSelected = checkedId == R.id.btnEnvDev
+                val newUrl = if (isDevSelected) BuildConfig.DEV_WS_URL else BuildConfig.PROD_WS_URL
+                val envName = if (isDevSelected) "Development (dev-api.bamsbung.id)" else "Produksi (api.bamsbung.id)"
+                prefs().edit()
+                    .putString("ws_url", newUrl)
+                    .putString("ws_env", if (isDevSelected) "dev" else "prod")
+                    .apply()
+                if (debugSection.visibility == View.VISIBLE) {
+                    wsUrlEt.setText(newUrl)
+                }
+                toast("Server diatur ke $envName")
+                AgentLog.event("lingkungan server: $envName")
+            }
+        }
+    }
+
 
     private fun connectWs() {
         // Prioritas URL:
@@ -2147,7 +2189,6 @@ class MainActivity : AppCompatActivity() {
             wsUrlEt.text.toString().trim() else ""
         val url = overrideUrl
             .ifEmpty { loadWsUrl() }
-            .ifEmpty { BuildConfig.DEFAULT_WS_URL }
         val code = pairCodeEt.text.toString().trim().uppercase()
         if (code.isEmpty()) {
             toast("Ketik kode 8 karakter dari dasbor, atau gunakan tombol Hubungkan HP ini di dasbor")

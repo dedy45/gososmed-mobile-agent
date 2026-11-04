@@ -9,8 +9,20 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.16] - 2026-11-04 (STABLE)
+## [1.2.17] - 2026-11-04 (STABLE)
 
+### Added — Zero-Hardcode: Selector Lingkungan Server Dinamis di UI (Produksi vs Dev)
+- **Selector Server UI Dinamis (`activity_main.xml`, `MainActivity.kt`)**:
+  - Menambahkan selector lingkungan server material segmented (`Produksi` vs `Development`) tepat di atas kolom input kode pairing.
+  - Menghapus ketergantungan `DEFAULT_WS_URL` pada nama versi `contains("-dev")` di `build.gradle.kts` sehingga APK tidak pernah salah mengarahkan server secara sepihak saat upgrade.
+  - Pilihan lingkungan tersimpan persisten di `SharedPreferences` (`ws_env` dan `ws_url`) dan terjaga 100% utuh saat pengguna memperbarui APK.
+  - Fallback cerdas dua arah: jika kode ditolak di server yang dipilih, APK otomatis mencoba server alternatif dan mengalihkan status UI jika diterima.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.17`.
+
+## [1.2.16] - 2026-11-04 (STABLE)
 ### Fixed — Eliminasi Bottleneck Mutex Blocking untuk Command Read-Only
 - **Non-Blocking Concurrent Execution (`AgentWsClient.kt`)**:
   - Command inspeksi read-only (`dump`, `dumpWindows`, `screenshot`, `annotatedScreenshot`, `ping`, `health`, `capabilities`, `hasPackage`, `listPackages`) kini dieksekusi langsung secara konkuren di `Dispatchers.IO` tanpa mengunci `commandExecutionMutex`.

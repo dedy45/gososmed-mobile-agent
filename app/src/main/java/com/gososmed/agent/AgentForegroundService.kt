@@ -288,7 +288,11 @@ class AgentForegroundService : Service() {
                 Log.i(TAG, "ws status ($url): $status")
                 lastWsStatus = status
                 if (status.contains("paired")) {
-                    prefs().edit().putString("ws_url", url).apply()
+                    val env = if (url.contains("dev-api")) "dev" else "prod"
+                    prefs().edit()
+                        .putString("ws_url", url)
+                        .putString("ws_env", env)
+                        .apply()
                 }
                 broadcastStatus(status, rejected = false)
                 updateNotification(status)
@@ -300,8 +304,9 @@ class AgentForegroundService : Service() {
                     else -> ""
                 }
                 if (allowEnvFallback && altUrl.isNotEmpty() && altUrl != url) {
-                    Log.i(TAG, "Kode ditolak di $url ($reason), mencoba fallback otomatis ke $altUrl")
-                    AgentLog.event("mencoba server alternatif ($altUrl)…")
+                    val altEnv = if (altUrl.contains("dev-api")) "Development" else "Produksi"
+                    Log.i(TAG, "Kode ditolak di $url ($reason), mencoba fallback otomatis ke $altEnv ($altUrl)")
+                    AgentLog.event("mencoba server $altEnv ($altUrl)…")
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         startWs(altUrl, code, allowEnvFallback = false)
                     }

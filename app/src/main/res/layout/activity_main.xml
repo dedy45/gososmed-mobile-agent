@@ -169,6 +169,35 @@
                     style="@style/GosoHint"
                     android:layout_marginTop="6dp"
                     android:text="@string/pair_hint" />
+                <!-- Selector Lingkungan Server (Zero-Hardcode: Produksi vs Dev) -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/envToggleGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    app:checkedButton="@+id/btnEnvProd"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+
+                    <Button
+                        android:id="@+id/btnEnvProd"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Produksi"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnEnvDev"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Development"
+                        android:textSize="12sp" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
 
                 <LinearLayout
                     android:layout_width="match_parent"

@@ -36,25 +36,22 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 56 = 1.2.16 (STABLE) — Non-blocking concurrent execution untuk command read-only
-        // (dump, screenshot, ping, capabilities) agar tidak terhambat commandExecutionMutex.
-        versionCode = 56
-        versionName = "1.2.16"
-        val isDevVersion = versionName?.contains("-dev") == true
+        // versionCode 57 = 1.2.17 (STABLE) — Zero-Hardcode: Selector dinamis Produksi vs Dev di UI,
+        // persistensi SharedPreferences ws_env, & fallback cerdas dua arah tanpa hardcode kanal.
+        versionCode = 57
+        versionName = "1.2.17"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)
         buildConfigField("String", "DEV_WS_URL", devWsUrl)
-        // Otomatis memakai DEV_WS_URL bila versionName mengandung "-dev",
-        // dan PROD_WS_URL saat dinaikkan ke versi rilis stabil (tanpa "-dev").
-        buildConfigField("String", "DEFAULT_WS_URL", if (isDevVersion) devWsUrl else prodWsUrl)
-        buildConfigField("String", "FALLBACK_WS_URL", if (isDevVersion) prodWsUrl else devWsUrl)
+        // Zero-Hardcode: Kedua lingkungan disediakan sebagai konstanta resmi.
+        // Pemilihan lingkungan dikendalikan dinamis oleh SharedPreferences dan toggle UI.
+        buildConfigField("String", "DEFAULT_WS_URL", prodWsUrl)
+        buildConfigField("String", "FALLBACK_WS_URL", devWsUrl)
     }
 
     buildTypes {
         debug {
-            buildConfigField("String", "DEFAULT_WS_URL", "\"wss://dev-api.bamsbung.id/v1/agent/ws\"")
-            buildConfigField("String", "FALLBACK_WS_URL", "\"wss://api.bamsbung.id/v1/agent/ws\"")
             // AgentReceiver exported hanya di debug: `adb shell am broadcast`
             // dipakai untuk QA. Release tidak punya pemanggil eksternal sah.
             manifestPlaceholders["agentReceiverExported"] = "true"
