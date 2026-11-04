@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 55 = 1.2.15 (STABLE) — Paritas Shizuku-Next: port-caching persisten SharedPreferences
-        // & peniadaan setprop service.adb.tcp.port untuk eliminasi total loop restart adbd.
-        versionCode = 55
-        versionName = "1.2.15"
+        // versionCode 56 = 1.2.16 (STABLE) — Non-blocking concurrent execution untuk command read-only
+        // (dump, screenshot, ping, capabilities) agar tidak terhambat commandExecutionMutex.
+        versionCode = 56
+        versionName = "1.2.16"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

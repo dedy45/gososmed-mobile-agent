@@ -82,6 +82,18 @@ class AgentWsClient(
         fun sendEvent(json: JSONObject): Boolean {
             return instance?.sendEvent(json) ?: false
         }
+
+        val CONCURRENT_READONLY_COMMANDS = setOf(
+            AgentCommand.CMD_PING,
+            AgentCommand.CMD_HEALTH,
+            AgentCommand.CMD_CAPABILITIES,
+            AgentCommand.CMD_DUMP,
+            AgentCommand.CMD_DUMP_WINDOWS,
+            AgentCommand.CMD_SCREENSHOT,
+            AgentCommand.CMD_ANNOTATED_SCREENSHOT,
+            AgentCommand.CMD_HAS_PACKAGE,
+            AgentCommand.CMD_LIST_PACKAGES
+        )
     }
 
     fun sendBinary(bytes: ByteArray): Boolean {
@@ -320,6 +332,16 @@ class AgentWsClient(
                     if (obj.has("cmd")) {
                         val cmdName = obj.optString("cmd", "")
                         scope.launch(Dispatchers.IO) {
+                            if (cmdName in CONCURRENT_READONLY_COMMANDS) {
+                                try {
+                                    val resp = AgentCommand.execute(obj)
+                                    webSocket.send(resp.toString())
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "read-only cmd exec error", e)
+                                }
+                                return@launch
+                            }
+
                             val executed = kotlinx.coroutines.withTimeoutOrNull(30_000L) {
                                 commandExecutionMutex.withLock {
                                     var tries = 0

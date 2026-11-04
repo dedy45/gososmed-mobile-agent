@@ -9,8 +9,19 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.15] - 2026-11-04 (STABLE)
+## [1.2.16] - 2026-11-04 (STABLE)
 
+### Fixed — Eliminasi Bottleneck Mutex Blocking untuk Command Read-Only
+- **Non-Blocking Concurrent Execution (`AgentWsClient.kt`)**:
+  - Command inspeksi read-only (`dump`, `dumpWindows`, `screenshot`, `annotatedScreenshot`, `ping`, `health`, `capabilities`, `hasPackage`, `listPackages`) kini dieksekusi langsung secara konkuren di `Dispatchers.IO` tanpa mengunci `commandExecutionMutex`.
+  - Mencegah fenomena APK "membeku / tidak merespons" saat pemindaian hierarki atau pengambilan screenshot berjalan bersamaan dengan perintah lain.
+  - Mutex eksklusif tetap mengamankan perintah mutasi gesture/input (`tap`, `swipe`, `setText`) agar urutan aksi tidak berbenturan.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.16`.
+
+## [1.2.15] - 2026-11-04 (STABLE)
 ### Added — Paritas Shizuku-Next: Penyimpanan Port Persisten & Eliminasi Total Notifikasi
 - **Penyimpanan Port Persisten (`AdbLocalShell.kt`)**:
   - Mengadopsi pola Shizuku-Next (`AdbStarter.kt:ShizukuSettings.setLastAdbPort`): port wireless ADB yang berhasil terhubung disimpan ke `SharedPreferences` (`cached_adb_port`).
