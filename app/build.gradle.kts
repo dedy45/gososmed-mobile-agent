@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 54 = 1.2.14 (STABLE) — Eliminasi setprop service.adb.tcp.port 5555
-        // untuk menghentikan loop restart adbd dan notifikasi berulang USB/Wireless debugging.
-        versionCode = 54
-        versionName = "1.2.14"
+        // versionCode 55 = 1.2.15 (STABLE) — Paritas Shizuku-Next: port-caching persisten SharedPreferences
+        // & peniadaan setprop service.adb.tcp.port untuk eliminasi total loop restart adbd.
+        versionCode = 55
+        versionName = "1.2.15"
         val isDevVersion = versionName?.contains("-dev") == true
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""

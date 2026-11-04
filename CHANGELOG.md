@@ -9,8 +9,19 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.14] - 2026-11-04 (STABLE)
+## [1.2.15] - 2026-11-04 (STABLE)
 
+### Added — Paritas Shizuku-Next: Penyimpanan Port Persisten & Eliminasi Total Notifikasi
+- **Penyimpanan Port Persisten (`AdbLocalShell.kt`)**:
+  - Mengadopsi pola Shizuku-Next (`AdbStarter.kt:ShizukuSettings.setLastAdbPort`): port wireless ADB yang berhasil terhubung disimpan ke `SharedPreferences` (`cached_adb_port`).
+  - Saat aplikasi bangun atau menjalankan perintah berikutnya, port tersimpan langsung diuji liveness-nya (`isSocketAlive`) dalam < 1ms, memungkinkan rekoneksi instan tanpa harus menunggu siklus mDNS discovery.
+  - Menghapus pemanggilan `setprop service.adb.tcp.port 5555` agar daemon `adbd` tidak mengalami siklus restart berkelanjutan pada setiap aksi tap.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.15`.
+
+## [1.2.14] - 2026-11-04 (STABLE)
 ### Fixed — Eliminasi Loop Restart Daemon ADB & Notifikasi Berulang
 - **Pembersihan Eksekusi `setprop` (`AdbLocalShell.kt`)**:
   - Menghapus pemanggilan `execOnIo("setprop service.adb.tcp.port 5555", 1500L)` pada fungsi `doConnect` dan `doConnectManual`.

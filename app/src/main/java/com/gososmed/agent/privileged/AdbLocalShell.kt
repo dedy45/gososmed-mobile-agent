@@ -65,9 +65,10 @@ internal class AdbLocalShell(
 ) : AbsAdbConnectionManager(), PrivilegedShell {
 
     companion object {
+        private const val PREFS = "agent"
+        private const val KEY_CACHED_ADB_PORT = "cached_adb_port"
         private const val TAG = "GoAgentAdbShell"
         private const val DEVICE_NAME = "GoSosmed Agent"
-
         /**
          * ANGGARAN WAKTU (ditemukan lewat tinjauan ulang sebelum uji perangkat).
          *
@@ -175,6 +176,23 @@ internal class AdbLocalShell(
     @Volatile
     private var activePort = -1
 
+    private fun saveCachedPort(port: Int) {
+        if (port in 1024..65535) {
+            try {
+                appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putInt(KEY_CACHED_ADB_PORT, port)
+                    .apply()
+            } catch (_: Throwable) {}
+        }
+    }
+
+    private fun loadCachedPort(): Int {
+        return try {
+            appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_CACHED_ADB_PORT, -1)
+        } catch (_: Throwable) { -1 }
+    }
     /** Listener perubahan status liveness koneksi (real-time notification & UI). */
     var onStateChanged: (() -> Unit)? = null
 
@@ -191,8 +209,8 @@ internal class AdbLocalShell(
     private var activeStream: AdbStream? = null
 
     init {
+        activePort = loadCachedPort()
         setApi(android.os.Build.VERSION.SDK_INT)
-        // v0.9.6 — KOREKSI IP YANG SALAH (root cause "IP tidak 127.0.0.1").
         //
         // FAKTA DARI SUMBER LIBRARY (libadb-android 3.1.1,
         // AndroidUtils.getHostIpAddress()):
@@ -377,23 +395,16 @@ internal class AdbLocalShell(
             return true
         }
         Log.i(TAG, "ADB loopback connection lost or uninitialized. Performing silent auto-recovery...")
-        // 1. Coba reconnect langsung jika port sebelumnya masih listening di loopback
-        if (activePort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, activePort, 150)) {
-            if (doConnectManual(LOOPBACK_HOST, activePort)) {
-                Log.i(TAG, "Silent reconnect sukses pada port cached: $activePort")
+        // 1. Coba reconnect langsung jika port sebelumnya (atau port tersimpan di SharedPreferences) masih listening di loopback
+        val rememberedPort = if (activePort > 0) activePort else loadCachedPort()
+        if (rememberedPort > 0 && AdbPortResolver.isSocketAlive(LOOPBACK_HOST, rememberedPort, 150)) {
+            if (doConnectManual(LOOPBACK_HOST, rememberedPort)) {
+                Log.i(TAG, "Silent reconnect sukses pada port tersimpan: $rememberedPort")
                 return true
             }
         }
 
-        // 2. Coba port standar 5555 jika aktif di loopback (sub-1ms)
-        if (AdbPortResolver.isSocketAlive(LOOPBACK_HOST, 5555, 120)) {
-            if (doConnectManual(LOOPBACK_HOST, 5555)) {
-                Log.i(TAG, "Silent reconnect sukses pada port standar 5555")
-                return true
-            }
-        }
-
-        // 3. Discover dynamic port via AdbPortResolver (fast UDP mDNS + NSD fallback)
+        // 2. Discover dynamic port via AdbPortResolver (fast UDP mDNS + NSD fallback)
         val discoveredPort = AdbPortResolver.discoverActiveAdbPort(appContext, timeoutMs = timeoutMs)
         if (discoveredPort != null && discoveredPort > 0) {
             Log.i(TAG, "Discovered active adbd port: $discoveredPort. Performing handshake...")
@@ -403,7 +414,7 @@ internal class AdbLocalShell(
             }
         }
 
-        // 4. Fallback library mDNS
+        // 3. Fallback library mDNS
         Log.i(TAG, "Mencoba fallback connectTls bawaan library...")
         return doConnect(timeoutMs)
     }
@@ -445,6 +456,7 @@ internal class AdbLocalShell(
             lastError = ""
             linkUp = true
             activePort = port
+            saveCachedPort(port)
             probeUid()
             Log.i(TAG, "tersambung ke adbd di $host:$port dengan uid $cachedUid")
         } else {
