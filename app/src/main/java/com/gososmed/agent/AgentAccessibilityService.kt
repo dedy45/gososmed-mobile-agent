@@ -1052,12 +1052,35 @@ class AgentAccessibilityService : AccessibilityService() {
 
     /** Finds the first node whose text/content-desc matches [text] and taps it. */
     fun tapByText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val node = findNode(root) { n ->
-            (n.text?.toString() == text) || (n.contentDescription?.toString() == text)
-        } ?: return false
-        val b = boundsOf(node)
-        return tap(b.centerX(), b.centerY())
+        val targets = text.split("|").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        if (targets.isEmpty()) return false
+
+        val roots = getAllInteractiveRoots()
+        for (root in roots) {
+            val node = findNode(root) { n ->
+                val t = n.text?.toString()?.trim()?.lowercase().orEmpty()
+                val cd = n.contentDescription?.toString()?.trim()?.lowercase().orEmpty()
+                targets.any { target -> t.contains(target) || cd.contains(target) }
+            }
+            if (node != null) {
+                // 1. Coba klik semantik ACTION_CLICK terlebih dahulu (kebal resolusi layar)
+                if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true
+                }
+                // 2. Jika node anak tidak clickable, coba klik parent/ancestor yang clickable
+                var parent = node.parent
+                while (parent != null) {
+                    if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        return true
+                    }
+                    parent = parent.parent
+                }
+                // 3. Fallback ke pengetukan koordinat titik tengah
+                val b = boundsOf(node)
+                return tap(b.centerX(), b.centerY())
+            }
+        }
+        return false
     }
 
     /** Taps the first clickable node; returns its bounds when found. */
@@ -1582,12 +1605,13 @@ class AgentAccessibilityService : AccessibilityService() {
         } else if (!clickDesc.isNullOrBlank()) {
             clicked = tapByText(clickDesc)
         } else if (!clickResId.isNullOrBlank()) {
-            val root = rootInActiveWindow
-            if (root != null) {
-                val r = searchNodeRecursive(root, null, null, clickResId.lowercase().trim(), 0)
-                root.recycle()
+            val targetResId = clickResId.lowercase().trim()
+            val roots = getAllInteractiveRoots()
+            for (root in roots) {
+                val r = searchNodeRecursive(root, null, null, targetResId, 0)
                 if (r != null) {
                     clicked = tap(r.centerX(), r.centerY())
+                    break
                 }
             }
         }

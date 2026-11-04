@@ -9,8 +9,23 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.17] - 2026-11-04 (STABLE)
+## [1.2.18] - 2026-11-04 (STABLE)
 
+### Fixed — Presisi Eksekusi Tap Multi-Window & Ancestor Click Traversal
+- **Perbaikan `tapByText` Multi-Window (`AgentAccessibilityService.kt`)**:
+  - Menggantikan `rootInActiveWindow` dengan `getAllInteractiveRoots()` agar pencarian elemen teks menembus dialog modal dan BottomSheet pemilih media TikTok / Shopee.
+  - Mendukung target multivariasi via delimiter pipa `|` (misalnya `"Posting|Unggah|Post"`) dan pencarian case-insensitive pada atribut `text` serta `contentDescription`.
+  - Mengutamakan klik semantik `ACTION_CLICK` pada node langsung, lalu menelusuri ke clickable parent/ancestor sebelum melakukan fallback koordinat titik tengah.
+- **Perbaikan `clickAndWait` Multi-Window (`AgentAccessibilityService.kt`)**:
+  - Pencarian Resource ID (`clickResId`) kini mengiterasi seluruh jendela interaktif via `getAllInteractiveRoots()`, mencegah kegagalan klik tombol pada dialog izin atau jendela sekunder.
+- **Perbaikan Response Envelope `tapByText` (`AgentCommand.kt`)**:
+  - Menyelaraskan status `ok` pada respons command: jika teks tidak ditemukan atau gagal diketuk, respons mengembalikan `ok: false` dengan pesan error deskriptif, bukan sukses palsu.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.18`.
+
+## [1.2.17] - 2026-11-04 (STABLE)
 ### Added — Zero-Hardcode: Selector Lingkungan Server Dinamis di UI (Produksi vs Dev)
 - **Selector Server UI Dinamis (`activity_main.xml`, `MainActivity.kt`)**:
   - Menambahkan selector lingkungan server material segmented (`Produksi` vs `Development`) tepat di atas kolom input kode pairing.

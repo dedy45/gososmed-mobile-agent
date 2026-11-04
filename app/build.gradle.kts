@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 57 = 1.2.17 (STABLE) — Zero-Hardcode: Selector dinamis Produksi vs Dev di UI,
-        // persistensi SharedPreferences ws_env, & fallback cerdas dua arah tanpa hardcode kanal.
-        versionCode = 57
-        versionName = "1.2.17"
+        // versionCode 58 = 1.2.18 (STABLE) — Presisi tap multi-window (getAllInteractiveRoots),
+        // ancestor click traversal di tapByText, clickAndWait, dan jujur error response envelope.
+        versionCode = 58
+        versionName = "1.2.18"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

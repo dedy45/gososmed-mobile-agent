@@ -1247,7 +1247,12 @@ object AgentCommand {
                 if (text.isEmpty()) {
                     resp.put("ok", false).put("error", "tapByText requires text")
                 } else {
-                    resp.put("ok", true).put("result", JSONObject().put("ok", svc.tapByText(text)))
+                    val ok = svc.tapByText(text)
+                    resp.put("ok", ok)
+                    resp.put("result", JSONObject().put("ok", ok))
+                    if (!ok) {
+                        resp.put("error", "Elemen teks '$text' tidak ditemukan di layar aktif")
+                    }
                 }
             }
             CMD_TAP_FIRST_CLICKABLE -> {
