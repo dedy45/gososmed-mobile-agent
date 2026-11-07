@@ -36,10 +36,9 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 59 = 1.2.19 (STABLE) — Pemulihan jalur kontrol mouse web (Port 8765/8766),
-        // anti-sleep WakeLock pada streaming aktif, deteksi auto-wake layar, dan fallback jujur shell/gesture.
-        versionCode = 59
-        versionName = "1.2.19"
+        // versionCode 60 = 1.2.20 (STABLE) — Pemulihan upload & delete Web File Manager (bypassing Scoped Storage via Cache Staging & Privileged Shell), auto-grant MANAGE_EXTERNAL_STORAGE, dan pencegahan false streaming mandek pada layar statis.
+        versionCode = 60
+        versionName = "1.2.20"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

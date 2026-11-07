@@ -191,17 +191,24 @@ class CaptureService : Service() {
                         requestKeyFrame()
                     }
                 } else {
-                    android.util.Log.w(
-                        "CaptureService",
-                        "Pipeline mandek ${stalledFor}ms (total frame ${watchdog.totalFrames()}) " +
-                            "— memicu reconfigure"
-                    )
-                    LocalWebServer.broadcastText(
-                        """{"type":"capture_error","reason":"stalled",""" +
-                        """"message":"Streaming mandek, mencoba memulihkan otomatis."}"""
-                    )
-                    watchdog.reset(now)
-                    reconfigure()
+                    val isScreenInteractive = pm?.isInteractive == true
+                    if (isScreenInteractive) {
+                        // Layar sedang aktif dan interaktif, tetapi SurfaceFlinger tidak merender frame baru
+                        // karena tampilan sedang diam/statis (0 FPS). Minta keyframe tanpa membongkar ulang encoder.
+                        requestKeyFrame()
+                    } else {
+                        android.util.Log.w(
+                            "CaptureService",
+                            "Pipeline mandek ${stalledFor}ms (total frame ${watchdog.totalFrames()}) " +
+                                "— memicu reconfigure"
+                        )
+                        LocalWebServer.broadcastText(
+                            """{"type":"capture_error","reason":"stalled",""" +
+                            """"message":"Streaming mandek, mencoba memulihkan otomatis."}"""
+                        )
+                        watchdog.reset(now)
+                        reconfigure()
+                    }
                 }
             }
             handler.postDelayed(this, 1000L)

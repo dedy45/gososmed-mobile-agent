@@ -1592,11 +1592,12 @@
         if (!confirm(`Hapus "${fname}" dari HP?`)) return;
         try {
           const res = await fetch(`/api/delete?path=${encodeURIComponent(path)}`, { method: 'POST' });
-          if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok) {
             log(`Berkas "${fname}" berhasil dihapus.`, 'success');
             requestFileList();
           } else {
-            log(`Gagal menghapus berkas.`, 'error');
+            log(`Gagal menghapus berkas: ${data.error || 'Izin ditolak OS Android'}`, 'error');
           }
         } catch (e) {
           log(`Error delete: ${e.message}`, 'error');
@@ -1651,10 +1652,11 @@
       for (const path of selectedFiles) {
         try {
           const res = await fetch(`/api/delete?path=${encodeURIComponent(path)}`, { method: 'POST' });
-          if (res.ok) deleted++;
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok) deleted++;
         } catch (_) {}
       }
-      log(`${deleted} dari ${count} berkas berhasil dihapus.`, 'success');
+      log(`Pembersihan batch: ${deleted} dari ${count} berkas berhasil dihapus.`, deleted > 0 ? 'success' : 'error');
       selectedFiles.clear();
       requestFileList();
     });

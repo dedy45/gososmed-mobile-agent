@@ -237,6 +237,7 @@ object AdbPairingController {
                 instance.exec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
                 instance.exec("cmd appops set $pkg REQUEST_IGNORE_BATTERY_OPTIMIZATIONS allow")
                 instance.exec("cmd appops set $pkg AUTO_START allow")
+                instance.exec("cmd appops set $pkg MANAGE_EXTERNAL_STORAGE allow")
                 instance.exec("settings put global settings_enable_monitor_phantom_procs false")
                 instance.exec("settings put secure accessibility_enabled 1")
                 Log.i(TAG, "lockProcessPrivileged sukses untuk $pkg")

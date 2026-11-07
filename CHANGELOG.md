@@ -9,6 +9,26 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.20] - 2026-11-07 (STABLE)
+
+### Fixed — Pemulihan Upload & Delete Web File Manager & Pencegahan False Stall
+- **Upload Tangguh Berbasis Cache Staging (`LocalWebServer.kt`)**:
+  - Aliran upload file biner dari browser kini disimpan sementara ke `context.cacheDir` sebelum dipindahkan ke direktori tujuan (`/sdcard/DCIM/Camera` dsb).
+  - Mengeliminasi putusnya soket TCP (`EACCES: Permission denied`) akibat pembatasan Scoped Storage Android 11+ pada file non-media.
+  - Menambahkan fallback otomatis pemindahan berkas via Privileged Shell (`cp` & `chmod 664`) dan registrasi `MediaScannerConnection`.
+- **Delete Lengkap dengan Fallback Privileged Shell (`LocalWebServer.kt`, `control.js`)**:
+  - Operasi delete berkas/folder kini memiliki fallback ke Privileged Shell (`rm -rf`) dan sinkronisasi penghapusan ke MediaStore saat `java.io.File.delete()` ditolak oleh Android.
+  - Respons HTTP kini melaporkan status sesungguhnya (200 OK jika terhapus, 403 Forbidden jika ditolak) sehingga antarmuka web melaporkan status secara jujur.
+- **Pemberian Izin Otomatis `MANAGE_EXTERNAL_STORAGE` (`AdbPairingController.kt`)**:
+  - Menambahkan `cmd appops set $pkg MANAGE_EXTERNAL_STORAGE allow` pada saat proses penguncian hak istimewa (lockProcessPrivileged).
+- **Pencegahan Alarm Palsu "Streaming Mandek" pada Layar Statis (`CaptureService.kt`)**:
+  - `watchdogTicker` kini memeriksa apakah layar sedang aktif dan interaktif (`pm.isInteractive == true`).
+  - Jika layar aktif namun 0 FPS (misalnya tampilan Home Screen diam), service hanya meminta keyframe tanpa membongkar ulang encoder dan tanpa memunculkan pesan error palsu ke panel log.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.20`.
+
 ## [1.2.19] - 2026-11-07 (STABLE)
 
 ### Fixed — Pemulihan Jalur Kontrol Mouse Web & Layar Anti-Sleep (Port 8765/8766)

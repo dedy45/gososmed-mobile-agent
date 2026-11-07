@@ -688,17 +688,43 @@ button:active{transform:translateY(1px)}
                     val filePath = query.split('&').find { it.startsWith("path=") }?.substringAfter("path=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     }
-                    val file = filePath?.let { java.io.File(it) }
-                    val deleted = file != null && file.delete()
-                    if (deleted && context != null && filePath != null) {
-                        android.media.MediaScannerConnection.scanFile(context, arrayOf(filePath), null) { _, _ -> }
+                    var deleted = false
+                    if (!filePath.isNullOrBlank()) {
+                        val file = java.io.File(filePath)
+                        try {
+                            if (file.exists()) {
+                                deleted = if (file.isDirectory) file.deleteRecursively() else file.delete()
+                            }
+                        } catch (_: Exception) {}
+
+                        // Fallback ke Privileged Shell (Wireless ADB UID 2000) jika dibatasi Scoped Storage Android 11+
+                        if (!deleted) {
+                            val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                            if (shell.status().available) {
+                                val escaped = filePath.replace("'", "\\'")
+                                val res = shell.exec("rm -rf '$escaped'")
+                                deleted = res.failure == null && res.ok && !file.exists()
+                            }
+                        }
+
+                        // Sinkronkan penghapusan ke MediaStore Android
+                        if (context != null) {
+                            try {
+                                val uri = android.provider.MediaStore.Files.getContentUri("external")
+                                context.contentResolver.delete(uri, "_data=?", arrayOf(filePath))
+                            } catch (_: Exception) {}
+                            android.media.MediaScannerConnection.scanFile(context, arrayOf(filePath), null) { _, _ -> }
+                        }
                     }
+
                     val json = org.json.JSONObject().apply {
                         put("ok", deleted)
                         put("path", filePath ?: "")
+                        if (!deleted) put("error", "Gagal menghapus berkas (izin dibatasi OS Android)")
                     }
                     val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
-                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    val status = if (deleted) "200 OK" else "403 Forbidden"
+                    output.write("HTTP/1.1 $status\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
                     output.write(jsonBytes)
                     output.flush()
                     socket.close()
@@ -714,40 +740,100 @@ button:active{transform:translateY(1px)}
                     val dirParam = query.split('&').find { it.startsWith("dir=") }?.substringAfter("dir=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     } ?: "/sdcard/DCIM/Camera"
-                    val dir = java.io.File(dirParam).apply { mkdirs() }
-                    val targetFile = java.io.File(dir, filename)
                     val contentLength = headers["content-length"]?.toLongOrNull() ?: 0L
 
-                    if (contentLength > 0) {
-                        java.io.FileOutputStream(targetFile).use { fos ->
+                    // 1. Simpan stream ke file temporary di cacheDir aplikasi terlebih dahulu.
+                    // cacheDir selalu 100% bisa ditulis oleh aplikasi tanpa izin Scoped Storage apapun.
+                    val cacheDir = context?.cacheDir ?: java.io.File(dirParam).apply { mkdirs() }
+                    val tempFile = java.io.File.createTempFile("goso_up_", ".bin", cacheDir)
+                    var readError: String? = null
+                    try {
+                        java.io.FileOutputStream(tempFile).use { fos ->
                             val buf = ByteArray(65536)
                             var remaining = contentLength
                             while (remaining > 0) {
-                                val toRead = Math.min(buf.size.toLong(), remaining).toInt()
-                                val r = input.read(buf, 0, toRead)
-                                if (r <= 0) break
-                                fos.write(buf, 0, r)
-                                remaining -= r
+                                 val toRead = Math.min(buf.size.toLong(), remaining).toInt()
+                                 val r = input.read(buf, 0, toRead)
+                                if (r < 0) {
+                                    readError = "Stream upload terputus sebelum selesai"
+                                    break
+                                }
+                                 fos.write(buf, 0, r)
+                                 remaining -= r
+                             }
+                             fos.flush()
+                         }
+                    } catch (e: Exception) {
+                        readError = e.message
+                     }
+
+                    var writeOk = false
+                    val dir = java.io.File(dirParam)
+                    val targetFile = java.io.File(dir, filename)
+
+                    if (readError == null) {
+                        // 2. Coba copy Java standar
+                        try {
+                            dir.mkdirs()
+                            tempFile.copyTo(targetFile, overwrite = true)
+                            writeOk = targetFile.exists() && (contentLength <= 0 || targetFile.length() == tempFile.length())
+                        } catch (_: Exception) {}
+
+                        // 3. Fallback ke Privileged Shell (Wireless ADB UID 2000) jika Scoped Storage menolak akses tulis
+                        if (!writeOk) {
+                            val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
+                            if (shell.status().available) {
+                                val escTmp = tempFile.absolutePath.replace("'", "\\'")
+                                val escTarget = targetFile.absolutePath.replace("'", "\\'")
+                                shell.exec("mkdir -p '${dir.absolutePath.replace("'", "\\'")}'")
+                                val cpRes = shell.exec("cp '$escTmp' '$escTarget' && chmod 664 '$escTarget'")
+                                writeOk = cpRes.failure == null && cpRes.ok && targetFile.exists()
                             }
-                            fos.flush()
+                        }
+
+                        // 4. Fallback ke MediaStore ContentResolver jika file media dan shell tidak tersedia
+                        if (!writeOk && context != null) {
+                            try {
+                                val resolver = context.contentResolver
+                                val relPath = dirParam.removePrefix("/sdcard/").removePrefix("/storage/emulated/0/")
+                                val values = android.content.ContentValues().apply {
+                                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, relPath)
+                                }
+                                val uri = resolver.insert(android.provider.MediaStore.Files.getContentUri("external"), values)
+                                if (uri != null) {
+                                    resolver.openOutputStream(uri)?.use { os ->
+                                        tempFile.inputStream().use { it.copyTo(os) }
+                                    }
+                                    writeOk = true
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                        // 5. Picu MediaScanner agar berkas baru langsung muncul di Galeri & File Manager HP
+                        if (writeOk && context != null) {
+                            android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null) { _, _ -> }
                         }
                     }
-                    if (context != null) {
-                        android.media.MediaScannerConnection.scanFile(context, arrayOf(targetFile.absolutePath), null) { _, _ -> }
-                    }
-                    val json = org.json.JSONObject().apply {
-                        put("ok", true)
-                        put("path", targetFile.absolutePath)
-                        put("filename", filename)
-                        put("size", targetFile.length())
-                    }
-                    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
-                    output.write("HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
-                    output.write(jsonBytes)
-                    output.flush()
-                    socket.close()
-                    return
-                }
+
+                    // Selalu bersihkan file temporary di cache
+                    tempFile.delete()
+
+                     val json = org.json.JSONObject().apply {
+                        put("ok", writeOk)
+                         put("path", targetFile.absolutePath)
+                         put("filename", filename)
+                        put("size", if (writeOk) targetFile.length() else 0L)
+                        if (!writeOk) put("error", readError ?: "Izin penyimpanan Android menolak penulisan ke $dirParam")
+                     }
+                     val jsonBytes = json.toString().toByteArray(Charsets.UTF_8)
+                    val status = if (writeOk) "200 OK" else "500 Internal Server Error"
+                    output.write("HTTP/1.1 $status\r\nContent-Type: application/json; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${jsonBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                     output.write(jsonBytes)
+                     output.flush()
+                     socket.close()
+                     return
+                 }
                 // Static assets router
                 if (rawPath.contains("..")) {
                     val msg = "Not Found".toByteArray()
