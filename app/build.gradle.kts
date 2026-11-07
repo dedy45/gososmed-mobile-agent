@@ -36,10 +36,10 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 58 = 1.2.18 (STABLE) — Presisi tap multi-window (getAllInteractiveRoots),
-        // ancestor click traversal di tapByText, clickAndWait, dan jujur error response envelope.
-        versionCode = 58
-        versionName = "1.2.18"
+        // versionCode 59 = 1.2.19 (STABLE) — Pemulihan jalur kontrol mouse web (Port 8765/8766),
+        // anti-sleep WakeLock pada streaming aktif, deteksi auto-wake layar, dan fallback jujur shell/gesture.
+        versionCode = 59
+        versionName = "1.2.19"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

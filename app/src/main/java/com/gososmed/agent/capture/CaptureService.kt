@@ -25,6 +25,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.PowerManager
 import android.view.Surface
 import com.gososmed.agent.AgentWsClient
 import com.gososmed.agent.R
@@ -128,11 +129,61 @@ class CaptureService : Service() {
      */
     private val watchdog = ProjectionWatchdog(ProjectionWatchdog.DEFAULT_STALL_MS)
 
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Mengatur status WakeLock anti-sleep selama streaming aktif.
+     * Layar HP tetap hidup (dimmed) selama ada viewer browser terhubung,
+     * dan dilepas saat 0 viewer atau service dimatikan.
+     */
+    fun updateWakeLock() {
+        val hasClients = LocalWebServer.hasClients
+        synchronized(this) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            if (hasClients && !projectionDead) {
+                if (wakeLock == null) {
+                    @Suppress("DEPRECATION")
+                    wakeLock = pm.newWakeLock(
+                        PowerManager.SCREEN_DIM_WAKE_LOCK or
+                            PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                            PowerManager.ON_AFTER_RELEASE,
+                        "gososmed:streaming_wake"
+                    ).apply {
+                        setReferenceCounted(false)
+                    }
+                }
+                if (wakeLock?.isHeld == false) {
+                    try {
+                        wakeLock?.acquire()
+                        android.util.Log.i("CaptureService", "WakeLock aktif: layar dicegah tidur selama streaming browser")
+                    } catch (e: Exception) {
+                        android.util.Log.w("CaptureService", "Gagal acquire WakeLock: ${e.message}")
+                    }
+                }
+            } else {
+                if (wakeLock?.isHeld == true) {
+                    try {
+                        wakeLock?.release()
+                        android.util.Log.i("CaptureService", "WakeLock dilepas: tidak ada viewer aktif")
+                    } catch (e: Exception) {
+                        android.util.Log.w("CaptureService", "Gagal release WakeLock: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
     private val watchdogTicker = object : Runnable {
         override fun run() {
             if (projection == null || projectionDead) return
+            updateWakeLock()
             val now = android.os.SystemClock.elapsedRealtime()
             if (LocalWebServer.hasClients && watchdog.isStalled(now)) {
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                if (pm != null && !pm.isInteractive) {
+                    android.util.Log.i("CaptureService", "Layar padam saat streaming aktif — memicu bangunkan layar")
+                    com.gososmed.agent.AgentAccessibilityService.instance?.wakeScreen()
+                }
                 val stalledFor = now - watchdog.lastFrameAt()
                 if (stalledFor < RECONFIGURE_AFTER_MS) {
                     // Layar mungkin hanya diam. Minta keyframe, jangan bongkar pipeline.
@@ -219,6 +270,7 @@ class CaptureService : Service() {
         handler.post {
             reconfigure()
             startAudioCapture(p)
+            updateWakeLock()
             handler.removeCallbacks(watchdogTicker)
             handler.postDelayed(watchdogTicker, 2000L)
         }
@@ -654,6 +706,14 @@ class CaptureService : Service() {
     }
     override fun onDestroy() {
         instance = null
+        synchronized(this) {
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                }
+            } catch (_: Exception) {}
+            wakeLock = null
+        }
         try {
             val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
             dm?.unregisterDisplayListener(displayListener)

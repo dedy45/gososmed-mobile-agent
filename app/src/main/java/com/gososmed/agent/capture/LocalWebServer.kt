@@ -281,6 +281,7 @@ object LocalWebServer {
             client.close()
         }
         clientSockets.clear()
+        CaptureService.instance?.updateWakeLock()
         Log.i(TAG, "LocalWebServer stopped")
     }
 
@@ -534,6 +535,7 @@ button:active{transform:translateY(1px)}
 
                 val wsClient = WebSocketClient(socket, output)
                 clientSockets.add(wsClient)
+                CaptureService.instance?.updateWakeLock()
 
                 // Immediately send status info to client
                 try {
@@ -1004,6 +1006,7 @@ button:active{transform:translateY(1px)}
             if (clientSockets.isEmpty()) {
                 CaptureService.instance?.setAudioEnabled(false)
             }
+            CaptureService.instance?.updateWakeLock()
         }
     }
 

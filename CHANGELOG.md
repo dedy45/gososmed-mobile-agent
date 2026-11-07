@@ -9,6 +9,21 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.19] - 2026-11-07 (STABLE)
+
+### Fixed — Pemulihan Jalur Kontrol Mouse Web & Layar Anti-Sleep (Port 8765/8766)
+- **Anti-Sleep WakeLock pada Streaming (`CaptureService.kt`, `LocalWebServer.kt`)**:
+  - Memasang `PowerManager.WakeLock` (`SCREEN_DIM_WAKE_LOCK or ACQUIRE_CAUSES_WAKEUP or ON_AFTER_RELEASE`) selama ada viewer browser terhubung.
+  - Mencegah layar fisik HP mati sendiri karena screen timeout saat di-remote lewat web (mengeliminasi pesan error `Streaming mandek`).
+  - WakeLock otomatis dilepas saat seluruh tab viewer browser ditutup atau service dimatikan.
+- **Auto-Wake & Fallback Tangguh (`RemoteControlManager.kt`)**:
+  - Menambahkan deteksi interaktivitas layar (`!pm.isInteractive`): jika layar padam saat perintah mouse/keyboard diterima, otomatis memicu `svc.wakeScreen()` dan meminta keyframe video instan.
+  - Menambahkan mekanisme fallback otomatis: jika eksekusi perintah sentuh via shell (`input tap` / `input swipe`) gagal (misal diblokir pengaturan keamanan OEM), otomatis dialihkan ke `svc.tap()` / `svc.swipe()` berbasis gesture aksesibilitas.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (274 tests).
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.19`.
+
 ## [1.2.18] - 2026-11-04 (STABLE)
 
 ### Fixed — Presisi Eksekusi Tap Multi-Window & Ancestor Click Traversal

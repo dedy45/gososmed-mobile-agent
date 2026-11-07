@@ -29,96 +29,138 @@ object RemoteControlManager {
 
     fun handleCommand(cmd: String): Boolean {
         val svc = AgentAccessibilityService.instance
+        val shell = PrivilegedShellHolder.get()
         if (cmd.isBlank()) return false
         val parts = cmd.split(":", limit = 2)
         val rawOp = parts[0].trim().lowercase()
         val op = rawOp.removePrefix("button_")
         val arg = if (parts.size > 1) parts[1].trim() else ""
+
+        // Auto-Wake: Bangunkan layar secara otomatis jika perangkat sedang tidur/layar padam.
+        // Android menolak injeksi gesture (A11y/Shell) saat layar dalam kondisi non-interaktif/mati.
+        val targetCtx = svc ?: AgentAccessibilityService.getAppContext()
+        val pm = targetCtx?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (pm != null && !pm.isInteractive && op !in listOf("power", "lock")) {
+            Log.i(TAG, "Layar padam saat perintah $op diterima — memicu bangunkan layar")
+            if (svc != null) {
+                svc.wakeScreen()
+            } else if (shell.status().available) {
+                shell.exec("input keyevent 224")
+            }
+            com.gososmed.agent.capture.CaptureService.instance?.requestKeyFrame()
+        }
+
         return when (op) {
             "d", "down" -> { // Touch Down
-                if (svc == null) return false
+                if (svc == null && !shell.status().available) return false
                 val p = parseCoords(arg, svc)
                 isTracking = true
                 lastX = p.first
                 lastY = p.second
-                val shell = PrivilegedShellHolder.get()
                 if (shell.status().available) {
-                    shell.exec("input motionevent DOWN ${p.first.toInt()} ${p.second.toInt()}")
+                    val res = shell.exec("input motionevent DOWN ${p.first.toInt()} ${p.second.toInt()}")
+                    res.failure == null && res.ok
+                } else {
+                    true
                 }
-                true
             }
 
             "m", "move" -> { // Drag / Pointer Move
-                if (svc == null || !isTracking) return false
+                if ((svc == null && !shell.status().available) || !isTracking) return false
                 val p = parseCoords(arg, svc)
-                val shell = PrivilegedShellHolder.get()
-                if (shell.status().available) {
-                    shell.exec("input motionevent MOVE ${p.first.toInt()} ${p.second.toInt()}")
-                }
                 lastX = p.first
                 lastY = p.second
-                true
+                if (shell.status().available) {
+                    val res = shell.exec("input motionevent MOVE ${p.first.toInt()} ${p.second.toInt()}")
+                    res.failure == null && res.ok
+                } else {
+                    true
+                }
             }
 
             "u", "up" -> { // Touch Up
-                if (svc == null || !isTracking) return false
+                if ((svc == null && !shell.status().available) || !isTracking) return false
                 val p = parseCoords(arg, svc)
                 isTracking = false
-                val shell = PrivilegedShellHolder.get()
                 if (shell.status().available) {
-                    shell.exec("input motionevent UP ${p.first.toInt()} ${p.second.toInt()}")
+                    val res = shell.exec("input motionevent UP ${p.first.toInt()} ${p.second.toInt()}")
+                    res.failure == null && res.ok
+                } else {
+                    true
                 }
-                true
             }
 
             "t", "tap" -> {
-                if (svc == null) return false
+                if (svc == null && !shell.status().available) return false
                 val p = parseCoords(arg, svc)
-                val shell = PrivilegedShellHolder.get()
+                val x = p.first.toInt()
+                val y = p.second.toInt()
+                var handled = false
                 if (shell.status().available) {
-                    shell.exec("input tap ${p.first.toInt()} ${p.second.toInt()}")
-                } else {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        svc.tap(p.first.toInt(), p.second.toInt())
+                    val res = shell.exec("input tap $x $y")
+                    if (res.failure == null && res.ok) {
+                        handled = true
+                    } else {
+                        Log.w(TAG, "shell input tap gagal (${res.failure ?: res.stderr}); fallback ke gesture")
                     }
                 }
-                true
+                if (!handled && svc != null) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        svc.tap(x, y)
+                    }
+                    handled = true
+                }
+                handled
             }
 
             "l", "longpress" -> {
-                if (svc == null) return false
+                if (svc == null && !shell.status().available) return false
                 val p = parseCoords(arg, svc)
                 val x = p.first.toInt(); val y = p.second.toInt()
-                val shell = PrivilegedShellHolder.get()
+                var handled = false
                 if (shell.status().available) {
-                    shell.exec("input swipe $x $y $x $y 700")
-                } else {
+                    val res = shell.exec("input swipe $x $y $x $y 700")
+                    if (res.failure == null && res.ok) {
+                        handled = true
+                    } else {
+                        Log.w(TAG, "shell input longpress gagal (${res.failure ?: res.stderr}); fallback ke gesture")
+                    }
+                }
+                if (!handled && svc != null) {
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         svc.swipe(x, y, x, y, 700L)
                     }
+                    handled = true
                 }
-                true
+                handled
             }
 
             "s", "swipe" -> {
-                if (svc == null) return false
+                if (svc == null && !shell.status().available) return false
                 val nums = arg.split(',').mapNotNull { it.trim().toIntOrNull() }
                 if (nums.size >= 4) {
-                    val (rw, rh) = getRealDisplaySize(svc)
+                    val (rw, rh) = getRealDisplaySize(svc ?: AgentAccessibilityService.getAppContext())
                     val x1 = if (nums[0] in 0..10000) (nums[0] * (rw - 1)) / 10000 else nums[0]
                     val y1 = if (nums[1] in 0..10000) (nums[1] * (rh - 1)) / 10000 else nums[1]
                     val x2 = if (nums[2] in 0..10000) (nums[2] * (rw - 1)) / 10000 else nums[2]
                     val y2 = if (nums[3] in 0..10000) (nums[3] * (rh - 1)) / 10000 else nums[3]
                     val dur = nums.getOrElse(4) { 200 }
-                    val shell = PrivilegedShellHolder.get()
+                    var handled = false
                     if (shell.status().available) {
-                        shell.exec("input swipe $x1 $y1 $x2 $y2 $dur")
-                    } else {
+                        val res = shell.exec("input swipe $x1 $y1 $x2 $y2 $dur")
+                        if (res.failure == null && res.ok) {
+                            handled = true
+                        } else {
+                            Log.w(TAG, "shell input swipe gagal (${res.failure ?: res.stderr}); fallback ke gesture")
+                        }
+                    }
+                    if (!handled && svc != null) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             svc.swipe(x1, y1, x2, y2, dur.toLong())
                         }
+                        handled = true
                     }
-                    true
+                    handled
                 } else {
                     false
                 }
@@ -129,7 +171,7 @@ object RemoteControlManager {
                     "back" -> svc?.pressBack() ?: false
                     "home" -> svc?.pressHome() ?: false
                     "recents" -> svc?.openRecents() ?: false
-                    "power", "lock" -> if (svc != null) { togglePower(svc); true } else false
+                    "power", "lock" -> if (svc != null || shell.status().available) { togglePower(svc); true } else false
                     else -> false
                 }
             }
@@ -137,11 +179,11 @@ object RemoteControlManager {
             "back" -> svc?.pressBack() ?: false
             "home" -> svc?.pressHome() ?: false
             "recents" -> svc?.openRecents() ?: false
-            "wake" -> svc?.wakeScreen() ?: false
-            "power", "lock" -> if (svc != null) { togglePower(svc); true } else false
-            "volume_up", "volup" -> if (svc != null) { adjustVolume(svc, raise = true); true } else false
-            "volume_down", "voldown" -> if (svc != null) { adjustVolume(svc, raise = false); true } else false
-            "rotate" -> if (svc != null) { toggleRotation(svc); true } else false
+            "wake" -> if (svc != null) { svc.wakeScreen() } else if (shell.status().available) { shell.exec("input keyevent 224").ok } else false
+            "power", "lock" -> if (svc != null || shell.status().available) { togglePower(svc); true } else false
+            "volume_up", "volup" -> if (svc != null || shell.status().available) { adjustVolume(svc, raise = true); true } else false
+            "volume_down", "voldown" -> if (svc != null || shell.status().available) { adjustVolume(svc, raise = false); true } else false
+            "rotate" -> if (svc != null || shell.status().available) { toggleRotation(svc); true } else false
             "key", "keyevent" -> {
                 val keyCode = arg.toIntOrNull() ?: return false
                 val shell = PrivilegedShellHolder.get()
@@ -200,18 +242,21 @@ object RemoteControlManager {
         }
     }
 
-    private fun togglePower(svc: AccessibilityService) {
+    private fun togglePower(svc: AccessibilityService?) {
         val shell = PrivilegedShellHolder.get()
         if (shell.status().available) {
             shell.exec("input keyevent 26")
             return
         }
-        val pm = svc.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val targetCtx = svc ?: AgentAccessibilityService.getAppContext()
+        val pm = targetCtx?.getSystemService(Context.POWER_SERVICE) as? PowerManager
         if (pm != null && pm.isInteractive) {
-            if (Build.VERSION.SDK_INT >= 28) {
-                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-            } else {
-                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+            if (svc != null) {
+                if (Build.VERSION.SDK_INT >= 28) {
+                    svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                } else {
+                    svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG)
+                }
             }
         } else if (pm != null) {
             @Suppress("DEPRECATION")
@@ -219,18 +264,19 @@ object RemoteControlManager {
         }
     }
 
-    private fun adjustVolume(svc: AccessibilityService, raise: Boolean) {
+    private fun adjustVolume(svc: AccessibilityService?, raise: Boolean) {
         val shell = PrivilegedShellHolder.get()
         if (shell.status().available) {
             shell.exec("input keyevent ${if (raise) 24 else 25}")
             return
         }
-        val am = svc.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val targetCtx = svc ?: AgentAccessibilityService.getAppContext()
+        val am = targetCtx?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val dir = if (raise) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
         am?.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI)
     }
 
-    private fun toggleRotation(svc: AccessibilityService) {
+    private fun toggleRotation(svc: AccessibilityService?) {
         val shell = PrivilegedShellHolder.get()
         if (shell.status().available) {
             val userRot = shell.exec("settings get system user_rotation").stdout.trim()
@@ -239,6 +285,7 @@ object RemoteControlManager {
             shell.exec("settings put system user_rotation $nextRot")
         }
     }
+
     /**
      * Resolves normalized 0..10000 coordinates to real physical pixels.
      * MUST match CaptureService.reconfigure() which encodes using
@@ -246,14 +293,15 @@ object RemoteControlManager {
      * Using displayMetrics.heightPixels would be ~246px shorter on devices with
      * navigation bars, causing all taps to land too high.
      */
-    fun parseCoords(str: String, svc: AccessibilityService): Pair<Float, Float> {
+    fun parseCoords(str: String, svc: AccessibilityService? = null): Pair<Float, Float> {
         val parts = str.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (parts.size < 2) return 0f to 0f
         val rawX = parts[0]
         val rawY = parts[1]
 
         // Get true physical display dimensions (same as CaptureService encoder)
-        val (realW, realH) = getRealDisplaySize(svc)
+        val ctx = svc ?: AgentAccessibilityService.getAppContext()
+        val (realW, realH) = getRealDisplaySize(ctx)
 
         val px = if (rawX in 0..10000) {
             (rawX * (realW - 1)).toFloat() / 10000f
@@ -271,8 +319,9 @@ object RemoteControlManager {
     }
 
     /** Physical display size matching CaptureService.reconfigure() */
-    private fun getRealDisplaySize(svc: AccessibilityService): Pair<Int, Int> {
-        val wm = svc.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+    private fun getRealDisplaySize(ctx: Context?): Pair<Int, Int> {
+        if (ctx == null) return 1080 to 2400
+        val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && wm != null) {
             val bounds = wm.maximumWindowMetrics.bounds
             bounds.width() to bounds.height()
@@ -282,7 +331,7 @@ object RemoteControlManager {
             wm.defaultDisplay.getRealSize(point)
             point.x to point.y
         } else {
-            val dm = svc.resources.displayMetrics
+            val dm = ctx.resources.displayMetrics
             dm.widthPixels to dm.heightPixels
         }
     }
