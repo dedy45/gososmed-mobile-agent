@@ -369,4 +369,24 @@ class AgentCommandTest {
         assertEquals(105, respSettle.getInt("id"))
         assertFalse(respSettle.optBoolean("ok"))
     }
+
+    @Test
+    fun `checkSecurityChallenge and nodeInspector are registered and require service`() {
+        assertTrue("checkSecurityChallenge must be in ASYNC_BACKGROUND_COMMANDS",
+            AgentCommand.CMD_CHECK_SECURITY_CHALLENGE in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+        assertTrue("nodeInspector must be in ASYNC_BACKGROUND_COMMANDS",
+            AgentCommand.CMD_NODE_INSPECTOR in AgentCommand.ASYNC_BACKGROUND_COMMANDS)
+
+        val reqChallenge = JSONObject("""{"id":106,"cmd":"checkSecurityChallenge"}""")
+        val respChallenge = AgentCommand.execute(reqChallenge)
+        assertEquals(106, respChallenge.getInt("id"))
+        assertFalse("must fail when service disconnected", respChallenge.optBoolean("ok"))
+        assertEquals("accessibility service not connected/ready", respChallenge.getString("error"))
+
+        val reqInspect = JSONObject("""{"id":107,"cmd":"nodeInspector","text":"Posting"}""")
+        val respInspect = AgentCommand.execute(reqInspect)
+        assertEquals(107, respInspect.getInt("id"))
+        assertFalse("must fail when service disconnected", respInspect.optBoolean("ok"))
+        assertEquals("accessibility service not connected/ready", respInspect.getString("error"))
+    }
 }

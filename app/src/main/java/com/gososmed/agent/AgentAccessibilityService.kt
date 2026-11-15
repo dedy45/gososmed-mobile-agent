@@ -1555,17 +1555,15 @@ class AgentAccessibilityService : AccessibilityService() {
 
         while (System.currentTimeMillis() < deadline) {
             var found: android.graphics.Rect? = null
-            val root = rootInActiveWindow
+            val root = try { rootInActiveWindow } catch (_: Throwable) { null }
             if (root != null) {
                 found = searchNodeRecursive(root, targetText, targetDesc, targetResId, 0)
-                root.recycle()
             }
             if (found == null) {
-                val winList = windows
+                val winList = try { windows } catch (_: Throwable) { null } ?: emptyList()
                 for (w in winList) {
-                    val wRoot = w.root ?: continue
+                    val wRoot = try { w.root } catch (_: Throwable) { null } ?: continue
                     found = searchNodeRecursive(wRoot, targetText, targetDesc, targetResId, 0)
-                    wRoot.recycle()
                     if (found != null) break
                 }
             }
@@ -1651,15 +1649,154 @@ class AgentAccessibilityService : AccessibilityService() {
         }
 
         for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
+            val child = try { node.getChild(i) } catch (_: Throwable) { null } ?: continue
             val found = searchNodeRecursive(child, textTarget, descTarget, resIdTarget, depth + 1)
-            child.recycle()
             if (found != null) return found
         }
         return null
     }
 
     // ---- Helpers ----
+
+    // ---- Helpers ----
+
+    /**
+     * Memeriksa keberadaan tantangan keamanan (CAPTCHA, puzzle slide, 2FA, checkpoint)
+     * secara fail-closed pada seluruh interactive roots.
+     */
+    fun checkSecurityChallenge(): JSONObject {
+        val challengeKeywords = mapOf(
+            "captcha" to "captcha_or_recaptcha",
+            "recaptcha" to "recaptcha",
+            "puzzle" to "puzzle_slide",
+            "geser teka-teki" to "puzzle_slide",
+            "two-factor" to "two_factor_auth",
+            "2-step" to "two_factor_auth",
+            "autentikasi dua langkah" to "two_factor_auth",
+            "security code" to "security_code_challenge",
+            "masukkan kode keamanan" to "security_code_challenge",
+            "checkpoint" to "account_checkpoint",
+            "suspicious activity" to "suspicious_activity_block",
+            "aktivitas mencurigakan" to "suspicious_activity_block",
+            "bukan robot" to "bot_detection_challenge",
+            "confirm it's you" to "identity_confirmation",
+            "konfirmasikan ini anda" to "identity_confirmation"
+        )
+
+        val roots = getAllInteractiveRoots()
+        for (root in roots) {
+            val matchedType = scanNodeForChallenge(root, challengeKeywords, 0)
+            if (matchedType != null) {
+                return JSONObject().apply {
+                    put("detected", true)
+                    put("challenge_type", matchedType)
+                    put("human_intervention_required", true)
+                }
+            }
+        }
+
+        return JSONObject().apply {
+            put("detected", false)
+            put("challenge_type", JSONObject.NULL)
+            put("human_intervention_required", false)
+        }
+    }
+
+    private fun scanNodeForChallenge(
+        node: AccessibilityNodeInfo,
+        keywords: Map<String, String>,
+        depth: Int
+    ): String? {
+        if (depth > 40) return null
+        val t = node.text?.toString()?.lowercase()?.trim().orEmpty()
+        val cd = node.contentDescription?.toString()?.lowercase()?.trim().orEmpty()
+        val id = node.viewIdResourceName?.lowercase()?.trim().orEmpty()
+
+        for ((kw, type) in keywords) {
+            if (t.contains(kw) || cd.contains(kw) || id.contains(kw)) {
+                return type
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Throwable) { null } ?: continue
+            val found = scanNodeForChallenge(child, keywords, depth + 1)
+            if (found != null) return found
+        }
+        return null
+    }
+
+    /**
+     * Memeriksa dan mengekstraksi atribut rinci sebuah node tertentu tanpa dump pohon XML penuh.
+     */
+    fun inspectNode(
+        textTarget: String? = null,
+        descTarget: String? = null,
+        resIdTarget: String? = null
+    ): JSONObject? {
+        val t = textTarget?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }
+        val cd = descTarget?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }
+        val id = resIdTarget?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (t == null && cd == null && id == null) return null
+
+        val roots = getAllInteractiveRoots()
+        for (root in roots) {
+            val matchedNode = findInspectNodeRecursive(root, t, cd, id, 0)
+            if (matchedNode != null) {
+                val r = Rect()
+                matchedNode.getBoundsInScreen(r)
+                val nodeJson = JSONObject().apply {
+                    put("class", matchedNode.className?.toString() ?: "android.view.View")
+                    put("package", matchedNode.packageName?.toString() ?: "")
+                    put("text", matchedNode.text?.toString() ?: "")
+                    put("content_desc", matchedNode.contentDescription?.toString() ?: "")
+                    put("resource_id", matchedNode.viewIdResourceName ?: "")
+                    put("clickable", matchedNode.isClickable)
+                    put("editable", matchedNode.isEditable)
+                    put("focused", matchedNode.isFocused)
+                    put("enabled", matchedNode.isEnabled)
+                    put("scrollable", matchedNode.isScrollable)
+                    put("password", matchedNode.isPassword)
+                    put("bounds", JSONArray(listOf(r.left, r.top, r.right, r.bottom)))
+                    put("center", JSONObject().apply {
+                        put("x", r.centerX())
+                        put("y", r.centerY())
+                    })
+                }
+                return nodeJson
+            }
+        }
+        return null
+    }
+
+    private fun findInspectNodeRecursive(
+        node: AccessibilityNodeInfo,
+        textTarget: String?,
+        descTarget: String?,
+        resIdTarget: String?,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (depth > 50) return null
+        val t = node.text?.toString()?.lowercase()?.trim().orEmpty()
+        val cd = node.contentDescription?.toString()?.lowercase()?.trim().orEmpty()
+        val id = node.viewIdResourceName?.lowercase()?.trim().orEmpty()
+
+        val textMatches = textTarget != null && (t.contains(textTarget) || cd.contains(textTarget))
+        val descMatches = descTarget != null && cd.contains(descTarget)
+        val idMatches = resIdTarget != null && id.contains(resIdTarget)
+
+        if (textMatches || descMatches || idMatches) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = try { node.getChild(i) } catch (_: Throwable) { null } ?: continue
+            val found = findInspectNodeRecursive(child, textTarget, descTarget, resIdTarget, depth + 1)
+            if (found != null) return found
+        }
+        return null
+    }
 
     private fun boundsOf(node: AccessibilityNodeInfo): Bounds {
         val rect = android.graphics.Rect()

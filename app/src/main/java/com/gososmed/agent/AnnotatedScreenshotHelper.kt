@@ -32,15 +32,19 @@ object AnnotatedScreenshotHelper {
         rootNode: AccessibilityNodeInfo?,
         scale: Float = 0.6f,
         quality: Int = 75,
-        roi: Rect? = null
-    ): Pair<String, JSONArray> = annotateRoots(bitmap, if (rootNode != null) listOf(rootNode) else emptyList(), scale, quality, roi)
+        roi: Rect? = null,
+        displayWidth: Int = 0,
+        displayHeight: Int = 0
+    ): Pair<String, JSONArray> = annotateRoots(bitmap, if (rootNode != null) listOf(rootNode) else emptyList(), scale, quality, roi, displayWidth, displayHeight)
 
     fun annotateRoots(
         bitmap: Bitmap,
         rootNodes: List<AccessibilityNodeInfo>,
         scale: Float = 0.6f,
         quality: Int = 75,
-        roi: Rect? = null
+        roi: Rect? = null,
+        displayWidth: Int = 0,
+        displayHeight: Int = 0
     ): Pair<String, JSONArray> {
         val elements = mutableListOf<MarkedElement>()
         var nextMarkId = 1
@@ -63,12 +67,15 @@ object AnnotatedScreenshotHelper {
         // bitmap bisa lebih kecil (downscale / maxWidth / ROI). Tanpa penyesuaian,
         // kotak dan nomor digambar di luar gambar — persis anotasi "kacau" yang
         // dilaporkan setelah maxWidth=480 diperkenalkan.
-        // Rasio diturunkan dari elemen terjauh yang masih berada di layar, karena
-        // bitmap sendiri tidak menyimpan ukuran layar asalnya.
-        val screenRight = elements.maxOfOrNull { it.bounds.right } ?: 0
-        val screenBottom = elements.maxOfOrNull { it.bounds.bottom } ?: 0
-        val coordScaleX = if (screenRight > bitmap.width) bitmap.width.toFloat() / screenRight.toFloat() else 1f
-        val coordScaleY = if (screenBottom > bitmap.height) bitmap.height.toFloat() / screenBottom.toFloat() else 1f
+        //
+        // PERBAIKAN v1.2.21: Skala referensi layar fisik diambil dari parameter
+        // eksplisit displayWidth/displayHeight (DisplayMetrics) jika tersedia (>0).
+        // Elemen terjauh hanya dipakai sebagai fallback deterministik jika dimensi
+        // tampilan tidak disediakan pemanggil.
+        val refScreenWidth = if (displayWidth > 0) displayWidth else (elements.maxOfOrNull { it.bounds.right } ?: 0)
+        val refScreenHeight = if (displayHeight > 0) displayHeight else (elements.maxOfOrNull { it.bounds.bottom } ?: 0)
+        val coordScaleX = if (refScreenWidth > bitmap.width) bitmap.width.toFloat() / refScreenWidth.toFloat() else 1f
+        val coordScaleY = if (refScreenHeight > bitmap.height) bitmap.height.toFloat() / refScreenHeight.toFloat() else 1f
         val coordScale = minOf(coordScaleX, coordScaleY).takeIf { it in 0.05f..1f } ?: 1f
         val mismatch = coordScale < 0.99f
 

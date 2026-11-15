@@ -132,6 +132,9 @@ object AgentCommand {
     const val CMD_SCAN_MEDIA = "scanMedia"
     const val CMD_ADD_MEDIA = "addMedia"
     const val CMD_WAIT_FOR_SETTLE = "waitForSettle"
+    // v1.2.21: Presisi Observasi AI & Fail-Closed Security Guard (DMAI)
+    const val CMD_CHECK_SECURITY_CHALLENGE = "checkSecurityChallenge"
+    const val CMD_NODE_INSPECTOR = "nodeInspector"
     /**
      * v0.9.0 — command yang TIDAK memerlukan AccessibilityService.
      * Dipakai dua hal:
@@ -169,7 +172,8 @@ object AgentCommand {
         CMD_START_APP, CMD_KILL_APP, CMD_WAKE, CMD_STAGE_MEDIA, CMD_CLEANUP_MEDIA,
         CMD_WAIT_FOR_NODE, CMD_REPLACE_TEXT, CMD_ANNOTATED_SCREENSHOT, CMD_CLICK_AND_WAIT,
         CMD_EXECUTE_BATCH, CMD_WAIT_FOR_SETTLE, CMD_SCAN_MEDIA, CMD_ADD_MEDIA,
-        CMD_SET_CLIPBOARD, CMD_COPY_TEXT, CMD_PASTE_TEXT, CMD_ERASE_TEXT
+        CMD_SET_CLIPBOARD, CMD_COPY_TEXT, CMD_PASTE_TEXT, CMD_ERASE_TEXT,
+        CMD_CHECK_SECURITY_CHALLENGE, CMD_NODE_INSPECTOR
     )
 
     /** Executes one command request and returns the response JSONObject. */
@@ -1469,7 +1473,16 @@ object AgentCommand {
                                 resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
                             } else {
                                 roots = svc.getAllInteractiveRoots()
-                                val (base64, elements) = AnnotatedScreenshotHelper.annotateRoots(bmp, roots, scale, quality, roi)
+                                val dm = svc.resources.displayMetrics
+                                val (base64, elements) = AnnotatedScreenshotHelper.annotateRoots(
+                                    bitmap = bmp,
+                                    rootNodes = roots,
+                                    scale = scale,
+                                    quality = quality,
+                                    roi = roi,
+                                    displayWidth = dm.widthPixels,
+                                    displayHeight = dm.heightPixels
+                                )
                                 resp.put("ok", true)
                                 resp.put("result", JSONObject().apply {
                                     put("image_base64", base64)
@@ -1632,6 +1645,24 @@ object AgentCommand {
                 }
                 resp.put("ok", true)
                 resp.put("result", settleResult.toJson())
+            }
+            CMD_CHECK_SECURITY_CHALLENGE -> {
+                val challengeResult = svc.checkSecurityChallenge()
+                resp.put("ok", true)
+                resp.put("result", challengeResult)
+            }
+            CMD_NODE_INSPECTOR -> {
+                val text = req.optString("text", "").takeIf { it.isNotEmpty() }
+                val desc = req.optString("content_desc", "").takeIf { it.isNotEmpty() }
+                val resId = req.optString("resource_id", "").takeIf { it.isNotEmpty() }
+                val node = svc.inspectNode(text, desc, resId)
+                if (node != null) {
+                    resp.put("ok", true)
+                    resp.put("result", node)
+                } else {
+                    resp.put("ok", false)
+                    resp.put("error", "node tidak ditemukan")
+                }
             }
             else -> resp.put("ok", false).put("error", "unknown cmd: $cmd")
         }

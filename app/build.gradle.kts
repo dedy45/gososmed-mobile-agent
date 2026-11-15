@@ -36,9 +36,9 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 60 = 1.2.20 (STABLE) — Pemulihan upload & delete Web File Manager (bypassing Scoped Storage via Cache Staging & Privileged Shell), auto-grant MANAGE_EXTERNAL_STORAGE, dan pencegahan false streaming mandek pada layar statis.
-        versionCode = 60
-        versionName = "1.2.20"
+        // versionCode 61 = 1.2.21 (DEV) — Presisi Observasi AI (DMAI): Skala koordinat eksplisit DisplayMetrics untuk modal dialog, fail-closed checkSecurityChallenge, nodeInspector, dan penghapusan recycle() rentan crash pada waitForNode.
+        versionCode = 61
+        versionName = "1.2.21"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

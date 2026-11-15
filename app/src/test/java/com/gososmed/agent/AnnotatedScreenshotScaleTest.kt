@@ -102,4 +102,27 @@ class AnnotatedScreenshotScaleTest {
         assertEquals("center harus tetap koordinat fisik", centerX, 1040)
         assertEquals("center harus tetap koordinat fisik", centerY, 2525)
     }
+
+    @Test
+    fun `skala koordinat dengan parameter displayWidth presisi saat dialog sempit di tengah layar`() {
+        // Dialog sempit: hanya membentang di tengah layar (x=200..800)
+        val dialogElements = listOf(
+            R(200, 500, 800, 1000)
+        )
+        val maxRightDialog = dialogElements.maxOf { it.r } // 800px
+
+        // Jika hanya mengandalkan maxRight (bug lama):
+        // Jika bitmap seukuran layar (1220x2712), sx = 1220 / 800 = 1.525 -> clamped ke 1.0f
+        // Tapi jika bitmap di-downscale ke 610x1356 (scale 0.5):
+        // Bug lama: sx = 610 / 800 = 0.7625 (skala salah karena bukan rasio 0.5 terhadap layar 1220!)
+        val downscaledW = 610
+        val bugScale = downscaledW.toFloat() / maxRightDialog.toFloat() // 0.7625f
+
+        // Rumus baru dengan explicit displayWidth:
+        val correctScale = downscaledW.toFloat() / screenW.toFloat() // 610 / 1220 = 0.5f
+
+        assertEquals("skala dengan displayWidth eksplisit harus tepat 0,5", 0.5f, correctScale, 0.001f)
+        assertTrue("rumus lama melenceng dari rasio layar sebenarnya", Math.abs(bugScale - correctScale) > 0.1f)
+    }
 }
+

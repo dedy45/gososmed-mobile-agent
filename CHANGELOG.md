@@ -9,6 +9,25 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [1.2.21-dev.1] - 2026-11-16 (DEV)
+
+### Fixed — Presisi Observasi AI & Fail-Closed Security Guard (Metodologi D.M.A.I.)
+- **Perbaikan Skala Koordinat Set-of-Marks Dialog Modal (`AnnotatedScreenshotHelper.kt`, `AgentCommand.kt`)**:
+  - Mengeliminasi bug tebakan rasio elemen terjauh (`maxRight`) yang melenceng ketika layar sedang menampilkan popup/modal dialog sempit di tengah layar (misal dialog izin atau CAPTCHA).
+  - Mengikat kalkulasi skala koordinat ke dimensi layar riil (`DisplayMetrics.widthPixels` & `heightPixels`) sehingga kotak Set-of-Marks Ember Orange tepat 1:1 di atas elemen fisik.
+- **Implementasi Command Pengaman Keamanan `checkSecurityChallenge` (`AgentAccessibilityService.kt`, `AgentCommand.kt`)**:
+  - Deteksi fail-closed instan di memori Android terhadap pola CAPTCHA, Puzzle Slide, 2FA/Two-Factor, Kode Keamanan, Bot Check, dan Checkpoint akun.
+  - Mengembalikan `{"detected": true, "challenge_type": "...", "human_intervention_required": true}` agar agent AI segera menjeda otomasi sebelum akun terblokir.
+- **Implementasi `nodeInspector` untuk Observasi Cepat Hemat Token (`AgentAccessibilityService.kt`, `AgentCommand.kt`)**:
+  - Mengambil atribut lengkap sebuah node (`class`, `text`, `content_desc`, `resource_id`, `bounds`, `center`, `clickable`, `editable`, `focused`, `scrollable`, `password`) tanpa memerlukan dump pohon XML raksasa (>50.000 token).
+- **Pencegahan Crash Recycled Node pada Polling `waitForNode` (`AgentAccessibilityService.kt`)**:
+  - Menghapus pemanggilan manual `node.recycle()` yang deprecated di dalam loop traversal rekursif 80ms, mencegah `IllegalStateException` saat pergantian jendela di Android 12+.
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM lulus 100% (276 tests).
+- **Pengujian Perangkat Fisik:** Belum diuji pada perangkat fisik Android (adb devices lokal kosong); wajib diverifikasi di perangkat riil sebelum promosi ke kanal stabil.
+- **Kanal Rilis:** Prerelease Dev `v1.2.21-dev.1` (bukan stabil).
+
 ## [1.2.20] - 2026-11-07 (STABLE)
 
 ### Fixed — Pemulihan Upload & Delete Web File Manager & Pencegahan False Stall
