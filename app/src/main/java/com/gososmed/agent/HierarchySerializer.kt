@@ -129,11 +129,7 @@ object HierarchySerializer {
         val childCount = node.childCount
         for (i in 0 until childCount) {
             val child = node.getChild(i) ?: continue
-            try {
-                appendNode(child, sb, depth + 1, i, maxDepth, budget)
-            } finally {
-                child.recycle()
-            }
+            appendNode(child, sb, depth + 1, i, maxDepth, budget)
         }
         sb.append("  ".repeat(depth)).append("</node>\n")
     }

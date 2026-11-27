@@ -1452,55 +1452,40 @@ object AgentCommand {
                     // tetap menggambar kotak memakai koordinat layar fisik
                     // (1220x2712). Akibatnya semua kotak dan nomor jatuh di luar
                     // gambar — itulah anotasi yang tampak kacau.
-                    val (bytes, width, height, err) = svc.takeScreenshotRawBytes(
-                        scale = 1.0f, format = "jpeg", quality = 85, maxWidth = 0
-                    )
-                    if (bytes == null || bytes.isEmpty()) {
+                    val (bmp, err) = svc.captureScreenBitmap(mutable = true)
+                    if (bmp == null) {
                         val errMsg = err ?: "gagal mengambil screenshot"
                         Log.e(TAG, "annotatedScreenshot failed: $errMsg")
                         resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
                     } else {
-                        var bmp: Bitmap? = null
-                        var roots: List<AccessibilityNodeInfo> = emptyList()
                         try {
-                            val opts = android.graphics.BitmapFactory.Options().apply {
-                                inMutable = true
-                            }
-                            bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                            if (bmp == null) {
-                                val errMsg = "BitmapFactory.decodeByteArray returned null (possible OOM or invalid image buffer)"
-                                Log.e(TAG, "annotatedScreenshot failed: $errMsg")
-                                resp.put("ok", false).put("error", "annotatedScreenshot: $errMsg")
-                            } else {
-                                roots = svc.getAllInteractiveRoots()
-                                val dm = svc.resources.displayMetrics
-                                val (base64, elements) = AnnotatedScreenshotHelper.annotateRoots(
-                                    bitmap = bmp,
-                                    rootNodes = roots,
-                                    scale = scale,
-                                    quality = quality,
-                                    roi = roi,
-                                    displayWidth = dm.widthPixels,
-                                    displayHeight = dm.heightPixels
-                                )
-                                resp.put("ok", true)
-                                resp.put("result", JSONObject().apply {
-                                    put("image_base64", base64)
-                                    put("elements", elements)
-                                    put("width", roi?.width() ?: width)
-                                    put("height", roi?.height() ?: height)
-                                    put("scale", scale)
-                                    put("quality", quality)
-                                    if (roi != null) {
-                                        put("roi", JSONArray(listOf(roi.left, roi.top, roi.right, roi.bottom)))
-                                    }
-                                })
-                            }
+                            val width = bmp.width
+                            val height = bmp.height
+                            val roots = svc.getAllInteractiveRoots()
+                            val dm = svc.resources.displayMetrics
+                            val (base64, elements) = AnnotatedScreenshotHelper.annotateRoots(
+                                bitmap = bmp,
+                                rootNodes = roots,
+                                scale = scale,
+                                quality = quality,
+                                roi = roi,
+                                displayWidth = dm.widthPixels,
+                                displayHeight = dm.heightPixels
+                            )
+                            resp.put("ok", true)
+                            resp.put("result", JSONObject().apply {
+                                put("image_base64", base64)
+                                put("elements", elements)
+                                put("width", roi?.width() ?: width)
+                                put("height", roi?.height() ?: height)
+                                put("scale", scale)
+                                put("quality", quality)
+                                if (roi != null) {
+                                    put("roi", JSONArray(listOf(roi.left, roi.top, roi.right, roi.bottom)))
+                                }
+                            })
                         } finally {
-                            for (r in roots) {
-                                try { r.recycle() } catch (_: Throwable) {}
-                            }
-                            bmp?.recycle()
+                            if (!bmp.isRecycled) bmp.recycle()
                         }
                     }
                 } catch (t: Throwable) {

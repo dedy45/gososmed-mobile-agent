@@ -274,11 +274,7 @@ object AnnotatedScreenshotHelper {
 
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
-                try {
-                    currentId = collectInteractiveNodes(child, list, currentId, depth + 1)
-                } finally {
-                    child.recycle()
-                }
+                currentId = collectInteractiveNodes(child, list, currentId, depth + 1)
             }
         }
         return currentId
@@ -288,17 +284,13 @@ object AnnotatedScreenshotHelper {
         if (depth > 8) return ""
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            try {
-                if (child.isPassword) return "[REDACTED]"
-                val cTxt = child.text?.toString()?.trim().orEmpty()
-                if (cTxt.isNotEmpty()) return cTxt
-                val cDesc = child.contentDescription?.toString()?.trim().orEmpty()
-                if (cDesc.isNotEmpty()) return cDesc
-                val nested = extractDescendantLabel(child, depth + 1)
-                if (nested.isNotEmpty()) return nested
-            } finally {
-                child.recycle()
-            }
+            if (child.isPassword) return "[REDACTED]"
+            val cTxt = child.text?.toString()?.trim().orEmpty()
+            if (cTxt.isNotEmpty()) return cTxt
+            val cDesc = child.contentDescription?.toString()?.trim().orEmpty()
+            if (cDesc.isNotEmpty()) return cDesc
+            val nested = extractDescendantLabel(child, depth + 1)
+            if (nested.isNotEmpty()) return nested
         }
         return ""
     }

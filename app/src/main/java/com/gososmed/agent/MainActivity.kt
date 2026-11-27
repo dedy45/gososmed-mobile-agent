@@ -210,8 +210,12 @@ class MainActivity : AppCompatActivity() {
     private val adbUiListener: () -> Unit = {
         if (!isFinishing && !isDestroyed) runOnUiThread { refreshAdbStatus() }
     }
-
+    private val logListener: (AgentLog.Entry) -> Unit = { entry ->
+        if (!isFinishing && !isDestroyed) runOnUiThread { appendLogEntry(entry) }
+    }
+    private var updateClientInitialized = false
     private val updateHttpClient: okhttp3.OkHttpClient by lazy {
+        updateClientInitialized = true
         okhttp3.OkHttpClient.Builder()
             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -488,7 +492,7 @@ class MainActivity : AppCompatActivity() {
         logPauseBtn.setOnClickListener { toggleLogPause() }
         logClearBtn.setOnClickListener { clearLog() }
         logCopyBtn.setOnClickListener { copyLog() }
-        AgentLog.listener = { entry -> runOnUiThread { appendLogEntry(entry) } }
+        AgentLog.listener = logListener
         // v0.9.7 — tampilkan sebab crash terakhir (bila ada). Sebelum ini,
         // exception yang menjatuhkan proses hilang bersama prosesnya, sehingga
         // gejala "klik Hubungkan → Langkah 1 mati" tidak bisa ditelusuri.
@@ -941,6 +945,10 @@ class MainActivity : AppCompatActivity() {
         if (logPaused) {
             pausedDirty = true
             updateLogCount()
+            return
+        }
+        if (AgentLog.size() >= 30 || logSb.length > 8_000) {
+            rerenderLog()
             return
         }
         renderEntry(logSb, e)
@@ -2306,9 +2314,19 @@ class MainActivity : AppCompatActivity() {
             com.gososmed.agent.headless.DisplayPowerManager.setDisplayPower(true)
         }
         window.decorView.removeCallbacks(liveStatusTicker)
+        adbStatusTv.removeCallbacks(null)
+        logTv.removeCallbacks(null)
         AgentAccessibilityService.removeStateListener(a11yUiListener)
         AdbPairingController.removeStateListener(adbUiListener)
-        AgentLog.listener = null
+        if (AgentLog.listener === logListener) {
+            AgentLog.listener = null
+        }
+        if (updateClientInitialized) {
+            try {
+                updateHttpClient.dispatcher.executorService.shutdown()
+                updateHttpClient.connectionPool.evictAll()
+            } catch (_: Throwable) {}
+        }
         super.onDestroy()
     }
 

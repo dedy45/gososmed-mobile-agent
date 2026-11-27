@@ -667,6 +667,8 @@ class AgentAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         bound = false
         instance = null
+        mainHandler.removeCallbacks(burstReadRunnable)
+        screenshotExecutor.shutdownNow()
         notifyStateChanged()
         super.onDestroy()
     }
@@ -862,21 +864,11 @@ class AgentAccessibilityService : AccessibilityService() {
      * Captures screenshot and returns raw bytes without base64 encoding (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
      * Returns RawScreenshotResult with detailed error codes if capture fails.
      */
-    fun takeScreenshotRawBytes(
-        scale: Float = 1f,
-        format: String = "jpeg",
-        quality: Int = 75,
-        maxWidth: Int = 480
-    ): RawScreenshotResult {
+    fun captureScreenBitmap(mutable: Boolean = false): Pair<Bitmap?, String?> {
         if (Build.VERSION.SDK_INT < 30) {
             val err = "takeScreenshot requires API 30+ (device API ${Build.VERSION.SDK_INT})"
-            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-            return RawScreenshotResult(null, 0, 0, err)
-        }
-        if (format.equals("webp", ignoreCase = true)) {
-            val err = "unsupported_image_format: format 'webp' is obsolete and forbidden. Use 'jpeg'."
-            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-            return RawScreenshotResult(null, 0, 0, err)
+            Log.e(TAG, "captureScreenBitmap failed: $err")
+            return null to err
         }
         val latch = CountDownLatch(1)
         var hw: android.hardware.HardwareBuffer? = null
@@ -903,7 +895,7 @@ class AgentAccessibilityService : AccessibilityService() {
                         else -> "UNKNOWN"
                     }
                     error = "takeScreenshot failed errorCode=$errorCode ($codeName)"
-                    Log.e(TAG, "takeScreenshotRawBytes onFailure: $error")
+                    Log.e(TAG, "captureScreenBitmap onFailure: $error")
                     latch.countDown()
                 }
             }
@@ -913,21 +905,21 @@ class AgentAccessibilityService : AccessibilityService() {
             val completed = latch.await(4, TimeUnit.SECONDS)
             if (!completed) {
                 val err = "screenshot latch await timed out after 4s"
-                Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-                return RawScreenshotResult(null, 0, 0, err)
+                Log.e(TAG, "captureScreenBitmap failed: $err")
+                return null to err
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             val err = "interrupted waiting for screenshot latch"
-            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-            return RawScreenshotResult(null, 0, 0, err)
+            Log.e(TAG, "captureScreenBitmap failed: $err")
+            return null to err
         }
 
         val buffer = hw
         if (buffer == null) {
             val err = error ?: "hardware buffer is null without error code"
-            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-            return RawScreenshotResult(null, 0, 0, err)
+            Log.e(TAG, "captureScreenBitmap failed: $err")
+            return null to err
         }
 
         val bitmap = try {
@@ -937,24 +929,47 @@ class AgentAccessibilityService : AccessibilityService() {
         }
         if (bitmap == null) {
             val err = "failed to wrap hardware buffer"
-            Log.e(TAG, "takeScreenshotRawBytes failed: $err")
-            return RawScreenshotResult(null, 0, 0, err)
+            Log.e(TAG, "captureScreenBitmap failed: $err")
+            return null to err
         }
 
         var soft: Bitmap? = null
         try {
-            soft = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            soft = bitmap.copy(Bitmap.Config.ARGB_8888, mutable)
         } catch (t: Throwable) {
-            Log.e(TAG, "takeScreenshotRawBytes copy hardware buffer failed", t)
+            Log.e(TAG, "captureScreenBitmap copy hardware buffer failed", t)
         } finally {
             bitmap.recycle()
         }
         if (soft == null) {
             val err = "failed to copy hardware buffer to software ARGB_8888 (possible OOM)"
+            Log.e(TAG, "captureScreenBitmap failed: $err")
+            return null to err
+        }
+        return soft to null
+    }
+
+    /**
+     * Captures screenshot and returns raw bytes without base64 encoding (PLAN-DETERMINISTIC-ANDROID-PORTAL.md).
+     * Returns RawScreenshotResult with detailed error codes if capture fails.
+     */
+    fun takeScreenshotRawBytes(
+        scale: Float = 1f,
+        format: String = "jpeg",
+        quality: Int = 75,
+        maxWidth: Int = 480
+    ): RawScreenshotResult {
+        if (format.equals("webp", ignoreCase = true)) {
+            val err = "unsupported_image_format: format 'webp' is obsolete and forbidden. Use 'jpeg'."
             Log.e(TAG, "takeScreenshotRawBytes failed: $err")
             return RawScreenshotResult(null, 0, 0, err)
         }
-
+        val (captured, captureErr) = captureScreenBitmap(mutable = false)
+        if (captured == null) {
+            val err = captureErr ?: "screenshot failed"
+            return RawScreenshotResult(null, 0, 0, err)
+        }
+        var soft = captured
         try {
             val sourceWidth = soft.width
             val sourceHeight = soft.height

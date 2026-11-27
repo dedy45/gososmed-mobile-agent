@@ -96,6 +96,33 @@ class AgentWsClient(
         )
     }
 
+    internal class PendingCallbackStore {
+        private data class Entry(val createdAtMs: Long, val callback: (JSONObject) -> Unit)
+        private val map = ConcurrentHashMap<Long, Entry>()
+
+        fun put(id: Long, nowMs: Long = System.currentTimeMillis(), callback: (JSONObject) -> Unit) {
+            map[id] = Entry(nowMs, callback)
+        }
+
+        fun remove(id: Long): ((JSONObject) -> Unit)? = map.remove(id)?.callback
+
+        fun evictExpired(nowMs: Long = System.currentTimeMillis(), ttlMs: Long = 30_000L): Int {
+            var evicted = 0
+            val it = map.entries.iterator()
+            while (it.hasNext()) {
+                val e = it.next()
+                if (nowMs - e.value.createdAtMs > ttlMs) {
+                    it.remove()
+                    evicted++
+                }
+            }
+            return evicted
+        }
+
+        fun clear() = map.clear()
+        fun size(): Int = map.size
+    }
+
     fun sendBinary(bytes: ByteArray): Boolean {
         val socket = ws ?: return false
         return try {
@@ -178,21 +205,14 @@ class AgentWsClient(
         liveFrameSession.start(config)
     }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var closed = false
-    private var rejected = false // M2: pairing ditolak → stop reconnect loop
-    private var connected = false
+    @Volatile private var closed = false
+    @Volatile private var rejected = false
+    @Volatile private var connected = false
 
     fun isConnected(): Boolean = connected
-    // Single-flight guard: mencegah dua koneksi paralel saat reconnect-loop dan
-    // network-callback saling memicu. Dua socket dengan device_id sama akan
-    // saling menendang di server (duplicate registration → flap register/putus).
-    private var connecting = false
-    // GAP-K12 (Plan 07): map pending diakses dari thread reader OkHttp
-    // (onMessage) DAN coroutine heartbeat/timeout (Dispatchers.IO) —
-    // LinkedHashMap tidak aman untuk itu; id juga harus atomik karena
-    // nextId() dipanggil dari thread yang sama.
+    @Volatile private var connecting = false
     private val idSeq = AtomicInteger(0)
-    private val pending = ConcurrentHashMap<Long, (JSONObject) -> Unit>()
+    private val pending = PendingCallbackStore()
 
     fun start() {
         if (connected || connecting) return
@@ -206,9 +226,11 @@ class AgentWsClient(
         closed = true
         rejected = false
         connecting = false
+        connected = false
         unregisterNetwork()
         stopDebugStreaming()
         AgentCommand.debugFrameQueue.clear()
+        pending.clear()
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
         ws?.close(1000, "client stop")
@@ -219,6 +241,10 @@ class AgentWsClient(
     fun destroy() {
         stop()
         scope.cancel()
+        try {
+            http.dispatcher.executorService.shutdown()
+            http.connectionPool.evictAll()
+        } catch (_: Throwable) {}
     }
 
     /** M2: perbarui pairing code (dari UI) lalu putus WS agar register ulang
@@ -391,6 +417,7 @@ class AgentWsClient(
                 Log.w(TAG, "ws failure: ${t.message}")
                 stopDebugStreaming()
                 AgentCommand.debugFrameQueue.clear()
+                pending.clear()
                 connecting = false
                 connected = false
                 onStatus("disconnected (${t.message ?: "?"})")
@@ -401,6 +428,7 @@ class AgentWsClient(
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 stopDebugStreaming()
                 AgentCommand.debugFrameQueue.clear()
+                pending.clear()
                 connecting = false
                 connected = false
                 onStatus("closed")
@@ -506,6 +534,7 @@ class AgentWsClient(
         rejected = true
         closed = true
         connected = false
+        pending.clear()
         unregisterNetwork()
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
@@ -522,9 +551,9 @@ class AgentWsClient(
             while (!closed && !rejected) {
                 delay(HEARTBEAT_MS)
                 if (!connected) continue
+                pending.evictExpired()
+                AgentCommand.debugFrameQueue.evictExpiredAcks()
 
-                // Zombie Socket Detection (TCP Half-Open):
-                // Jika ping sebelumnya belum dijawab pong saat ping berikutnya jatuh tempo
                 if (awaitingHeartbeatPong) {
                     missedPongs++
                     Log.w(TAG, "Heartbeat pong belum diterima (missed: $missedPongs/$MAX_MISSED_PONGS)")
@@ -540,7 +569,7 @@ class AgentWsClient(
                 val id = nextId()
                 lastPingSentTime = System.currentTimeMillis()
                 awaitingHeartbeatPong = true
-                pending[id] = { _ ->
+                pending.put(id, lastPingSentTime) { _ ->
                     val now = System.currentTimeMillis()
                     lastPingLatencyMs = now - lastPingSentTime
                     lastPongTimestamp = now
@@ -585,16 +614,24 @@ class AgentWsClient(
         }
         val id = nextId()
         val start = System.currentTimeMillis()
-        pending[id] = {
-            val rtt = System.currentTimeMillis() - start
-            lastPingLatencyMs = rtt
-            onComplete(rtt)
+        pending.put(id, start) { resp ->
+            if (!resp.optBoolean("ok", true)) {
+                onComplete(-1L)
+            } else {
+                val rtt = System.currentTimeMillis() - start
+                lastPingLatencyMs = rtt
+                onComplete(rtt)
+            }
         }
         val req = JSONObject()
             .put("id", id)
             .put("cmd", AgentCommand.CMD_PING)
             .put("echo", true)
         send(req)
+        scope.launch {
+            delay(5_000L)
+            pending.remove(id)?.invoke(JSONObject().put("id", id).put("ok", false).put("error", "timeout"))
+        }
     }
 
     private fun scheduleReconnect() {
@@ -666,7 +703,7 @@ class AgentWsClient(
     fun request(req: JSONObject, timeoutMs: Long = 15_000, onDone: (JSONObject) -> Unit) {
         val id = nextId()
         req.put("id", id)
-        pending[id] = onDone
+        pending.put(id, System.currentTimeMillis(), onDone)
         send(req)
         scope.launch {
             delay(timeoutMs)

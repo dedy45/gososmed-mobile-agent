@@ -83,6 +83,8 @@ class CaptureService : Service() {
     private val handler = Handler(thread.looper)
 
     private var projection: MediaProjection? = null
+    @Volatile private var projectionCallback: MediaProjection.Callback? = null
+    @Volatile private var audioThread: Thread? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
@@ -262,12 +264,14 @@ class CaptureService : Service() {
                 return START_NOT_STICKY
             }
 
-            p.registerCallback(object : MediaProjection.Callback() {
+            val cb = object : MediaProjection.Callback() {
                 override fun onStop() {
                     handler.post { release() }
                     stopSelf()
                 }
-            }, handler)
+            }
+            projectionCallback = cb
+            p.registerCallback(cb, handler)
 
             projection = p
             projectionDead = false
@@ -638,6 +642,11 @@ class CaptureService : Service() {
 
     private fun release() {
         activeCodec = null
+        val cb = projectionCallback
+        projectionCallback = null
+        if (cb != null) {
+            try { projection?.unregisterCallback(cb) } catch (_: Exception) {}
+        }
         virtualDisplay?.release()
         virtualDisplay = null
         try { codec?.stop() } catch (_: Exception) {}
@@ -646,6 +655,9 @@ class CaptureService : Service() {
         inputSurface?.release()
         inputSurface = null
         currentConfigKey = ""
+        LocalWebServer.cachedConfig = null
+        audioThread?.interrupt()
+        audioThread = null
         try {
             audioRecord?.stop()
             audioRecord?.release()
@@ -656,6 +668,8 @@ class CaptureService : Service() {
     private fun startAudioCapture(p: MediaProjection) {
         if (Build.VERSION.SDK_INT < 29) return
         try {
+            audioThread?.interrupt()
+            audioThread = null
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
@@ -687,16 +701,16 @@ class CaptureService : Service() {
             record.startRecording()
             audioRecord = record
 
-            kotlin.concurrent.thread(name = "goso-audio", isDaemon = true) {
+            audioThread = kotlin.concurrent.thread(name = "goso-audio", isDaemon = true) {
                 // 4096 bytes = 1024 stereo frames = 23.2 ms of audio per packet.
                 // record.read() is BLOCKING and returns real-time-paced data, so it
                 // provides the pacing. Never sleep() here: an extra sleep throttles
                 // the loop below real-time, AudioRecord's internal FIFO overflows and
                 // ~75% of samples are discarded -> "robotic" stuttering audio.
                 val buf = ByteArray(4096)
-                while (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                while (!Thread.currentThread().isInterrupted && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     if (!isAudioEnabled || !LocalWebServer.hasClients) {
-                        try { Thread.sleep(60) } catch (_: Exception) {}
+                        try { Thread.sleep(60) } catch (_: InterruptedException) { break } catch (_: Exception) {}
                         continue
                     }
                     val read = record.read(buf, 0, buf.size)
