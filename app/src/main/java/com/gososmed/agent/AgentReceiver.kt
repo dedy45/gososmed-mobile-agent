@@ -67,7 +67,6 @@ class AgentReceiver : BroadcastReceiver() {
             val cmdTag = req.optString("cmd", if (req.has("protocol_version")) "v2_${req.optString("cmd")}" else "unknown")
 
             val pending = goAsync()
-            pending.finish()
             Thread {
                 try {
                     var ready = AgentAccessibilityService.instance?.isServiceReady() == true
@@ -81,6 +80,10 @@ class AgentReceiver : BroadcastReceiver() {
                     ResultStore.write(context, cmdTag, resp.toString())
                 } catch (t: Throwable) {
                     Log.e("GoAgent", "Async CMD execution failed: ${t.message}", t)
+                } finally {
+                    try {
+                        pending.finish()
+                    } catch (_: Throwable) {}
                 }
             }.start()
         } catch (t: Throwable) {

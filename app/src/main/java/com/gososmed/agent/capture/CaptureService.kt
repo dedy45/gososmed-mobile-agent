@@ -244,42 +244,47 @@ class CaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat()
-        val code = intent?.getIntExtra("code", 0) ?: 0
-        @Suppress("DEPRECATION")
-        val data = intent?.getParcelableExtra<Intent>("data")
-        if (data == null || projection != null) return START_NOT_STICKY
+        try {
+            startForegroundCompat()
+            val code = intent?.getIntExtra("code", 0) ?: 0
+            @Suppress("DEPRECATION")
+            val data = intent?.getParcelableExtra<Intent>("data")
+            if (data == null || projection != null) return START_NOT_STICKY
 
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val p = try {
-            mpm.getMediaProjection(code, data)
-        } catch (_: Exception) {
-            null
-        }
-        if (p == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        p.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                handler.post { release() }
-                stopSelf()
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+            val p = try {
+                mpm?.getMediaProjection(code, data)
+            } catch (_: Throwable) {
+                null
             }
-        }, handler)
+            if (p == null) {
+                stopSelf()
+                return START_NOT_STICKY
+            }
 
-        projection = p
-        projectionDead = false
-        instance = this
-        val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-        dm?.registerDisplayListener(displayListener, handler)
+            p.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    handler.post { release() }
+                    stopSelf()
+                }
+            }, handler)
 
-        handler.post {
-            reconfigure()
-            startAudioCapture(p)
-            updateWakeLock()
-            handler.removeCallbacks(watchdogTicker)
-            handler.postDelayed(watchdogTicker, 2000L)
+            projection = p
+            projectionDead = false
+            instance = this
+            val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            dm?.registerDisplayListener(displayListener, handler)
+
+            handler.post {
+                reconfigure()
+                startAudioCapture(p)
+                updateWakeLock()
+                handler.removeCallbacks(watchdogTicker)
+                handler.postDelayed(watchdogTicker, 2000L)
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("CaptureService", "onStartCommand gagal: ${t.message}", t)
+            stopSelf()
         }
         return START_NOT_STICKY
     }

@@ -5,12 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.gososmed.agent.privileged.AdbPairingController
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -69,6 +74,8 @@ class AgentForegroundService : Service() {
             text?.let { i.putExtra("text", it) }
             return i
         }
+
+        internal fun canAccessCredentialStorage(userUnlocked: Boolean): Boolean = userUnlocked
     }
 
     private var ws: AgentWsClient? = null
@@ -89,8 +96,17 @@ class AgentForegroundService : Service() {
     @Volatile
     private var lastWsStatus: String = ""
     private var watchdogExecutor: ScheduledExecutorService? = null
+    private var unlockReceiverRegistered = false
     private val adbStateListener: () -> Unit = { updateNotification() }
     private val a11yStateListener: () -> Unit = { updateNotification() }
+    private val userUnlockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_USER_UNLOCKED) {
+                unregisterUnlockReceiver()
+                initCredentialBackedSubsystems()
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -101,34 +117,87 @@ class AgentForegroundService : Service() {
         super.onCreate()
         instance = this
         Log.i(TAG, "ForegroundService created")
-        // v0.9.0 — siapkan transport ADB (generate/muat kunci, pasang ke
-        // PrivilegedShellHolder, coba sambung). Idempoten dan berjalan di
-        // thread IO sendiri, jadi aman dipanggil dari onCreate; generate kunci
-        // RSA 2048 tidak boleh menghambat main thread.
-        AdbPairingController.bootstrap(this)
-        AdbPairingController.addStateListener(adbStateListener)
-        AgentAccessibilityService.addStateListener(a11yStateListener)
+        try {
+            AdbPairingController.addStateListener(adbStateListener)
+            AgentAccessibilityService.addStateListener(a11yStateListener)
+            acquireWakeLocks()
 
-        // v0.9.11 — acquire CPU + Wi-Fi locks SEBELUM startForeground.
-        acquireWakeLocks()
+            val nm = getSystemService(NotificationManager::class.java)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Agent GoSosmed Service",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Status liveness otomasi Agent GoSosmed (A11y, Wireless ADB, Server)"
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            nm?.createNotificationChannel(channel)
 
-        val nm = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Agent GoSosmed Service",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Status liveness otomasi Agent GoSosmed (A11y, Wireless ADB, Server)"
-            setShowBadge(true)
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            startForegroundCompat(buildNotification())
+
+            if (canAccessCredentialStorage(BootReceiver.isUserUnlocked(this))) {
+                initCredentialBackedSubsystems()
+            } else {
+                registerUnlockReceiver()
+                Log.i(TAG, "Direct Boot aktif: menunda ADB/WS hingga pengguna membuka kunci layar")
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "onCreate gagal ditangani aman: ${t.message}", t)
+            AgentLog.event("service init error: ${t.javaClass.simpleName}: ${t.message}")
         }
-        nm.createNotificationChannel(channel)
+    }
 
-        startForeground(NOTIF_ID, buildNotification())
-        // M3/S1: pulihkan koneksi WS dari config tersimpan (proses dibunuh OS →
-        // START_STICKY restart service dengan intent null → auto-reconnect).
-        startWsFromPrefs()
-        startWatchdog()
+    private fun startForegroundCompat(notification: Notification) {
+        try {
+            ServiceCompat.startForeground(
+                this,
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "startForeground bertipe gagal, mencoba fallback: ${t.message}")
+            try {
+                ServiceCompat.startForeground(this, NOTIF_ID, notification, 0)
+            } catch (t2: Throwable) {
+                Log.e(TAG, "startForeground cadangan gagal: ${t2.message}", t2)
+            }
+        }
+    }
+
+    private fun initCredentialBackedSubsystems() {
+        try {
+            AdbPairingController.bootstrap(this)
+            startWsFromPrefs()
+            startWatchdog()
+        } catch (t: Throwable) {
+            Log.e(TAG, "initCredentialBackedSubsystems gagal: ${t.message}", t)
+            AgentLog.event("init error: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    private fun registerUnlockReceiver() {
+        if (unlockReceiverRegistered) return
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                userUnlockReceiver,
+                IntentFilter(Intent.ACTION_USER_UNLOCKED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            unlockReceiverRegistered = true
+        } catch (t: Throwable) {
+            Log.w(TAG, "Gagal mendaftarkan userUnlockReceiver: ${t.message}")
+        }
+    }
+
+    private fun unregisterUnlockReceiver() {
+        if (!unlockReceiverRegistered) return
+        unlockReceiverRegistered = false
+        try {
+            unregisterReceiver(userUnlockReceiver)
+        } catch (_: Throwable) {}
     }
 
     /**
@@ -211,58 +280,65 @@ class AgentForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when {
-            intent?.action == ACTION_SET_PAIRING -> {
-                val url = intent.getStringExtra(EXTRA_WS_URL)?.trim().orEmpty()
-                val code = intent.getStringExtra(EXTRA_PAIRING_CODE)?.trim().orEmpty()
-                if (url.isNotEmpty() && code.isNotEmpty()) {
-                    prefs().edit()
-                        .putString("ws_url", url)
-                        .putString("pairing_code", code)
-                        .apply()
-                    startWs(url, code)
-                }
+        try {
+            if (!canAccessCredentialStorage(BootReceiver.isUserUnlocked(this))) {
+                Log.w(TAG, "onStartCommand saat Direct Boot terkunci — menunggu unlock")
+                return START_STICKY
             }
-            intent?.action == ACTION_STOP_WS -> {
-                stopWs()
-            }
-            intent?.hasExtra("cmd") == true -> {
-                if (!BuildConfig.DEBUG) {
-                    Log.w(TAG, "cmd extra ditolak pada build release")
-                    return START_STICKY
-                }
-                // Command request: run it (possibly waiting for the accessibility
-                // service to bind) then write the result. Runs off the main thread.
-                val cmd = intent.getStringExtra("cmd")
-                val text = intent.getStringExtra("text")
-                val contentDesc = intent.getStringExtra("content_desc")
-                val resourceId = intent.getStringExtra("resource_id")
-                val timeoutMs = readIntExtra(intent, "timeout_ms")?.toLong()
-                val x = readIntExtra(intent, "x")
-                val y = readIntExtra(intent, "y")
-                Thread {
-                    try {
-                        var ready = AgentAccessibilityService.instance?.isServiceReady() == true
-                        var attempts = 0
-                        while (!ready && attempts < 6) {
-                            Thread.sleep(500)
-                            attempts++
-                            ready = AgentAccessibilityService.instance?.isServiceReady() == true
-                        }
-                        val req = JSONObject().put("cmd", cmd)
-                        text?.let { req.put("text", it) }
-                        contentDesc?.let { req.put("content_desc", it) }
-                        resourceId?.let { req.put("resource_id", it) }
-                        timeoutMs?.let { req.put("timeout_ms", it) }
-                        x?.let { req.put("x", it) }
-                        y?.let { req.put("y", it) }
-                        val resp = AgentCommand.execute(req)
-                        AgentReceiver.ResultStore.write(this, cmd ?: "?", resp.toString())
-                    } catch (e: Exception) {
-                        Log.e(TAG, "command failed: ${e.message}")
+            when {
+                intent?.action == ACTION_SET_PAIRING -> {
+                    val url = intent.getStringExtra(EXTRA_WS_URL)?.trim().orEmpty()
+                    val code = intent.getStringExtra(EXTRA_PAIRING_CODE)?.trim().orEmpty()
+                    if (url.isNotEmpty() && code.isNotEmpty()) {
+                        prefs().edit()
+                            .putString("ws_url", url)
+                            .putString("pairing_code", code)
+                            .apply()
+                        startWs(url, code)
                     }
-                }.start()
+                }
+                intent?.action == ACTION_STOP_WS -> {
+                    stopWs()
+                }
+                intent?.hasExtra("cmd") == true -> {
+                    if (!BuildConfig.DEBUG) {
+                        Log.w(TAG, "cmd extra ditolak pada build release")
+                        return START_STICKY
+                    }
+                    val cmd = intent.getStringExtra("cmd")
+                    val text = intent.getStringExtra("text")
+                    val contentDesc = intent.getStringExtra("content_desc")
+                    val resourceId = intent.getStringExtra("resource_id")
+                    val timeoutMs = readIntExtra(intent, "timeout_ms")?.toLong()
+                    val x = readIntExtra(intent, "x")
+                    val y = readIntExtra(intent, "y")
+                    Thread {
+                        try {
+                            var ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                            var attempts = 0
+                            while (!ready && attempts < 6) {
+                                Thread.sleep(500)
+                                attempts++
+                                ready = AgentAccessibilityService.instance?.isServiceReady() == true
+                            }
+                            val req = JSONObject().put("cmd", cmd)
+                            text?.let { req.put("text", it) }
+                            contentDesc?.let { req.put("content_desc", it) }
+                            resourceId?.let { req.put("resource_id", it) }
+                            timeoutMs?.let { req.put("timeout_ms", it) }
+                            x?.let { req.put("x", it) }
+                            y?.let { req.put("y", it) }
+                            val resp = AgentCommand.execute(req)
+                            AgentReceiver.ResultStore.write(this, cmd ?: "?", resp.toString())
+                        } catch (e: Exception) {
+                            Log.e(TAG, "command failed: ${e.message}")
+                        }
+                    }.start()
+                }
             }
+        } catch (t: Throwable) {
+            Log.e(TAG, "onStartCommand gagal ditangani aman: ${t.message}", t)
+            AgentLog.event("service cmd error: ${t.javaClass.simpleName}: ${t.message}")
         }
         return START_STICKY
     }
@@ -347,6 +423,7 @@ class AgentForegroundService : Service() {
     override fun onDestroy() {
         Log.i(TAG, "ForegroundService destroyed")
         instance = null
+        unregisterUnlockReceiver()
         watchdogExecutor?.shutdownNow()
         watchdogExecutor = null
         AdbPairingController.removeStateListener(adbStateListener)

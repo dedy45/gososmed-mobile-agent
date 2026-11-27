@@ -272,7 +272,11 @@ class MainActivity : AppCompatActivity() {
 
         // Foreground service menjaga proses tetap hidup; service memulihkan
         // koneksi tersimpan sendiri (auto-reconnect setelah kill/reboot).
-        startForegroundService(Intent(this, AgentForegroundService::class.java))
+        try {
+            startForegroundService(Intent(this, AgentForegroundService::class.java))
+        } catch (t: Throwable) {
+            Log.w("GoAgent", "startForegroundService gagal di onCreate: ${t.message}")
+        }
 
         statusBigTv = findViewById(R.id.statusBigTv)
         statusTv = findViewById(R.id.statusTv)
@@ -1920,7 +1924,7 @@ class MainActivity : AppCompatActivity() {
 
         try {
             val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON)
-            registerReceiver(powerWakeReceiver, filter)
+            ContextCompat.registerReceiver(this, powerWakeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         } catch (_: Throwable) {}
     }
 
