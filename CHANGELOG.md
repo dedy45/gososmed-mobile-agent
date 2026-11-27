@@ -9,6 +9,10 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [Unreleased]
+
+- Pengembangan berikutnya (`1.2.23-dev.1`) di atas rilis stabil `v1.2.22`.
+
 ## [1.2.22] - 2026-11-27 (STABLE)
 
 ### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (`v1.2.22` Stabil)

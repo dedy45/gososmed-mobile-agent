@@ -36,9 +36,9 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 63 = 1.2.22 (STABLE) — Stabilitas ADB (zero-spam notif), Direct Boot guard, Zero-Leak RAM/Bitmap/MediaProjection, Anti-ANR, & Hardening LocalWebServer.
-        versionCode = 63
-        versionName = "1.2.22"
+        // versionCode 64 = 1.2.23-dev.1 (DEV) — Next development cycle above stable v1.2.22.
+        versionCode = 64
+        versionName = "1.2.23-dev.1"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)
