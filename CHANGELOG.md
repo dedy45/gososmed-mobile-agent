@@ -9,9 +9,9 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [1.2.22-dev.1] - 2026-11-27 (DEV)
+## [1.2.22] - 2026-11-27 (STABLE)
 
-### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (Dev Hardening)
+### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (`v1.2.22` Stabil)
 - **Eliminasi Spam Notifikasi "Wireless Debugging Connected" (`AdbLocalShell.kt`, `AdbPairingController.kt`, `AgentWsClient.kt`, `DynamicHidingManager.kt`)**:
   - Memeriksa kesehatan sesi ADB (`isConnected && isConnectionEstablished`) langsung di thread IO ADB daripada melakukan probe TCP/UID berulang atau membuka sesi baru tanpa perlu (`AdbPortResolver.isSocketAlive()` probe dihapus dari jalur `execOnIo`/`ensureConnected`/`connectNow`).
   - Menghapus probe shell `settings get global device_name` tiap 10 detik di heartbeat WebSocket `AgentWsClient`.
@@ -31,10 +31,20 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - Mengganti pembuatan thread klien tak terbatas dengan thread pool tetap (`16` thread) dan timeout soket HTTP `15s`, mengantrekan frame WS melalui `BoundedFrameQueue` asinkron per klien agar viewer lambat tidak menahan `CaptureService`.
   - Memvalidasi panjang frame WebSocket (`<= 65536` byte), membatasi ukuran upload base64 WS, membersihkan sesi/percobaan PIN kadaluarsa, serta membatasi seluruh API file/upload/delete hanya ke direktori penyimpanan publik (`/sdcard`, `/storage/emulated`, penyimpanan eksternal).
 
-### Limits — Catatan Pengujian
-- **Verifikasi JVM:** Seluruh unit test JVM (`288` tests di `41` suites, `0` failed, `0` skipped) dan kompilasi `assembleDebug` lolos setelah perbaikan akhir (mencakup regression test `AdbReconnectPolicyTest`, `DynamicHidingManagerTest`, `DirectBootGuardTest`, `AgentWsClientLifecycleTest`, `AgentCommandTest`, dan `LocalWebServerTest`).
-- **Pengujian Perangkat Fisik:** Belum dijalankan pada perangkat fisik Android (`adb devices` lokal kosong saat sesi ini); wajib diuji pada HP nyata (termasuk skenario Wireless Debugging + Remote Viewer + sesi WebSocket panjang) sebelum promosi ke `main` / tag stabil `v1.2.22`.
-- **Kanal Rilis:** Prerelease Dev `v1.2.22-dev.1` (bukan stabil). Dipilih `1.2.22-dev.1` (`versionCode = 62`) agar updater GitHub in-app mendeteksi update dari perangkat `v1.2.20` maupun `v1.2.21-dev.1` (`1.2.21`).
+### Verified — Hasil Pengujian Perangkat Fisik & JVM
+- **Verifikasi JVM:** Seluruh unit test JVM (`288` tests di `41` suites, `0` failed, `0` skipped) serta kompilasi `assembleDebug` lolos (mencakup `AdbReconnectPolicyTest`, `DynamicHidingManagerTest`, `DirectBootGuardTest`, `AgentWsClientLifecycleTest`, `AgentCommandTest`, dan `LocalWebServerTest`).
+- **Pengujian Perangkat Fisik (`Xiaomi 2312DRA50G`, Android `15` SDK `35`):**
+  - **Wireless Debugging & Anti-Spam Notifikasi:** Diuji langsung lewat Wireless ADB (`adb logcat`) dan transisi layar (`MainActivity` -> `Settings` -> `Home`) serta pemanggilan command via `https://dev-app.bamsbung.id/agent` (`annotated_screenshot`, `list_devices`, `adb_shell`). Koneksi `AdbLocalShell` loopback `127.0.0.1:5555` pulih satu kali on-demand (`~46ms`) lalu dipakai ulang tanpa probe berulang; `dumpsys notification` menunjukkan `Wireless debugging connected` statis (`posttimeElapsedMs` tetap, `airtimeCount=1`).
+  - **RAM, Thread, & Anti-ANR:** Layanan berjalan stabil dalam satu proses (`AgentAccessibilityService`, `AgentForegroundService`, `CaptureService`), draw `MainActivity` selesai `~26ms`, `0` crash/ANR baru pada `2026-11-27`, `TOTAL PSS` turun dari `115.541 KB` ke `74.833 KB` pasca-GC (`116.720 KB` setelah command AI), dan jumlah thread tetap `76-77` setelah `20/20` burst HTTPS paralel ke `:8766`.
+  - **Remote Controller & Path Security (`https://192.168.1.125:8766/`):** Streaming WebSocket H.264/audio berjalan lancar; akses path ilegal (`/etc`, `/sdcard/DCIM/../../etc`, `/etc/passwd`, `shared_prefs/agent_prefs.xml`) ditolak `403 Forbidden` / `path_not_allowed`, sedangkan `/sdcard/DCIM` (`200`) dan `/api/ime` (`200`) normal.
+  - **End-to-End BYOD Dev (`https://dev-app.bamsbung.id/byod` & `/agent`):** Status `Online`, `Verified Official Build`, live screenshot WebSocket aktif, `annotated_screenshot` (`1220x2712`, `30` elemen), dan `adb_shell` (`settings get global adb_wifi_enabled` -> `1`) berhasil.
+
+### Limits — Catatan Cakupan Pengujian
+- **Belum Dijalankan Live di HP:** Siklus reboot penuh untuk uji `Direct Boot` sebelum layar dibuka dan eksekusi command mutasi UI (`tap`, `pasteText`, `eraseText`) belum dijalankan pada perangkat uji agar kondisi perangkat tetap non-destruktif; perilaku Direct Boot diverifikasi lewat unit test `DirectBootGuardTest`.
+- **Kanal Rilis:** Rilis Produksi Stabil resmi `v1.2.22` (`versionCode = 63`).
+
+## [1.2.22-dev.1] - 2026-11-27 (DEV)
+- Prerelease dev kandidat stabilitas sebelum verifikasi perangkat fisik Xiaomi `2312DRA50G` dan promosi ke `[1.2.22]`.
 
 ## [1.2.21-dev.1] - 2026-11-16 (DEV)
 

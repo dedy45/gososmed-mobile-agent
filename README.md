@@ -13,7 +13,7 @@ Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa P
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Versi Kode Aktif: `1.2.22-dev.1` (Dev Channel — menunggu uji perangkat fisik sebelum promosi ke `main` stabil `v1.2.22`).**
+> **Versi Aktif: `v1.2.22` (Stabil / Production Channel).**
 > Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Mandiri & Terintegrasi Penuh:** Sejak v0.9.0, transport shell setara ADB UID 2000 terintegrasi langsung di dalam APK. Anda **tidak lagi membutuhkan Shizuku** atau perkakas tambahan pihak ketiga.
 ---
