@@ -9,6 +9,32 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
+## [Unreleased]
+
+### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (`v1.2.21` Dev Hardening)
+- **Eliminasi Spam Notifikasi "Wireless Debugging Connected" (`AdbLocalShell.kt`, `AdbPairingController.kt`, `AgentWsClient.kt`, `DynamicHidingManager.kt`)**:
+  - Memeriksa kesehatan sesi ADB (`isConnected && isConnectionEstablished`) langsung di thread IO ADB daripada melakukan probe TCP/UID berulang atau membuka sesi baru tanpa perlu (`AdbPortResolver.isSocketAlive()` probe dihapus dari jalur `execOnIo`/`ensureConnected`/`connectNow`).
+  - Menghapus probe shell `settings get global device_name` tiap 10 detik di heartbeat WebSocket `AgentWsClient`.
+  - Menambahkan exponential backoff (`10s -> 300s`) dan `AtomicBoolean` guard pada `AdbPairingController.maybeAutoReconnect`, sinkronisasi `ensureShell`, serta mengikat `onStateChanged` sekali saja saat pembuatan shell.
+  - Mengecualikan `Signal.WIRELESS_DEBUGGING` dari `DynamicHidingManager.DEFAULT_SIGNALS_TO_HIDE` agar `adb_wifi_enabled` tidak dimatikan-nyalakan saat transisi window, disertai deduplikasi paket di bawah `Mutex`.
+- **Direct Boot & Perlindungan Siklus Layanan (`AgentForegroundService.kt`, `AgentReceiver.kt`, `CaptureService.kt`, `MainActivity.kt`)**:
+  - Menunda inisialisasi `AdbPairingController.bootstrap`, `startWsFromPrefs`, dan `startWatchdog` hingga menerima `Intent.ACTION_USER_UNLOCKED` ketika perangkat masih dalam keadaan Direct Boot terkunci.
+  - Membungkus `onCreate()` dan `onStartCommand()` dengan `try/catch` serta pemanggilan `ServiceCompat.startForeground` yang defensif, dan memastikan `pending.finish()` pada `AgentReceiver.goAsync()` selalu dipanggil di blok `finally`.
+- **Pencegahan Kebocoran Memori & Resource (`AgentWsClient.kt`, `MainActivity.kt`, `AgentAccessibilityService.kt`, `AgentCommand.kt`, `AnnotatedScreenshotHelper.kt`, `HierarchySerializer.kt`, `CaptureService.kt`)**:
+  - Menambahkan TTL eviction dan pembersihan callback `PendingCallbackStore` di `AgentWsClient`, membersihkan koneksi/executor `OkHttpClient` di `destroy()`, serta menghentikan kebocoran log buffer dan referensi listener `MainActivity`.
+  - Membebaskan `screenshotExecutor`, callback `burstReadRunnable`, `MediaProjection.Callback`, thread audio (`goso-audio`), `LocalWebServer.cachedConfig`, serta menghilangkan pemanggilan deprecated `AccessibilityNodeInfo.recycle()` dan decode bitmap ganda pada `annotatedScreenshot`.
+- **Pencegahan ANR & Kebenaran Eksekusi Command (`MainActivity.kt`, `DeviceTelemetryHelper.kt`, `WindowRootCollector.kt`, `NodeActionExecutor.kt`, `AgentCommand.kt`, `AgentWsClient.kt`, `accessibility_service_config.xml`)**:
+  - Memindahkan tombol debug/health copy, `refreshTelemetry`, dan intent eksekusi debug ke thread latar belakang dengan cache app 60 detik di `DeviceTelemetryHelper`.
+  - Menghapus traversal subtree O(N^2) pada `NodeActionExecutor.findNodeById` melalui `WindowRootCollector.AndroidWindowTreeSource.snapshotSingleNode`.
+  - Mengalirkan command non-UI (`stageMedia`, `cleanupMedia`, `scanMedia`, `addMedia`, `setClipboard`) secara konkuren di luar `commandExecutionMutex`, menambahkan batas waktu 60 detik pada command V2, memperbaiki pelaporan `result.ok` pada `pasteText`/`eraseText`, dan menyempitkan `accessibility_service_config.xml` dari `typeAllMask` ke event yang relevan.
+- **Keamanan & Backpressure `LocalWebServer` (`LocalWebServer.kt`)**:
+  - Mengganti pembuatan thread klien tak terbatas dengan thread pool tetap (`16` thread) dan timeout soket HTTP `15s`, mengantrekan frame WS melalui `BoundedFrameQueue` asinkron per klien agar viewer lambat tidak menahan `CaptureService`.
+  - Memvalidasi panjang frame WebSocket (`<= 65536` byte), membatasi ukuran upload base64 WS, membersihkan sesi/percobaan PIN kadaluarsa, serta membatasi seluruh API file/upload/delete hanya ke direktori penyimpanan publik (`/sdcard`, `/storage/emulated`, penyimpanan eksternal).
+
+### Limits — Catatan Pengujian
+- **Verifikasi JVM:** Seluruh unit test JVM dan kompilasi `assembleDebug` lolos setelah perbaikan akhir (mencakup regression test `AdbReconnectPolicyTest`, `DynamicHidingManagerTest`, `DirectBootGuardTest`, `AgentWsClientLifecycleTest`, `AgentCommandTest`, dan `LocalWebServerTest`).
+- **Pengujian Perangkat Fisik:** Belum dijalankan pada perangkat fisik Android (`adb devices` lokal kosong saat sesi ini); wajib diuji pada HP nyata (termasuk skenario Wireless Debugging + Remote Viewer + sesi WebSocket panjang) sebelum promosi ke `main` / tag stabil `v1.2.21`.
+
 ## [1.2.21-dev.1] - 2026-11-16 (DEV)
 
 ### Fixed — Presisi Observasi AI & Fail-Closed Security Guard (Metodologi D.M.A.I.)

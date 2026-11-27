@@ -13,7 +13,7 @@ Aplikasi ini menghubungkan HP Android fisik ke server otomasi GoSosmed **tanpa P
 [![System Status](https://img.shields.io/badge/status-status.bamsbung.id-10b981)](https://status.bamsbung.id)
 [![Lisensi](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Versi Aktif: v1.2.12 (Stabil / Production Channel).**
+> **Versi Kode Aktif: `1.2.21` (Dev Channel — menunggu uji perangkat fisik sebelum promosi ke `main`).**
 > Sumber kebenaran versi (*Single Source of Truth*): `app/build.gradle.kts` (`versionName`) dan [GitHub Releases](https://github.com/dedy45/gososmed-mobile-agent/releases).  
 > **Mandiri & Terintegrasi Penuh:** Sejak v0.9.0, transport shell setara ADB UID 2000 terintegrasi langsung di dalam APK. Anda **tidak lagi membutuhkan Shizuku** atau perkakas tambahan pihak ketiga.
 ---
@@ -107,9 +107,9 @@ Karena agent ini berjalan di perangkat pribadi dan meminta izin **Accessibility 
 * **Kamera Pribadi 100% Aman:** Logika penghapusan media dikunci secara kriptografis dan selektif hanya pada awalan `gosmed_*`, `reel_*`, dan `staged_*`.
 * **Berkas Pribadi Terlindungi:** Foto keluarga, video pribadi, dan dokumen kamera (`IMG_*`, `VID_*`, WhatsApp Media) **dijamin secara hukum dan kode tidak akan pernah disentuh atau dihapus**.
 
-### 3. Prinsip Hak Akses Terkecil (Least-Privilege Shell)
-* Eksekusi shell tingkat sistem dikunci ketat di dalam `PrivilegedShell.ALLOWED_BINARIES`: hanya mengizinkan `am`, `input`, `pm`, `dumpsys`, `wm`, `settings`, `cmd`, `rm`, dan `svc`.
-* Perintah berbahaya seperti membaca SMS, membaca kontak buku telepon, atau memodifikasi file OS diblokir secara mutlak pada tingkat kernel APK.
+### 3. Penjaga Keamanan Shell (`PrivilegedShell`)
+* Eksekusi shell ADB lokal dijaga oleh `PrivilegedShell.BLOCKED_BINARIES` dan `BLOCKED_PATTERNS` yang memblokir biner serta pola destruktif sebelum dijalankan (termasuk `reboot`, `poweroff`, `dd`, `mkfs`, `fastboot`, `insmod`, `su`, `magisk`, `run-as`, dan penghapusan partisi/data root).
+* Operasi yang lolos pembatasan tetap hanya berjalan dengan hak akses `shell` (UID 2000), bukan root.
 
 ### 4. Keamanan Jaringan Searah (Outbound-Only TLS)
 * HP Anda tidak memerlukan IP publik, tidak memerlukan port masuk yang terbuka, dan tidak dapat diakses dari luar. Semua komunikasi terjalin melalui WebSocket keluar (*outbound persistent TLS 1.3*) yang diotentikasi via pairing token.

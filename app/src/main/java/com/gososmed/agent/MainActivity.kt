@@ -696,7 +696,7 @@ class MainActivity : AppCompatActivity() {
                 <b>🔒 PRIVACY POLICY &amp; SECURITY GUARANTEE</b><br/>
                 • <b>Zero Password Theft:</b> All password inputs are automatically redacted to [REDACTED]. Credentials are never read or stored.<br/>
                 • <b>Gallery Isolation:</b> Scoped Storage strictly restricts media staging to prefixes (gosmed_*, reel_*). Personal photos and camera media are 100% protected.<br/>
-                • <b>Least-Privilege Shell:</b> System ADB commands are strictly restricted to an explicit whitelist (am, input, pm, dumpsys, wm, settings, rm).<br/><br/>
+                • <b>Shell Security Guard:</b> Local ADB shell blocks destructive binaries and dangerous command patterns via <code>PrivilegedShell.BLOCKED_BINARIES</code> and <code>BLOCKED_PATTERNS</code> (reboot, dd, mkfs, su, fastboot, partition wipes).<br/><br/>
 
                 <b>📜 TERMS OF SERVICE (ToS)</b><br/>
                 • <b>Content Responsibility:</b> Operators retain sole control and accountability over all published creative assets and captions.<br/>
@@ -718,7 +718,7 @@ class MainActivity : AppCompatActivity() {
                 <b>🔒 KEBIJAKAN PRIVASI &amp; ANTI-SPYWARE</b><br/>
                 • <b>Anti-Keylogger:</b> Seluruh input password diredaksi otomatis menjadi [REDACTED]. Kredensial tidak pernah dibaca atau disimpan.<br/>
                 • <b>Proteksi Galeri Pribadi:</b> Hanya mengelola file staging (gosmed_*, reel_*). Foto &amp; video pribadi kamera 100% aman dan tidak pernah disentuh.<br/>
-                • <b>Prinsip Least-Privilege:</b> Shell ADB dibatasi ketat pada instruksi sistem yang diizinkan (am, input, pm, dumpsys, wm, settings, rm).<br/><br/>
+                • <b>Penjaga Keamanan Shell:</b> Shell ADB lokal memblokir biner dan pola perintah destruktif melalui <code>PrivilegedShell.BLOCKED_BINARIES</code> dan <code>BLOCKED_PATTERNS</code> (reboot, dd, mkfs, su, fastboot, hapus partisi).<br/><br/>
 
                 <b>📜 KETENTUAN LAYANAN (TERMS OF SERVICE)</b><br/>
                 • <b>Tanggung Jawab Konten:</b> Pengguna bertanggung jawab penuh atas materi konten, teks, dan media yang dipublikasikan.<br/>
@@ -807,14 +807,14 @@ class MainActivity : AppCompatActivity() {
                 <b>Privacy Policy &amp; Security Guarantee:</b><br/><br/>
                 1. <b>Zero Password Theft:</b> All password inputs are automatically redacted to <code>[REDACTED]</code>. Credentials are never read or stored.<br/><br/>
                 2. <b>Gallery Isolation:</b> Scoped Storage strictly restricts media staging to prefixes (<code>gosmed_*</code>, <code>reel_*</code>). Personal photos and camera media are 100% protected.<br/><br/>
-                3. <b>Least-Privilege Shell:</b> System ADB commands are strictly restricted to an explicit whitelist (am, input, pm, dumpsys, wm, settings, rm).
+                3. <b>Shell Security Guard:</b> Local ADB shell blocks destructive binaries and dangerous command patterns via <code>PrivilegedShell.BLOCKED_BINARIES</code> and <code>BLOCKED_PATTERNS</code> (reboot, dd, mkfs, su, fastboot, partition wipes).
             """.trimIndent()
         } else {
             """
                 <b>Kebijakan Privasi &amp; Komitmen Keamanan:</b><br/><br/>
                 1. <b>Anti-Keylogger (Zero Password Theft):</b> Seluruh input password diredaksi otomatis menjadi <code>[REDACTED]</code>. Kredensial akun tidak pernah dibaca atau disimpan.<br/><br/>
                 2. <b>Isolasi Galeri Pribadi (Scoped Storage Guard):</b> Aplikasi hanya mengelola berkas staging dengan awalan <code>gosmed_*</code> dan <code>reel_*</code>. Foto &amp; video pribadi kamera 100% aman.<br/><br/>
-                3. <b>Prinsip Least-Privilege:</b> Shell ADB dibatasi ketat hanya pada daftar izin kernel (am, input, pm, dumpsys, wm, settings, rm).
+                3. <b>Penjaga Keamanan Shell:</b> Shell ADB lokal memblokir biner dan pola perintah destruktif melalui <code>PrivilegedShell.BLOCKED_BINARIES</code> dan <code>BLOCKED_PATTERNS</code> (reboot, dd, mkfs, su, fastboot, hapus partisi).
             """.trimIndent()
         }
         showMaterialDialog(title, msg, isEn)
