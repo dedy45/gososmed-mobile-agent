@@ -57,18 +57,18 @@ object AdbPairingController {
 
     private val stateListeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
 
+    private val autoReconnecting = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val reconnectAttemptCount = java.util.concurrent.atomic.AtomicInteger(0)
+
     @Volatile
-    private var autoReconnecting = false
+    private var lastReconnectAttemptAtMs = 0L
+
+    internal fun reconnectBackoffMs(attempt: Int): Long =
+        (10_000L shl attempt.coerceIn(0, 5)).coerceAtMost(300_000L)
 
     fun addStateListener(listener: () -> Unit) {
         if (!stateListeners.contains(listener)) {
             stateListeners.add(listener)
-        }
-        shell?.onStateChanged = {
-            if (shell?.status()?.connected == true) {
-                appContext?.let { lockProcessPrivileged(it) }
-            }
-            notifyStateChanged()
         }
     }
 
@@ -93,9 +93,13 @@ object AdbPairingController {
 
     fun registerStateListener(listener: (() -> Unit)?) {
         onStateChanged = listener
-        shell?.onStateChanged = {
-            if (shell?.status()?.connected == true) {
-                appContext?.let { lockProcessPrivileged(it) }
+    }
+
+    private fun bindShellStateCallback(instance: AdbLocalShell, app: Context) {
+        instance.onStateChanged = {
+            if (instance.status().connected) {
+                reconnectAttemptCount.set(0)
+                lockProcessPrivileged(app)
             }
             notifyStateChanged()
         }
@@ -115,22 +119,7 @@ object AdbPairingController {
         }
         io.execute {
             try {
-                // 1) Kunci ADB. LAMBAT saat pertama kali → wajib di thread IO.
-                val keys = AdbKeyStore.loadOrCreate(app)
-                val instance = AdbLocalShell(app, keys)
-                instance.onStateChanged = { notifyStateChanged() }
-                // 2) Pulihkan status "pernah dipasangkan" supaya UI bisa
-                //    membedakan "belum pernah" vs "terputus".
-                instance.markPaired(prefs(app).getBoolean(KEY_PAIRED_ONCE, false))
-                // 3) Pasang ke holder → capabilities & semua pemanggil langsung
-                //    memakai transport nyata (walau belum tersambung).
-                shell = instance
-                PrivilegedShellHolder.install(instance)
-                initError = ""
-                Log.i(TAG, "transport ADB siap (belum tentu tersambung)")
-                // 4) Coba sambung. Kegagalan TIDAK dicoba ulang di sini; caller
-                //    (UI/command) yang memicu percobaan berikutnya, supaya tidak
-                //    ada loop latar belakang saat Debug nirkabel memang mati.
+                val instance = ensureShell(app) ?: return@execute
                 instance.connectNow()
                 if (instance.status().connected) {
                     rememberPaired(app, true)
@@ -256,20 +245,31 @@ object AdbPairingController {
         val ctx = appContext ?: return false
         val instance = ensureShell(ctx) ?: return false
         val st = instance.status()
-        if (st.paired && !st.connected && !autoReconnecting) {
-            autoReconnecting = true
-            instance.connectAsync(discoveryTimeoutMs)
-            io.execute {
-                try {
-                    Thread.sleep(discoveryTimeoutMs + 1000L)
-                } catch (_: InterruptedException) {
-                } finally {
-                    autoReconnecting = false
-                }
-            }
-            return true
+        if (st.connected) {
+            reconnectAttemptCount.set(0)
+            return false
         }
-        return false
+        if (!st.paired) return false
+        val now = System.currentTimeMillis()
+        val requiredDelay = reconnectBackoffMs(reconnectAttemptCount.get())
+        if (lastReconnectAttemptAtMs > 0L && now - lastReconnectAttemptAtMs < requiredDelay) {
+            return false
+        }
+        if (!autoReconnecting.compareAndSet(false, true)) return false
+        lastReconnectAttemptAtMs = now
+        reconnectAttemptCount.incrementAndGet()
+        io.execute {
+            try {
+                instance.connectNow(discoveryTimeoutMs)
+                if (instance.status().connected) {
+                    reconnectAttemptCount.set(0)
+                    rememberPaired(ctx, true)
+                }
+            } finally {
+                autoReconnecting.set(false)
+            }
+        }
+        return true
     }
 
     /**
@@ -359,18 +359,24 @@ object AdbPairingController {
      */
     private fun ensureShell(ctx: Context): AdbLocalShell? {
         shell?.let { return it }
-        return try {
-            val keys = AdbKeyStore.loadOrCreate(ctx)
-            val instance = AdbLocalShell(ctx, keys)
-            instance.markPaired(prefs(ctx).getBoolean(KEY_PAIRED_ONCE, false))
-            shell = instance
-            PrivilegedShellHolder.install(instance)
-            initError = ""
-            instance
-        } catch (t: Throwable) {
-            initError = "adb_init_failed: ${t.message ?: t.javaClass.simpleName}"
-            Log.e(TAG, "penyiapan transport ADB gagal", t)
-            null
+        synchronized(lock) {
+            shell?.let { return it }
+            return try {
+                val app = ctx.applicationContext
+                val keys = AdbKeyStore.loadOrCreate(app)
+                val instance = AdbLocalShell(app, keys)
+                bindShellStateCallback(instance, app)
+                instance.markPaired(prefs(app).getBoolean(KEY_PAIRED_ONCE, false))
+                shell = instance
+                PrivilegedShellHolder.install(instance)
+                initError = ""
+                Log.i(TAG, "transport ADB siap (belum tentu tersambung)")
+                instance
+            } catch (t: Throwable) {
+                initError = "adb_init_failed: ${t.message ?: t.javaClass.simpleName}"
+                Log.e(TAG, "penyiapan transport ADB gagal", t)
+                null
+            }
         }
     }
 

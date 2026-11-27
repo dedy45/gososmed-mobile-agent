@@ -535,12 +535,7 @@ class AgentWsClient(
                     }
                 }
 
-                // Probe ADB nirkabel lokal
-                val shell = com.gososmed.agent.privileged.PrivilegedShellHolder.get()
-                val shellStatus = shell.status()
-                if (shellStatus.connected) {
-                    shell.exec("settings get global device_name", 3_000L)
-                }
+                // Status ADB dibaca secara pasif lewat healthSnapshot() tanpa memicu probe shell per 10 detik.
 
                 val id = nextId()
                 lastPingSentTime = System.currentTimeMillis()
