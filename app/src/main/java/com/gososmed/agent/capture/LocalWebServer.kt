@@ -36,9 +36,15 @@ object LocalWebServer {
     /** Max failed PIN attempts before the server refuses further tries. */
     private const val MAX_PIN_ATTEMPTS = 8
 
+    private const val CLIENT_POOL_SIZE = 16
+    private const val HTTP_CLIENT_SO_TIMEOUT_MS = 15_000
+    private const val MAX_WS_PAYLOAD_BYTES = 65_536L
+    private const val MAX_WS_UPLOAD_BASE64_CHARS = 8 * 1024 * 1024
+
     private var serverSocket: ServerSocket? = null
     private var sslServerSocket: ServerSocket? = null
     @Volatile private var running = false
+    @Volatile private var clientExecutor: java.util.concurrent.ExecutorService? = null
     private val clientSockets = CopyOnWriteArrayList<WebSocketClient>()
     private var boundIp: String = "127.0.0.1"
     @Volatile var cachedConfig: ByteArray? = null
@@ -121,10 +127,12 @@ object LocalWebServer {
     }
 
     private fun issueToken(): String {
+        val now = System.currentTimeMillis()
+        sessions.entries.removeIf { it.value <= now }
         val bytes = ByteArray(24)
         java.security.SecureRandom().nextBytes(bytes)
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-        sessions[token] = System.currentTimeMillis() + SESSION_TTL_MS
+        sessions[token] = now + SESSION_TTL_MS
         return token
     }
 
@@ -184,11 +192,27 @@ object LocalWebServer {
     fun getLocalUrl(): String = "http://$boundIp:$DEFAULT_PORT"
     fun getHttpsUrl(): String = "https://$boundIp:${DEFAULT_PORT + 1}"
 
+    private fun dispatchClient(client: Socket, context: Context?) {
+        val pool = clientExecutor
+        if (!running || pool == null || pool.isShutdown) {
+            try { client.close() } catch (_: Exception) {}
+            return
+        }
+        try {
+            client.soTimeout = HTTP_CLIENT_SO_TIMEOUT_MS
+            pool.execute { handleClient(client, context) }
+        } catch (_: Exception) {
+            try { client.close() } catch (_: Exception) {}
+        }
+    }
+
     fun start(port: Int = DEFAULT_PORT, hostIp: String = "127.0.0.1", context: Context? = null) {
         if (running) return
         boundIp = hostIp
         rotatePin()
         running = true
+        clientExecutor?.shutdownNow()
+        clientExecutor = java.util.concurrent.Executors.newFixedThreadPool(CLIENT_POOL_SIZE)
         thread(name = "goso-web-server", isDaemon = true) {
             try {
                 val ss = ServerSocket()
@@ -207,9 +231,7 @@ object LocalWebServer {
                 Log.i(TAG, "LocalWebServer started on http://$hostIp:$port (${if (pinRequired) "PIN aktif" else "TANPA PIN"})")
                 while (running && !ss.isClosed) {
                     val client = ss.accept()
-                    thread(name = "goso-web-client", isDaemon = true) {
-                        handleClient(client, context)
-                    }
+                    dispatchClient(client, context)
                 }
             } catch (e: Exception) {
                 if (running) Log.w(TAG, "Server socket error: ${e.message}")
@@ -234,9 +256,7 @@ object LocalWebServer {
                     sslServerSocket = sss
                     while (running && !sss.isClosed) {
                         val client = sss.accept()
-                        thread(name = "goso-https-client", isDaemon = true) {
-                            handleClient(client, context)
-                        }
+                        dispatchClient(client, context)
                     }
                 } catch (e: Exception) {
                     if (running) Log.w(TAG, "SSL Server socket error: ${e.message}")
@@ -277,10 +297,14 @@ object LocalWebServer {
             sslServerSocket?.close()
         } catch (_: Exception) {}
         sslServerSocket = null
+        clientExecutor?.shutdownNow()
+        clientExecutor = null
         for (client in clientSockets) {
             client.close()
         }
         clientSockets.clear()
+        sessions.clear()
+        pinAttempts.clear()
         CaptureService.instance?.updateWakeLock()
         Log.i(TAG, "LocalWebServer stopped")
     }
@@ -326,6 +350,7 @@ object LocalWebServer {
                 output.flush()
                 Log.i(TAG, "PIN benar dari $clientIp — sesi dibuat")
             } else {
+                if (pinAttempts.size >= 256) pinAttempts.clear()
                 pinAttempts[clientIp] = attempts + 1
                 Log.w(TAG, "PIN salah dari $clientIp (percobaan ${attempts + 1}/$MAX_PIN_ATTEMPTS)")
                 serveLoginPage(output, clientIp, wrong = true)
@@ -394,7 +419,7 @@ button:active{transform:translateY(1px)}
         if (!running || clientSockets.isEmpty()) return
         val frame = encodeWsFrame(data, isBinary = true)
         for (client in clientSockets) {
-            client.sendRaw(frame)
+            client.sendRaw(frame, droppable = true)
         }
     }
 
@@ -532,6 +557,8 @@ button:active{transform:translateY(1px)}
                         "Sec-WebSocket-Accept: $acceptKey\r\n\r\n"
                 output.write(response.toByteArray(Charsets.UTF_8))
                 output.flush()
+                // Clear short HTTP header timeout once upgraded to long-lived WebSocket
+                try { socket.soTimeout = 0 } catch (_: Exception) {}
 
                 val wsClient = WebSocketClient(socket, output)
                 clientSockets.add(wsClient)
@@ -626,6 +653,14 @@ button:active{transform:translateY(1px)}
                     val dirParam = query.split('&').find { it.startsWith("dir=") }?.substringAfter("dir=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     } ?: "/sdcard/DCIM/Camera"
+                    if (!isAllowedStoragePath(dirParam)) {
+                        val errBytes = """{"ok":false,"error":"path_not_allowed"}""".toByteArray(Charsets.UTF_8)
+                        output.write("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${errBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                        output.write(errBytes)
+                        output.flush()
+                        socket.close()
+                        return
+                    }
                     val dir = java.io.File(dirParam)
                     val arr = getDirectoryFiles(dir, context)
                     val json = org.json.JSONObject().apply {
@@ -646,8 +681,16 @@ button:active{transform:translateY(1px)}
                     val filePath = query.split('&').find { it.startsWith("path=") }?.substringAfter("path=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     }
-                    val file = filePath?.let { java.io.File(it) }
-                    if (file != null && file.exists() && file.isFile) {
+                    if (filePath == null || !isAllowedStoragePath(filePath)) {
+                        val msg = "Forbidden".toByteArray()
+                        output.write("HTTP/1.1 403 Forbidden\r\nContent-Length: ${msg.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                        output.write(msg)
+                        output.flush()
+                        socket.close()
+                        return
+                    }
+                    val file = java.io.File(filePath)
+                    if (file.exists() && file.isFile) {
                         val ext = file.extension.lowercase()
                         val contentType = when (ext) {
                             "mp4" -> "video/mp4"
@@ -689,7 +732,7 @@ button:active{transform:translateY(1px)}
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     }
                     var deleted = false
-                    if (!filePath.isNullOrBlank()) {
+                    if (!filePath.isNullOrBlank() && isAllowedStoragePath(filePath)) {
                         val file = java.io.File(filePath)
                         try {
                             if (file.exists()) {
@@ -734,13 +777,22 @@ button:active{transform:translateY(1px)}
                 if (rawPath == "/api/upload") {
                     val fullUrl = requestLine.split(' ').getOrElse(1) { "/" }
                     val query = fullUrl.substringAfter('?', "")
-                    val filename = query.split('&').find { it.startsWith("filename=") }?.substringAfter("filename=")?.let {
+                    val rawFilename = query.split('&').find { it.startsWith("filename=") }?.substringAfter("filename=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     } ?: "upload_${System.currentTimeMillis()}.bin"
+                    val filename = sanitizeUploadFilename(rawFilename)
                     val dirParam = query.split('&').find { it.startsWith("dir=") }?.substringAfter("dir=")?.let {
                         try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null }
                     } ?: "/sdcard/DCIM/Camera"
                     val contentLength = headers["content-length"]?.toLongOrNull() ?: 0L
+                    if (filename == null || !isAllowedStoragePath(dirParam) || contentLength < 0L) {
+                        val errBytes = """{"ok":false,"error":"invalid_upload_target"}""".toByteArray(Charsets.UTF_8)
+                        output.write("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${errBytes.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.UTF_8))
+                        output.write(errBytes)
+                        output.flush()
+                        socket.close()
+                        return
+                    }
 
                     // 1. Simpan stream ke file temporary di cacheDir aplikasi terlebih dahulu.
                     // cacheDir selalu 100% bisa ditulis oleh aplikasi tanpa izin Scoped Storage apapun.
@@ -894,13 +946,23 @@ button:active{transform:translateY(1px)}
                 if (payloadLen == 126L) {
                     val p0 = input.read()
                     val p1 = input.read()
+                    if (p0 == -1 || p1 == -1) break
                     payloadLen = ((p0 shl 8) or p1).toLong()
                 } else if (payloadLen == 127L) {
                     payloadLen = 0L
+                    var eof = false
                     for (i in 0 until 8) {
-                        payloadLen = (payloadLen shl 8) or (input.read().toLong() and 0xFF)
+                        val b = input.read()
+                        if (b == -1) {
+                            eof = true
+                            break
+                        }
+                        payloadLen = (payloadLen shl 8) or (b.toLong() and 0xFF)
                     }
+                    if (eof) break
                 }
+
+                if (!isValidWsFrameLength(payloadLen)) break
 
                 val mask = ByteArray(4)
                 if (isMasked) {
@@ -910,15 +972,17 @@ button:active{transform:translateY(1px)}
                         if (r <= 0) break
                         readMask += r
                     }
+                    if (readMask < 4) break
                 }
 
-                val payload = ByteArray(payloadLen.toInt().coerceAtMost(65536))
+                val payload = ByteArray(payloadLen.toInt())
                 var totalRead = 0
                 while (totalRead < payload.size) {
                     val r = input.read(payload, totalRead, payload.size - totalRead)
                     if (r <= 0) break
                     totalRead += r
                 }
+                if (totalRead < payload.size) break
 
                 if (isMasked) {
                     for (i in payload.indices) {
@@ -1019,21 +1083,37 @@ button:active{transform:translateY(1px)}
                                 }
                                 "listFiles" -> {
                                     val dirPath = json.optString("dir", "/sdcard/DCIM/Camera")
-                                    val targetDir = java.io.File(dirPath)
-                                    val arr = getDirectoryFiles(targetDir, context)
-                                    val listResp = org.json.JSONObject().apply {
-                                        put("type", "fileList")
-                                        put("ok", true)
-                                        put("dir", targetDir.absolutePath)
-                                        put("files", arr)
+                                    if (!isAllowedStoragePath(dirPath)) {
+                                        val errResp = org.json.JSONObject().apply {
+                                            put("type", "fileList")
+                                            put("ok", false)
+                                            put("error", "path_not_allowed")
+                                        }
+                                        client.sendRaw(encodeWsFrame(errResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                    } else {
+                                        val targetDir = java.io.File(dirPath)
+                                        val arr = getDirectoryFiles(targetDir, context)
+                                        val listResp = org.json.JSONObject().apply {
+                                            put("type", "fileList")
+                                            put("ok", true)
+                                            put("dir", targetDir.absolutePath)
+                                            put("files", arr)
+                                        }
+                                        client.sendRaw(encodeWsFrame(listResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
                                     }
-                                    client.sendRaw(encodeWsFrame(listResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
                                 }
                                 "uploadFile" -> {
-                                    val filename = json.optString("filename", "file_${System.currentTimeMillis()}.bin")
+                                    val filename = sanitizeUploadFilename(json.optString("filename", "file_${System.currentTimeMillis()}.bin"))
                                     val dir = json.optString("dir", "/sdcard/DCIM/Camera")
                                     val base64 = json.optString("data", "")
-                                    if (base64.isNotEmpty()) {
+                                    if (filename == null || !isAllowedStoragePath(dir) || base64.length > MAX_WS_UPLOAD_BASE64_CHARS) {
+                                        val errResp = org.json.JSONObject().apply {
+                                            put("type", "uploadResult")
+                                            put("ok", false)
+                                            put("error", "invalid_upload_request")
+                                        }
+                                        client.sendRaw(encodeWsFrame(errResp.toString().toByteArray(Charsets.UTF_8), isBinary = false))
+                                    } else if (base64.isNotEmpty()) {
                                         kotlin.concurrent.thread(name = "goso-upload", isDaemon = true) {
                                             try {
                                                 val targetDir = java.io.File(dir).apply { mkdirs() }
@@ -1096,25 +1176,138 @@ button:active{transform:translateY(1px)}
         }
     }
 
-    private class WebSocketClient(private val socket: Socket, private val output: OutputStream) {
-        var isClosed = false
-            private set
+    internal data class QueuedFrame(val data: ByteArray, val droppable: Boolean)
 
-        @Synchronized
-        fun sendRaw(bytes: ByteArray) {
-            if (isClosed) return
-            try {
-                output.write(bytes)
-                output.flush()
-            } catch (_: Exception) {
-                close()
+    internal class BoundedFrameQueue(private val maxSize: Int = 4) {
+        private val lock = Object()
+        private val queue = ArrayDeque<QueuedFrame>()
+        private var closed = false
+
+        fun enqueue(data: ByteArray, droppable: Boolean): Boolean {
+            synchronized(lock) {
+                if (closed) return false
+                if (queue.size >= maxSize) {
+                    val dropIdx = queue.indexOfFirst { it.droppable }
+                    if (dropIdx >= 0) {
+                        queue.removeAt(dropIdx)
+                    } else {
+                        return false
+                    }
+                }
+                queue.addLast(QueuedFrame(data, droppable))
+                lock.notifyAll()
+                return true
+            }
+        }
+
+        @Throws(InterruptedException::class)
+        fun take(): QueuedFrame {
+            synchronized(lock) {
+                while (queue.isEmpty()) {
+                    if (closed) throw InterruptedException("queue closed")
+                    lock.wait()
+                }
+                return queue.removeFirst()
             }
         }
 
         fun close() {
+            synchronized(lock) {
+                closed = true
+                queue.clear()
+                lock.notifyAll()
+            }
+        }
+    }
+
+    private class WebSocketClient(private val socket: Socket, private val output: OutputStream) {
+        @Volatile var isClosed = false
+            private set
+        private val sendQueue = BoundedFrameQueue(maxSize = 4)
+        private val writerThread = thread(name = "goso-ws-writer", isDaemon = true) {
+            try {
+                while (!isClosed && !Thread.currentThread().isInterrupted) {
+                    val frame = sendQueue.take()
+                    output.write(frame.data)
+                    output.flush()
+                }
+            } catch (_: InterruptedException) {
+            } catch (_: Exception) {
+            } finally {
+                close()
+            }
+        }
+
+        fun sendRaw(bytes: ByteArray, droppable: Boolean = false) {
+            if (isClosed) return
+            sendQueue.enqueue(bytes, droppable)
+        }
+
+        fun close() {
+            if (isClosed) return
             isClosed = true
+            sendQueue.close()
+            writerThread.interrupt()
             try { socket.close() } catch (_: Exception) {}
         }
+    }
+
+    internal fun isValidWsFrameLength(payloadLen: Long): Boolean {
+        return payloadLen in 0L..MAX_WS_PAYLOAD_BYTES
+    }
+
+    internal fun sanitizeUploadFilename(rawName: String): String? {
+        val trimmed = rawName.trim()
+        if (trimmed.isEmpty() || '\u0000' in trimmed) return null
+        val normalized = trimmed.replace('\\', '/')
+        val leaf = normalized.substringAfterLast('/').trim()
+        if (leaf.isEmpty() || leaf == "." || leaf == "..") return null
+        return leaf
+    }
+
+    internal fun isAllowedStoragePath(rawPath: String): Boolean {
+        val trimmed = rawPath.trim()
+        if (trimmed.isEmpty() || '\u0000' in trimmed) return false
+        val slashNormalized = trimmed.replace('\\', '/')
+        if (!slashNormalized.startsWith("/")) return false
+
+        val resolvedSegments = ArrayDeque<String>()
+        for (segment in slashNormalized.split('/')) {
+            when (segment) {
+                "", "." -> Unit
+                ".." -> if (resolvedSegments.isNotEmpty()) resolvedSegments.removeLast() else return false
+                else -> resolvedSegments.addLast(segment)
+            }
+        }
+        val cleanPath = "/" + resolvedSegments.joinToString("/")
+        val allowedRoots = mutableListOf("/sdcard", "/storage/emulated", "/mnt/sdcard")
+        try {
+            @Suppress("Deprecation")
+            val ext = android.os.Environment.getExternalStorageDirectory()?.absolutePath
+            if (!ext.isNullOrBlank() && ext.startsWith("/")) {
+                allowedRoots += ext.trimEnd('/')
+            }
+        } catch (_: Throwable) {
+            // Unavailable on plain JVM unit tests
+        }
+
+        val matchesNormalized = allowedRoots.any { root ->
+            cleanPath == root || cleanPath.startsWith("$root/")
+        }
+        if (!matchesNormalized) return false
+
+        // On POSIX / Android devices, also reject symlink escapes via canonicalPath
+        if (java.io.File.separatorChar == '/') {
+            return try {
+                val canonical = java.io.File(cleanPath).canonicalPath
+                allowedRoots.any { root ->
+                    canonical == root || canonical.startsWith("$root/")
+                }
+            } catch (_: Exception) {
+                false
+            }
+        }
+        return true
     }
 
     fun computeWsAccept(key: String): String {
