@@ -110,19 +110,47 @@ class DynamicHidingManagerTest {
 
         val protectedApps = setOf("com.bank.secure", "com.zhiliaoapp.musically")
 
-        // 1. User membuka app perbankan -> sinyal disembunyikan
-        // 1. User membuka app perbankan -> sinyal disembunyikan (3 keys: dev, usb, wifi)
-        manager.reconcile("com.bank.secure", protectedApps, shell = mockShell)
+        // 1. Jika semua 3 sinyal diminta eksplisit, semua disembunyikan & dipulihkan
+        val allSignals = setOf(Signal.DEVELOPER_OPTIONS, Signal.USB_DEBUGGING, Signal.WIRELESS_DEBUGGING)
+        manager.reconcile("com.bank.secure", protectedApps, signalsToHide = allSignals, shell = mockShell)
         assertEquals("0", mockShell.currentSettings["global/development_settings_enabled"])
         assertEquals("0", mockShell.currentSettings["global/adb_enabled"])
         assertEquals("0", mockShell.currentSettings["global/adb_wifi_enabled"])
         assertEquals(3, store.getAllSavedKeys().size)
 
         // 2. User kembali ke Home launcher -> sinyal otomatis dipulihkan
-        manager.reconcile("com.miui.home", protectedApps, shell = mockShell)
+        manager.reconcile("com.miui.home", protectedApps, signalsToHide = allSignals, shell = mockShell)
         assertEquals("1", mockShell.currentSettings["global/development_settings_enabled"])
         assertEquals("1", mockShell.currentSettings["global/adb_enabled"])
         assertEquals("1", mockShell.currentSettings["global/adb_wifi_enabled"])
         assertTrue(store.getAllSavedKeys().isEmpty())
+    }
+
+    @Test
+    fun `default reconcile does not toggle WIRELESS_DEBUGGING to avoid killing active ADB session`() {
+        val mockShell = MockShell()
+        val store = MemoryHidingStore()
+        val manager = DynamicHidingManager(store = store, shellProvider = { mockShell })
+
+        val protectedApps = setOf("com.bank.secure")
+        manager.reconcile("com.bank.secure", protectedApps, shell = mockShell)
+
+        assertEquals("0", mockShell.currentSettings["global/development_settings_enabled"])
+        assertEquals("0", mockShell.currentSettings["global/adb_enabled"])
+        assertEquals("1", mockShell.currentSettings["global/adb_wifi_enabled"])
+        assertEquals(2, store.getAllSavedKeys().size)
+        assertFalse(Signal.WIRELESS_DEBUGGING in DynamicHidingManager.DEFAULT_SIGNALS_TO_HIDE)
+    }
+
+    @Test
+    fun `reconcileIfChanged deduplicates repeated window events for same package`() {
+        val mockShell = MockShell()
+        val store = MemoryHidingStore()
+        val manager = DynamicHidingManager(store = store, shellProvider = { mockShell })
+
+        val protectedApps = setOf("com.bank.secure")
+        assertTrue(manager.reconcileIfChanged("com.instagram.android", protectedApps, shell = mockShell))
+        assertFalse(manager.reconcileIfChanged("com.instagram.android", protectedApps, shell = mockShell))
+        assertTrue(mockShell.executedCommands.isEmpty())
     }
 }

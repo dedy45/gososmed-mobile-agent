@@ -10,6 +10,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Engine Penyamaran Dinamis (Dynamic Anti-Detection Hiding Engine).
@@ -33,9 +35,18 @@ class DynamicHidingManager(
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val reconcileMutex = Mutex()
     private val tag = "GoAgentHiding"
 
+    @Volatile
+    private var lastObservedPackage: String? = null
+
     companion object {
+        val DEFAULT_SIGNALS_TO_HIDE: Set<Signal> = setOf(
+            Signal.DEVELOPER_OPTIONS,
+            Signal.USB_DEBUGGING
+        )
+
         val DEFAULT_PROTECTED_PACKAGES: Set<String> = setOf(
             "com.btpn.dc",                         // Jenius (BTPN)
             "com.bca",                             // BCA mobile
@@ -177,7 +188,7 @@ class DynamicHidingManager(
     fun reconcile(
         currentPackage: String?,
         protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES,
-        signalsToHide: Set<Signal> = setOf(Signal.DEVELOPER_OPTIONS, Signal.USB_DEBUGGING, Signal.WIRELESS_DEBUGGING),
+        signalsToHide: Set<Signal> = DEFAULT_SIGNALS_TO_HIDE,
         shell: PrivilegedShell = shellProvider(),
         context: Context? = null
     ) {
@@ -192,10 +203,29 @@ class DynamicHidingManager(
             }
         } else {
             restartedFor = null
-            if (store.getAllSavedKeys().isNotEmpty()) {
+            if (store.getAllSavedKeys().isNotEmpty() && shell.status().available) {
                 restoreAll(shell)
             }
         }
+    }
+
+    fun reconcileIfChanged(
+        currentPackage: String?,
+        protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES,
+        signalsToHide: Set<Signal> = DEFAULT_SIGNALS_TO_HIDE,
+        shell: PrivilegedShell = shellProvider(),
+        context: Context? = null
+    ): Boolean {
+        if (currentPackage.isNullOrBlank()) return false
+        if (currentPackage == lastObservedPackage && currentPackage !in protectedPackages && store.getAllSavedKeys().isEmpty()) {
+            return false
+        }
+        if (currentPackage == lastObservedPackage && currentPackage in protectedPackages) {
+            return false
+        }
+        lastObservedPackage = currentPackage
+        reconcile(currentPackage, protectedPackages, signalsToHide, shell, context)
+        return true
     }
 
     /**
@@ -206,8 +236,11 @@ class DynamicHidingManager(
         context: Context? = null,
         protectedPackages: Set<String> = DEFAULT_PROTECTED_PACKAGES
     ) {
+        if (currentPackage.isNullOrBlank() || currentPackage == lastObservedPackage) return
         scope.launch {
-            reconcile(currentPackage, protectedPackages, context = context)
+            reconcileMutex.withLock {
+                reconcileIfChanged(currentPackage, protectedPackages, context = context)
+            }
         }
     }
 
