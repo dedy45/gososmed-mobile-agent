@@ -62,14 +62,8 @@ object DeviceTelemetryHelper {
         // 3. Latensi Ping real-time
         val pingLatency = AgentWsClient.lastPingLatencyMs
 
-        // 4. Deteksi aplikasi terpasang
-        val pm = context.packageManager
-        fun isPkgInstalled(pkg: String): Boolean = try {
-            pm.getPackageInfo(pkg, 0)
-            true
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
-        }
+        // 4. Deteksi aplikasi terpasang (cache 60 detik agar ticker UI tidak memicu 5 Binder IPC tiap 1.5s)
+        val apps = resolveInstalledApps(context)
 
         return TelemetrySnapshot(
             batteryPct = batteryPct,
@@ -77,11 +71,46 @@ object DeviceTelemetryHelper {
             temperatureCelsius = tempCelsius,
             wifiSsid = wifiSsid,
             pingLatencyMs = pingLatency,
-            isTiktokInstalled = isPkgInstalled("com.ss.android.ugc.trill"),
-            isInstagramInstalled = isPkgInstalled("com.instagram.android"),
-            isFacebookInstalled = isPkgInstalled("com.facebook.katana"),
-            isThreadsInstalled = isPkgInstalled("com.instagram.barcelona"),
-            isYoutubeInstalled = isPkgInstalled("com.google.android.youtube")
+            isTiktokInstalled = apps.tiktok,
+            isInstagramInstalled = apps.instagram,
+            isFacebookInstalled = apps.facebook,
+            isThreadsInstalled = apps.threads,
+            isYoutubeInstalled = apps.youtube
         )
+    }
+
+    private data class InstalledAppsCache(
+        val fetchedAtMs: Long,
+        val tiktok: Boolean,
+        val instagram: Boolean,
+        val facebook: Boolean,
+        val threads: Boolean,
+        val youtube: Boolean
+    )
+
+    private const val INSTALLED_APPS_CACHE_TTL_MS = 60_000L
+    @Volatile private var installedAppsCache: InstalledAppsCache? = null
+
+    private fun resolveInstalledApps(context: Context): InstalledAppsCache {
+        val now = System.currentTimeMillis()
+        val cached = installedAppsCache
+        if (cached != null && now - cached.fetchedAtMs < INSTALLED_APPS_CACHE_TTL_MS) {
+            return cached
+        }
+        val pm = context.applicationContext.packageManager
+        fun isPkgInstalled(pkg: String): Boolean = try {
+            pm.getPackageInfo(pkg, 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+        return InstalledAppsCache(
+            fetchedAtMs = now,
+            tiktok = isPkgInstalled("com.ss.android.ugc.trill"),
+            instagram = isPkgInstalled("com.instagram.android"),
+            facebook = isPkgInstalled("com.facebook.katana"),
+            threads = isPkgInstalled("com.instagram.barcelona"),
+            youtube = isPkgInstalled("com.google.android.youtube")
+        ).also { installedAppsCache = it }
     }
 }

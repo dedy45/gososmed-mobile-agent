@@ -176,6 +176,16 @@ object AgentCommand {
         CMD_CHECK_SECURITY_CHALLENGE, CMD_NODE_INSPECTOR
     )
 
+    internal fun buildPasteResult(ok: Boolean): JSONObject = JSONObject().apply {
+        put("ok", ok)
+        put("action_performed", ok)
+    }
+
+    internal fun buildEraseResult(ok: Boolean, characters: Int): JSONObject = JSONObject().apply {
+        put("ok", ok)
+        put("erased_count", if (ok) characters else 0)
+    }
+
     /** Executes one command request and returns the response JSONObject. */
     fun execute(req: JSONObject): JSONObject {
         // Protocol V2 routing
@@ -1581,19 +1591,13 @@ object AgentCommand {
                     ?: req.optString("node_id").takeIf { it.isNotBlank() }
                 val ok = NodeActionExecutor.pasteText(svc, targetNodeId)
                 resp.put("ok", true)
-                resp.put("result", JSONObject().apply {
-                    put("ok", true)
-                    put("action_performed", ok)
-                })
+                resp.put("result", buildPasteResult(ok))
             }
             CMD_ERASE_TEXT -> {
                 val characters = req.optInt("characters", 1).coerceAtLeast(1)
                 val ok = NodeActionExecutor.eraseText(svc, characters)
                 resp.put("ok", true)
-                resp.put("result", JSONObject().apply {
-                    put("ok", true)
-                    put("erased_count", characters)
-                })
+                resp.put("result", buildEraseResult(ok, characters))
             }
             CMD_SCAN_MEDIA, CMD_ADD_MEDIA -> {
                 val path = req.optString("path", "")

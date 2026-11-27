@@ -80,7 +80,7 @@ object NodeActionExecutor {
         root: AccessibilityNodeInfo,
         targetNodeId: String
     ): AccessibilityNodeInfo? {
-        val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(root)
+        val simulated = WindowRootCollector.AndroidWindowTreeSource.snapshotSingleNode(root)
         val rootNodeId = ActionableNodeRegistry.generateNodeId(
             displayId = 0,
             windowId = root.windowId,
@@ -117,7 +117,7 @@ object NodeActionExecutor {
                 null
             } ?: continue
 
-            val simulated = WindowRootCollector.AndroidWindowTreeSource.convertNode(child)
+            val simulated = WindowRootCollector.AndroidWindowTreeSource.snapshotSingleNode(child)
             val childNodeId = ActionableNodeRegistry.generateNodeId(
                 displayId = 0,
                 windowId = child.windowId,

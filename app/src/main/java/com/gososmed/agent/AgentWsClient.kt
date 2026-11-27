@@ -94,6 +94,31 @@ class AgentWsClient(
             AgentCommand.CMD_HAS_PACKAGE,
             AgentCommand.CMD_LIST_PACKAGES
         )
+
+        val CONCURRENT_NON_UI_COMMANDS = setOf(
+            AgentCommand.CMD_STAGE_MEDIA,
+            AgentCommand.CMD_CLEANUP_MEDIA,
+            AgentCommand.CMD_SCAN_MEDIA,
+            AgentCommand.CMD_ADD_MEDIA,
+            AgentCommand.CMD_SET_CLIPBOARD
+        )
+
+        private val V2_NON_MUTATING_COMMANDS = setOf(
+            ProtocolV2.Commands.OBSERVE,
+            ProtocolV2.Commands.RESOLVE,
+            ProtocolV2.Commands.WAIT_FOR_NODE,
+            ProtocolV2.Commands.WAIT_FOR_SCREEN,
+            ProtocolV2.Commands.CANCEL_ACTION,
+            ProtocolV2.Commands.START_DEBUG_FRAMES,
+            ProtocolV2.Commands.STOP_DEBUG_FRAMES
+        )
+
+        /** Commands that mutate UI or require sequential focus/gesture state must hold [commandExecutionMutex]. */
+        internal fun requiresMutationMutex(cmdName: String): Boolean {
+            return cmdName !in CONCURRENT_READONLY_COMMANDS &&
+                cmdName !in CONCURRENT_NON_UI_COMMANDS &&
+                cmdName !in V2_NON_MUTATING_COMMANDS
+        }
     }
 
     internal class PendingCallbackStore {
@@ -326,27 +351,48 @@ class AgentWsClient(
                     // Inbound command from the agenthub (has a cmd field): this
                     // is the server demanding we act (dump/tap/setText/back/...).
                     // Execute it and reply — this is the whole point of P1.
-                    // Accessibility API must run on the main thread, so we post
-                    // the execution there (webSocket.send is thread-safe).
-                    // Protocol V2 routing: execute in coroutine background scope to avoid blocking main looper
+                    // Execute commands off the OkHttp reader thread; serialize UI mutations under
+                    // commandExecutionMutex while letting read-only / non-UI media commands run concurrently.
                     if (obj.has("protocol_version") && obj.optInt("protocol_version") == 2) {
-                        scope.launch {
-                            try {
+                        val cmdName = obj.optString("cmd", "")
+                        val args = obj.optJSONObject("args") ?: JSONObject()
+                        val reqId = obj.optString("request_id", "")
+                        scope.launch(Dispatchers.IO) {
+                            val runV2: suspend () -> Unit = {
                                 val execResult = AgentCommand.executeV2WithBinary(obj)
                                 webSocket.send(execResult.responseJson.toString())
                                 execResult.observeBinaryPayload?.let { payload ->
                                     webSocket.send(payload.metadataJson.toString())
                                     webSocket.send(payload.binaryBytes.toByteString())
                                 }
-
-                                val cmdName = obj.optString("cmd", "")
-                                val args = obj.optJSONObject("args") ?: JSONObject()
-                                val reqId = obj.optString("request_id", "")
-
                                 if (cmdName == ProtocolV2.Commands.START_DEBUG_FRAMES) {
                                     startDebugStreaming(args, reqId)
                                 } else if (cmdName == ProtocolV2.Commands.STOP_DEBUG_FRAMES) {
                                     stopDebugStreaming(args.optString("session_id").ifEmpty { null })
+                                }
+                            }
+                            try {
+                                val completed = kotlinx.coroutines.withTimeoutOrNull(60_000L) {
+                                    if (requiresMutationMutex(cmdName)) {
+                                        commandExecutionMutex.withLock { runV2() }
+                                    } else {
+                                        runV2()
+                                    }
+                                    true
+                                }
+                                if (completed == null) {
+                                    Log.w(TAG, "V2 command $cmdName timed out after 60s")
+                                    if (reqId.isNotEmpty()) {
+                                        val errResp = ProtocolV2.Response.error(
+                                            requestId = reqId,
+                                            reasonCode = ProtocolV2.ReasonCodes.TIMEOUT,
+                                            result = JSONObject().apply {
+                                                put("cmd", cmdName)
+                                                put("error", "command execution timed out after 60s")
+                                            }
+                                        ).toJson()
+                                        webSocket.send(errResp.toString())
+                                    }
                                 }
                             } catch (e: Exception) {
                                 Log.w(TAG, "cmd exec (v2) error", e)
@@ -358,12 +404,12 @@ class AgentWsClient(
                     if (obj.has("cmd")) {
                         val cmdName = obj.optString("cmd", "")
                         scope.launch(Dispatchers.IO) {
-                            if (cmdName in CONCURRENT_READONLY_COMMANDS) {
+                            if (!requiresMutationMutex(cmdName)) {
                                 try {
                                     val resp = AgentCommand.execute(obj)
                                     webSocket.send(resp.toString())
                                 } catch (e: Exception) {
-                                    Log.w(TAG, "read-only cmd exec error", e)
+                                    Log.w(TAG, "concurrent cmd exec error", e)
                                 }
                                 return@launch
                             }

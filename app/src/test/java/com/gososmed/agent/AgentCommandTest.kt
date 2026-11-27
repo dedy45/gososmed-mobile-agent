@@ -389,4 +389,39 @@ class AgentCommandTest {
         assertFalse("must fail when service disconnected", respInspect.optBoolean("ok"))
         assertEquals("accessibility service not connected/ready", respInspect.getString("error"))
     }
+
+    @Test
+    fun `requiresMutationMutex skips non-UI media and clipboard commands`() {
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_STAGE_MEDIA))
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_CLEANUP_MEDIA))
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_SCAN_MEDIA))
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_ADD_MEDIA))
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_SET_CLIPBOARD))
+        assertFalse(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_PING))
+
+        assertTrue(AgentWsClient.requiresMutationMutex(AgentCommand.CMD_TAP))
+        assertTrue(AgentWsClient.requiresMutationMutex(ProtocolV2.Commands.ACT_NODE))
+        assertTrue(AgentWsClient.requiresMutationMutex(ProtocolV2.Commands.ACT_AND_VERIFY))
+        assertTrue(AgentWsClient.requiresMutationMutex(ProtocolV2.Commands.SCROLL_UNTIL_VISIBLE))
+        assertTrue(AgentWsClient.requiresMutationMutex(ProtocolV2.Commands.EXECUTE_BATCH))
+    }
+
+    @Test
+    fun `paste and erase result builders propagate failure truthfully`() {
+        val pasteFail = AgentCommand.buildPasteResult(ok = false)
+        assertFalse(pasteFail.optBoolean("ok"))
+        assertFalse(pasteFail.optBoolean("action_performed"))
+
+        val pasteOk = AgentCommand.buildPasteResult(ok = true)
+        assertTrue(pasteOk.optBoolean("ok"))
+        assertTrue(pasteOk.optBoolean("action_performed"))
+
+        val eraseFail = AgentCommand.buildEraseResult(ok = false, characters = 5)
+        assertFalse(eraseFail.optBoolean("ok"))
+        assertEquals(0, eraseFail.optInt("erased_count"))
+
+        val eraseOk = AgentCommand.buildEraseResult(ok = true, characters = 5)
+        assertTrue(eraseOk.optBoolean("ok"))
+        assertEquals(5, eraseOk.optInt("erased_count"))
+    }
 }

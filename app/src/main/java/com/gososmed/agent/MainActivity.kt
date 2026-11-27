@@ -397,10 +397,19 @@ class MainActivity : AppCompatActivity() {
         btnHealthCopy = findViewById(R.id.btnHealthCopy)
         btnHealthRefresh.setOnClickListener { refreshHealthCheck() }
         btnHealthCopy.setOnClickListener {
-            val report = buildHealthReport()
-            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-            cm?.setPrimaryClip(android.content.ClipData.newPlainText("health", report.fullText()))
-            toast("Laporan health check disalin")
+            btnHealthCopy.isEnabled = false
+            Thread {
+                val reportText = try {
+                    buildHealthReport().fullText()
+                } finally {
+                    runOnUiThread { if (!isFinishing && !isDestroyed) btnHealthCopy.isEnabled = true }
+                }
+                runOnUiThread {
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("health", reportText))
+                    toast("Laporan health check disalin")
+                }
+            }.start()
         }
 
         // Mode Server
@@ -461,11 +470,11 @@ class MainActivity : AppCompatActivity() {
 
         connectBtn.setOnClickListener { connectWs() }
         disconnectBtn.setOnClickListener { disconnectWs() }
-        dumpBtn.setOnClickListener { AgentLog.event(runDump()) }
-        packageBtn.setOnClickListener { AgentLog.event(runPackage()) }
+        dumpBtn.setOnClickListener { Thread { AgentLog.event(runDump()) }.start() }
+        packageBtn.setOnClickListener { Thread { AgentLog.event(runPackage()) }.start() }
         backBtn.setOnClickListener { doGlobal { it.pressBack() } }
         homeBtn.setOnClickListener { doGlobal { it.pressHome() } }
-        tapBtn.setOnClickListener { doTapFirstClickable() }
+        tapBtn.setOnClickListener { Thread { doTapFirstClickable() }.start() }
 
         openAppInfoBtn.setOnClickListener {
             showRestrictedSettingsGuideDialog()
@@ -1489,9 +1498,25 @@ class MainActivity : AppCompatActivity() {
         refreshTelemetry()
     }
 
-    private fun refreshTelemetry() {
-        val snap = DeviceTelemetryHelper.getSnapshot(this)
+    private val telemetryRefreshInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    private fun refreshTelemetry() {
+        if (!telemetryRefreshInFlight.compareAndSet(false, true)) return
+        Thread {
+            try {
+                val snap = DeviceTelemetryHelper.getSnapshot(applicationContext)
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        applyTelemetrySnapshot(snap)
+                    }
+                }
+            } finally {
+                telemetryRefreshInFlight.set(false)
+            }
+        }.start()
+    }
+
+    private fun applyTelemetrySnapshot(snap: DeviceTelemetryHelper.TelemetrySnapshot) {
         // Baterai & status charging
         val chargingStr = getString(if (snap.isCharging) R.string.telemetry_battery_charging else R.string.telemetry_battery_discharging)
         val batteryVal = if (snap.batteryPct >= 0) "${snap.batteryPct}%$chargingStr" else "N/A"
@@ -2361,42 +2386,44 @@ class MainActivity : AppCompatActivity() {
                     logTv.postDelayed(this, 500L)
                     return
                 }
-                when (cmd) {
-                    AgentCommand.CMD_DUMP -> { val r = runDump(); writeResult("dump", r) }
-                    AgentCommand.CMD_PACKAGE -> { val r = runPackage(); writeResult("package", r) }
-                    AgentCommand.CMD_BACK -> { val r = runGlobal("back") { it.pressBack() }; writeResult("back", r) }
-                    AgentCommand.CMD_HOME -> { val r = runGlobal("home") { it.pressHome() }; writeResult("home", r) }
-                    AgentCommand.CMD_TAP_BY_TEXT -> {
-                        val text = intent.getStringExtra("text") ?: ""
-                        val r = runTapByText(text)
-                        writeResult("tapByText", r)
+                kotlin.concurrent.thread(name = "goso-debug-cmd") {
+                    when (cmd) {
+                        AgentCommand.CMD_DUMP -> { val r = runDump(); writeResult("dump", r) }
+                        AgentCommand.CMD_PACKAGE -> { val r = runPackage(); writeResult("package", r) }
+                        AgentCommand.CMD_BACK -> { val r = runGlobal("back") { it.pressBack() }; writeResult("back", r) }
+                        AgentCommand.CMD_HOME -> { val r = runGlobal("home") { it.pressHome() }; writeResult("home", r) }
+                        AgentCommand.CMD_TAP_BY_TEXT -> {
+                            val text = intent.getStringExtra("text") ?: ""
+                            val r = runTapByText(text)
+                            writeResult("tapByText", r)
+                        }
+                        AgentCommand.CMD_SET_TEXT -> {
+                            val text = intent.getStringExtra("text") ?: ""
+                            val r = runSetText(text)
+                            writeResult("setText", r)
+                        }
+                        AgentCommand.CMD_START_APP -> {
+                            val pkg = intent.getStringExtra("package") ?: ""
+                            val activity = intent.getStringExtra("activity") ?: ""
+                            val r = runStartApp(pkg, activity)
+                            writeResult("startApp", r)
+                        }
+                        AgentCommand.CMD_KILL_APP -> {
+                            val pkg = intent.getStringExtra("package") ?: ""
+                            val r = runKillApp(pkg)
+                            writeResult("killApp", r)
+                        }
+                        AgentCommand.CMD_HAS_PACKAGE -> {
+                            val pkg = intent.getStringExtra("package") ?: ""
+                            val r = runHasPackage(pkg)
+                            writeResult("hasPackage", r)
+                        }
+                        AgentCommand.CMD_LIST_PACKAGES -> {
+                            val r = runListPackages()
+                            writeResult("listPackages", r)
+                        }
+                        else -> writeResult(cmd, "ERR_UNKNOWN_CMD")
                     }
-                    AgentCommand.CMD_SET_TEXT -> {
-                        val text = intent.getStringExtra("text") ?: ""
-                        val r = runSetText(text)
-                        writeResult("setText", r)
-                    }
-                    AgentCommand.CMD_START_APP -> {
-                        val pkg = intent.getStringExtra("package") ?: ""
-                        val activity = intent.getStringExtra("activity") ?: ""
-                        val r = runStartApp(pkg, activity)
-                        writeResult("startApp", r)
-                    }
-                    AgentCommand.CMD_KILL_APP -> {
-                        val pkg = intent.getStringExtra("package") ?: ""
-                        val r = runKillApp(pkg)
-                        writeResult("killApp", r)
-                    }
-                    AgentCommand.CMD_HAS_PACKAGE -> {
-                        val pkg = intent.getStringExtra("package") ?: ""
-                        val r = runHasPackage(pkg)
-                        writeResult("hasPackage", r)
-                    }
-                    AgentCommand.CMD_LIST_PACKAGES -> {
-                        val r = runListPackages()
-                        writeResult("listPackages", r)
-                    }
-                    else -> writeResult(cmd, "ERR_UNKNOWN_CMD")
                 }
             }
         }

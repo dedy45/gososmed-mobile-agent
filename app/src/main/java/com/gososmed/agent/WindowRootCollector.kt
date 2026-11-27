@@ -140,13 +140,14 @@ object WindowRootCollector {
         }
 
         companion object {
-            fun convertNode(
+            /**
+             * Reads attributes of a single [AccessibilityNodeInfo] without recursing into
+             * children, preventing O(N^2) binder traversals during per-node ID lookup.
+             */
+            fun snapshotSingleNode(
                 node: android.view.accessibility.AccessibilityNodeInfo,
-                depth: Int = 0,
-                budget: NodeBudget = NodeBudget()
+                children: List<SimulatedNode> = emptyList()
             ): SimulatedNode {
-                budget.acquire()
-
                 val rect = android.graphics.Rect()
                 node.getBoundsInScreen(rect)
                 val bounds = SnapshotBounds(rect.left, rect.top, rect.right, rect.bottom)
@@ -158,23 +159,6 @@ object WindowRootCollector {
                 // P1.4 Password redaction: if node.isPassword == true, redact text and contentDescription
                 val text = if (isPassword) "[REDACTED]" else rawText
                 val desc = if (isPassword) "[REDACTED]" else rawDesc
-
-                val children = mutableListOf<SimulatedNode>()
-                if (depth < MAX_DEPTH && !budget.exhausted) {
-                    val count = node.childCount
-                    for (i in 0 until count) {
-                        if (budget.exhausted) break
-                        val child = try {
-                            node.getChild(i)
-                        } catch (t: Throwable) {
-                            android.util.Log.w("GoAgent", "Failed to get child $i: ${t.message}", t)
-                            null
-                        }
-                        if (child != null) {
-                            children.add(convertNode(child, depth = depth + 1, budget = budget))
-                        }
-                    }
-                }
 
                 return SimulatedNode(
                     packageName = node.packageName?.toString() ?: "",
@@ -196,6 +180,31 @@ object WindowRootCollector {
                     password = isPassword,
                     children = children
                 )
+            }
+
+            fun convertNode(
+                node: android.view.accessibility.AccessibilityNodeInfo,
+                depth: Int = 0,
+                budget: NodeBudget = NodeBudget()
+            ): SimulatedNode {
+                budget.acquire()
+                val children = mutableListOf<SimulatedNode>()
+                if (depth < MAX_DEPTH && !budget.exhausted) {
+                    val count = node.childCount
+                    for (i in 0 until count) {
+                        if (budget.exhausted) break
+                        val child = try {
+                            node.getChild(i)
+                        } catch (t: Throwable) {
+                            android.util.Log.w("GoAgent", "Failed to get child $i: ${t.message}", t)
+                            null
+                        }
+                        if (child != null) {
+                            children.add(convertNode(child, depth = depth + 1, budget = budget))
+                        }
+                    }
+                }
+                return snapshotSingleNode(node, children = children)
             }
         }
     }
