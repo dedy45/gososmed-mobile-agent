@@ -36,9 +36,9 @@ android {
         applicationId = "com.gososmed.agent"
         minSdk = 26
         targetSdk = 34
-        // versionCode 61 = 1.2.21 (DEV) — Presisi Observasi AI (DMAI): Skala koordinat eksplisit DisplayMetrics untuk modal dialog, fail-closed checkSecurityChallenge, nodeInspector, dan penghapusan recycle() rentan crash pada waitForNode.
-        versionCode = 61
-        versionName = "1.2.21"
+        // versionCode 62 = 1.2.22-dev.1 (DEV) — Stabilitas ADB (zero-spam notif), Direct Boot guard, Zero-Leak RAM/Bitmap/MediaProjection, Anti-ANR, & Hardening LocalWebServer.
+        versionCode = 62
+        versionName = "1.2.22-dev.1"
         val prodWsUrl = "\"wss://api.bamsbung.id/v1/agent/ws\""
         val devWsUrl = "\"wss://dev-api.bamsbung.id/v1/agent/ws\""
         buildConfigField("String", "PROD_WS_URL", prodWsUrl)

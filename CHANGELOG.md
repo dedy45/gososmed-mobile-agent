@@ -9,9 +9,9 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
 > berkelanjutan dari `main`, belum diuji luas). Semua build ditandai jelas
 > di GitHub Releases; APK dari CI `main` selalu berstatus **dev**.
 
-## [Unreleased]
+## [1.2.22-dev.1] - 2026-11-27 (DEV)
 
-### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (`v1.2.21` Dev Hardening)
+### Fixed — Stabilitas ADB, Pencegahan Kebocoran RAM, dan Anti-ANR (Dev Hardening)
 - **Eliminasi Spam Notifikasi "Wireless Debugging Connected" (`AdbLocalShell.kt`, `AdbPairingController.kt`, `AgentWsClient.kt`, `DynamicHidingManager.kt`)**:
   - Memeriksa kesehatan sesi ADB (`isConnected && isConnectionEstablished`) langsung di thread IO ADB daripada melakukan probe TCP/UID berulang atau membuka sesi baru tanpa perlu (`AdbPortResolver.isSocketAlive()` probe dihapus dari jalur `execOnIo`/`ensureConnected`/`connectNow`).
   - Menghapus probe shell `settings get global device_name` tiap 10 detik di heartbeat WebSocket `AgentWsClient`.
@@ -32,8 +32,9 @@ dan versi mengikuti [SemVer](https://semver.org/lang/id/).
   - Memvalidasi panjang frame WebSocket (`<= 65536` byte), membatasi ukuran upload base64 WS, membersihkan sesi/percobaan PIN kadaluarsa, serta membatasi seluruh API file/upload/delete hanya ke direktori penyimpanan publik (`/sdcard`, `/storage/emulated`, penyimpanan eksternal).
 
 ### Limits — Catatan Pengujian
-- **Verifikasi JVM:** Seluruh unit test JVM dan kompilasi `assembleDebug` lolos setelah perbaikan akhir (mencakup regression test `AdbReconnectPolicyTest`, `DynamicHidingManagerTest`, `DirectBootGuardTest`, `AgentWsClientLifecycleTest`, `AgentCommandTest`, dan `LocalWebServerTest`).
-- **Pengujian Perangkat Fisik:** Belum dijalankan pada perangkat fisik Android (`adb devices` lokal kosong saat sesi ini); wajib diuji pada HP nyata (termasuk skenario Wireless Debugging + Remote Viewer + sesi WebSocket panjang) sebelum promosi ke `main` / tag stabil `v1.2.21`.
+- **Verifikasi JVM:** Seluruh unit test JVM (`288` tests di `41` suites, `0` failed, `0` skipped) dan kompilasi `assembleDebug` lolos setelah perbaikan akhir (mencakup regression test `AdbReconnectPolicyTest`, `DynamicHidingManagerTest`, `DirectBootGuardTest`, `AgentWsClientLifecycleTest`, `AgentCommandTest`, dan `LocalWebServerTest`).
+- **Pengujian Perangkat Fisik:** Belum dijalankan pada perangkat fisik Android (`adb devices` lokal kosong saat sesi ini); wajib diuji pada HP nyata (termasuk skenario Wireless Debugging + Remote Viewer + sesi WebSocket panjang) sebelum promosi ke `main` / tag stabil `v1.2.22`.
+- **Kanal Rilis:** Prerelease Dev `v1.2.22-dev.1` (bukan stabil). Dipilih `1.2.22-dev.1` (`versionCode = 62`) agar updater GitHub in-app mendeteksi update dari perangkat `v1.2.20` maupun `v1.2.21-dev.1` (`1.2.21`).
 
 ## [1.2.21-dev.1] - 2026-11-16 (DEV)
 
